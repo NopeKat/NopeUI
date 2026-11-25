@@ -1,7 +1,13 @@
-add_executable(nopeui_base_tests
-    base/version_test.cpp
-)
+function(add_nopeui_base_test test_name source_file)
+    set(target "nopeui_base_${test_name}")
+    add_executable(${target} ${source_file})
+    target_link_libraries(${target} PRIVATE nopeui_base)
+    add_test(NAME "nopeui_base.${test_name}" COMMAND ${target})
+endfunction()
 
-target_link_libraries(nopeui_base_tests PRIVATE nopeui_base)
-
-add_test(NAME nopeui_base.version COMMAND nopeui_base_tests)
+add_nopeui_base_test(event_test base/event_test.cpp)
+add_nopeui_base_test(geometry_test base/geometry_test.cpp)
+add_nopeui_base_test(ref_test base/ref_test.cpp)
+add_nopeui_base_test(result_test base/result_test.cpp)
+add_nopeui_base_test(strings_test base/strings_test.cpp)
+add_nopeui_base_test(version_test base/version_test.cpp)

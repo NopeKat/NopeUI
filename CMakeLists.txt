@@ -13,6 +13,7 @@ else()
 endif()
 
 add_library(nopeui_base STATIC
+    src/base/strings.cpp
     src/base/version.cpp
 )
 

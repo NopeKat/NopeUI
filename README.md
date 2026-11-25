@@ -6,7 +6,7 @@ NopeUI 是一个仅面向 Windows 的开源 C++ 桌面 UI 框架。外观参考 
 
 ## 当前状态
 
-项目处于 P0 第 1 天，构建骨架已建立：CMake 配置、`nopeui_base` 静态库、1 个测试、`eng/build.ps1` 与 `eng/test.ps1` 可用。窗口、呈现与控件尚未开始。
+项目处于 P0 第 2 天，`base` 最小内核已建立：`Result` 与 `Error`、`Ref`、`Event` 与 `Subscription`、几何类型、UTF-8 与 UTF-16 转换。6 个测试通过；窗口与呈现尚未开始。
 
 ## 构建
 
