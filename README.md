@@ -10,6 +10,8 @@ NopeUI 是一个仅面向 Windows 的开源 C++ 桌面 UI 框架。外观参考 
 
 ## 构建
 
+工具链版本锁定为 CMake 4.4.4、Visual Studio 18 2026、MSVC 14.52.37025、Windows SDK 10.0.26100.0；生成器用 `Visual Studio 18 2026`，不引入 Ninja。
+
 构建骨架尚未建立。P0 第 1 天会加入 `CMakePresets.json` 与 `eng/build.ps1`，之后使用：
 
 ```powershell
