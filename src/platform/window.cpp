@@ -318,7 +318,7 @@ public:
         last_timings_ = timings;
         last_frame_ms_ =
             std::chrono::duration<double, std::milli>(frame_end - start).count();
-        ++frame_count_;
+        frame_count_.fetch_add(1, std::memory_order_relaxed);
     }
 
     bool Present() noexcept {
@@ -428,7 +428,7 @@ public:
     }
 
     std::uint64_t FrameCount() const noexcept {
-        return frame_count_;
+        return frame_count_.load(std::memory_order_relaxed);
     }
 
     std::uint64_t CommitCount() const noexcept {
@@ -828,7 +828,7 @@ private:
     FrameLatency last_latency_{};
     CommitQueueStats queue_stats_{};
     std::chrono::steady_clock::time_point last_commit_time_{};
-    std::uint64_t frame_count_ = 0;
+    std::atomic<std::uint64_t> frame_count_{0};
     std::atomic<std::uint64_t> commit_count_{0};
     bool throttle_commits_ = true;
     bool commit_pending_ = false;
