@@ -1792,6 +1792,11 @@ void Window::OnMouseMove(Point point) noexcept {
     }
 
     Element* hit = content_->HitTest(point);
+    if (pressed_ != nullptr) {
+        // Pointer capture: while a button or scroll thumb is held, moves go to it.
+        pressed_->OnPointerMove(point);
+        return;
+    }
     bool changed = false;
     if (hit != hovered_) {
         if (hovered_ != nullptr) {
@@ -1865,6 +1870,11 @@ void Window::FocusElement(Element* element) noexcept {
     focused_ = element;
     if (focused_ != nullptr) {
         focused_->SetFocused(true);
+        Element* node = focused_->Parent();
+        while (node != nullptr) {
+            node->BringChildIntoView(focused_);
+            node = node->Parent();
+        }
     }
 }
 

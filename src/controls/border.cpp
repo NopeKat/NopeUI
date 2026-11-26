@@ -44,6 +44,12 @@ void Border::SetPadding(Thickness padding) noexcept {
     padding_ = padding;
 }
 
+void Border::SetCornerRadius(float radius) noexcept {
+    if (corner_radius_.Set(std::max(0.0f, radius))) {
+        Invalidate();
+    }
+}
+
 void Border::UseSurfaceBackground(bool surface) noexcept {
     if (surface_ == surface && use_theme_background_) {
         return;
@@ -103,15 +109,25 @@ Size Border::ArrangeOverride(Size final_size) noexcept {
 
 void Border::PaintContent(ID2D1RenderTarget* target) noexcept {
     const Theme& colors = Colors();
+    const float radius = corner_radius_.Get();
     const std::uint32_t background = use_theme_background_
         ? (surface_ ? colors.surface : colors.background)
         : background_.Get();
     ComPtr<ID2D1SolidColorBrush> background_brush;
     if (SUCCEEDED(target->CreateSolidColorBrush(
             D2D1::ColorF(background), background_brush.GetAddressOf()))) {
-        target->FillRectangle(
-            D2D1::RectF(bounds_.x, bounds_.y, bounds_.Right(), bounds_.Bottom()),
-            background_brush.Get());
+        if (radius > 0.0f) {
+            target->FillRoundedRectangle(
+                D2D1::RoundedRect(
+                    D2D1::RectF(bounds_.x, bounds_.y, bounds_.Right(), bounds_.Bottom()),
+                    radius,
+                    radius),
+                background_brush.Get());
+        } else {
+            target->FillRectangle(
+                D2D1::RectF(bounds_.x, bounds_.y, bounds_.Right(), bounds_.Bottom()),
+                background_brush.Get());
+        }
     }
     if (border_visible_) {
         const std::uint32_t color =
@@ -119,14 +135,20 @@ void Border::PaintContent(ID2D1RenderTarget* target) noexcept {
         ComPtr<ID2D1SolidColorBrush> outline;
         if (SUCCEEDED(target->CreateSolidColorBrush(
                 D2D1::ColorF(color), outline.GetAddressOf()))) {
-            target->DrawRectangle(
-                D2D1::RectF(
-                    bounds_.x + 0.5f,
-                    bounds_.y + 0.5f,
-                    bounds_.Right() - 0.5f,
-                    bounds_.Bottom() - 0.5f),
-                outline.Get(),
-                kOutlineWidth);
+            const D2D1_RECT_F outline_rect = D2D1::RectF(
+                bounds_.x + 0.5f,
+                bounds_.y + 0.5f,
+                bounds_.Right() - 0.5f,
+                bounds_.Bottom() - 0.5f);
+            if (radius > 0.0f) {
+                const float outline_radius = std::max(0.0f, radius - 0.5f);
+                target->DrawRoundedRectangle(
+                    D2D1::RoundedRect(outline_rect, outline_radius, outline_radius),
+                    outline.Get(),
+                    kOutlineWidth);
+            } else {
+                target->DrawRectangle(outline_rect, outline.Get(), kOutlineWidth);
+            }
         }
     }
     if (child_) {
@@ -144,6 +166,9 @@ Element* Border::HitTestOverride(Point point) noexcept {
 }
 
 void Border::CollectFocusable(std::vector<Element*>& elements) noexcept {
+    if (!IsEnabled()) {
+        return;
+    }
     if (child_) {
         child_->CollectFocusable(elements);
     }

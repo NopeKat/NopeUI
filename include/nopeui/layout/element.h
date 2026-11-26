@@ -78,6 +78,14 @@ public:
         focused_ = focused;
     }
 
+    bool IsEnabled() const noexcept {
+        return enabled_;
+    }
+    void SetEnabled(bool enabled) noexcept;
+
+    // Lets a scrollable ancestor adjust its offset when focus moves.
+    virtual void BringChildIntoView(const Element*) noexcept {}
+
     virtual bool OnKeyDown(unsigned int) noexcept {
         return false;
     }
@@ -122,6 +130,7 @@ private:
     std::function<void()> invalidate_;
     std::function<void()> relayout_;
     bool focused_ = false;
+    bool enabled_ = true;
 };
 
 }  // namespace nopeui

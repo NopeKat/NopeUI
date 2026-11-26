@@ -65,6 +65,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR command_line_ptr, int) {
 
     auto card = nopeui::Border::Create();
     card->UseSurfaceBackground(true);
+    card->SetCornerRadius(8.0f);
     card->SetPadding(nopeui::Thickness{28.0f, 24.0f, 28.0f, 24.0f});
 
     auto panel = nopeui::StackPanel::Create(14.0f);
@@ -86,6 +87,9 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR command_line_ptr, int) {
     theme_row->SetOrientation(nopeui::Orientation::Horizontal);
     theme_row->Add(light_button);
     theme_row->Add(dark_button);
+    auto disabled_button = nopeui::Button::Create(L"Disabled");
+    disabled_button->SetEnabled(false);
+    theme_row->Add(disabled_button);
     panel->Add(theme_row);
     panel->Add(nopeui::Label::Create(L"Wheel over the card scrolls the list."));
 

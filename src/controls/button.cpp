@@ -14,6 +14,7 @@
 #include <algorithm>
 #include <utility>
 
+#include "nopeui/controls/control_state.h"
 #include "nopeui/graphics/text.h"
 #include "nopeui/theme/theme.h"
 
@@ -27,6 +28,7 @@ constexpr float kPaddingX = 16.0f;
 constexpr float kPaddingY = 8.0f;
 constexpr float kMinWidth = 88.0f;
 constexpr float kMinHeight = 32.0f;
+constexpr float kCornerRadius = 4.0f;
 
 }  // namespace
 
@@ -53,29 +55,52 @@ Size Button::MeasureOverride(Size available) noexcept {
 
 void Button::PaintContent(ID2D1RenderTarget* target) noexcept {
     const Theme& colors = Colors();
-    const std::uint32_t background = pressed_
-        ? colors.button_pressed
-        : (hovered_ ? colors.button_hover : colors.button);
+    const ControlState state = ResolveControlState(IsEnabled(), hovered_, pressed_);
+    std::uint32_t background = colors.button;
+    switch (state) {
+        case ControlState::Disabled:
+            background = colors.button_disabled;
+            break;
+        case ControlState::Pressed:
+            background = colors.button_pressed;
+            break;
+        case ControlState::Hovered:
+            background = colors.button_hover;
+            break;
+        case ControlState::Normal:
+            break;
+    }
+    const std::uint32_t outline_color = state == ControlState::Disabled
+        ? colors.button_disabled_border
+        : colors.button_border;
+    const std::uint32_t text_color = state == ControlState::Disabled
+        ? colors.text_disabled
+        : colors.text;
+
+    const D2D1_ROUNDED_RECT rounded = D2D1::RoundedRect(
+        D2D1::RectF(bounds_.x, bounds_.y, bounds_.Right(), bounds_.Bottom()),
+        kCornerRadius,
+        kCornerRadius);
+
     ComPtr<ID2D1SolidColorBrush> brush;
     if (FAILED(target->CreateSolidColorBrush(
             D2D1::ColorF(background), brush.GetAddressOf()))) {
         return;
     }
-    target->FillRectangle(
-        D2D1::RectF(bounds_.x, bounds_.y, bounds_.Right(), bounds_.Bottom()),
-        brush.Get());
+    target->FillRoundedRectangle(rounded, brush.Get());
 
     ComPtr<ID2D1SolidColorBrush> outline;
     if (SUCCEEDED(target->CreateSolidColorBrush(
-            D2D1::ColorF(colors.button_border), outline.GetAddressOf()))) {
-        target->DrawRectangle(
+            D2D1::ColorF(outline_color), outline.GetAddressOf()))) {
+        const D2D1_ROUNDED_RECT border = D2D1::RoundedRect(
             D2D1::RectF(
                 bounds_.x + 0.5f,
                 bounds_.y + 0.5f,
                 bounds_.Right() - 0.5f,
                 bounds_.Bottom() - 0.5f),
-            outline.Get(),
-            1.0f);
+            kCornerRadius,
+            kCornerRadius);
+        target->DrawRoundedRectangle(border, outline.Get(), 1.0f);
     }
 
     if (run_ == nullptr) {
@@ -87,9 +112,9 @@ void Button::PaintContent(ID2D1RenderTarget* target) noexcept {
         Point{
             bounds_.x + (bounds_.width - text.width) / 2.0f,
             bounds_.y + (bounds_.height - text.height) / 2.0f},
-        colors.text);
+        text_color);
 
-    if (IsFocused()) {
+    if (IsFocused() && IsEnabled()) {
         ComPtr<ID2D1SolidColorBrush> focus;
         if (SUCCEEDED(target->CreateSolidColorBrush(
                 D2D1::ColorF(colors.accent), focus.GetAddressOf()))) {
@@ -132,11 +157,11 @@ void Button::OnPointerUp(Point point) noexcept {
 }
 
 bool Button::IsFocusable() const noexcept {
-    return true;
+    return IsEnabled();
 }
 
 bool Button::OnKeyDown(unsigned int key) noexcept {
-    if (key != VK_SPACE && key != VK_RETURN) {
+    if (!IsEnabled() || (key != VK_SPACE && key != VK_RETURN)) {
         return false;
     }
     if (!pressed_) {
@@ -147,7 +172,7 @@ bool Button::OnKeyDown(unsigned int key) noexcept {
 }
 
 bool Button::OnKeyUp(unsigned int key) noexcept {
-    if (key != VK_SPACE && key != VK_RETURN) {
+    if (!IsEnabled() || (key != VK_SPACE && key != VK_RETURN)) {
         return false;
     }
     const bool clicked = pressed_;

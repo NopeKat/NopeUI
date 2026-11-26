@@ -17,6 +17,11 @@ struct Theme {
     std::uint32_t button_hover = 0xE2E2E2;
     std::uint32_t button_pressed = 0xD4D4D4;
     std::uint32_t button_border = 0xCFCFCF;
+    std::uint32_t text_disabled = 0x9A9A9A;
+    std::uint32_t button_disabled = 0xF0F0F0;
+    std::uint32_t button_disabled_border = 0xDFDFDF;
+    std::uint32_t scrollbar_track = 0xE8E8E8;
+    std::uint32_t scrollbar_thumb = 0xC0C0C0;
 };
 
 const Theme& LightTheme() noexcept;

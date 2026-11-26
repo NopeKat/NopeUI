@@ -33,7 +33,7 @@ bool Element::Contains(Point point) const noexcept {
 }
 
 Element* Element::HitTest(Point point) noexcept {
-    if (!Contains(point)) {
+    if (!enabled_ || !Contains(point)) {
         return nullptr;
     }
     Element* child = HitTestOverride(point);
@@ -87,9 +87,20 @@ void Element::InvalidateLayout() noexcept {
 }
 
 void Element::CollectFocusable(std::vector<Element*>& elements) noexcept {
+    if (!enabled_) {
+        return;
+    }
     if (IsFocusable()) {
         elements.push_back(this);
     }
+}
+
+void Element::SetEnabled(bool enabled) noexcept {
+    if (enabled_ == enabled) {
+        return;
+    }
+    enabled_ = enabled;
+    Invalidate();
 }
 
 bool Element::BubbleWheel(int delta) noexcept {

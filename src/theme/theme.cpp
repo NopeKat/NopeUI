@@ -29,6 +29,11 @@ const Theme& DarkTheme() noexcept {
         dark.button_hover = 0x3D3D3D;
         dark.button_pressed = 0x2A2A2A;
         dark.button_border = 0x4A4A4A;
+        dark.text_disabled = 0x8A8A8A;
+        dark.button_disabled = 0x2B2B2B;
+        dark.button_disabled_border = 0x3A3A3A;
+        dark.scrollbar_track = 0x303030;
+        dark.scrollbar_thumb = 0x5A5A5A;
         return dark;
     }()};
     return theme;

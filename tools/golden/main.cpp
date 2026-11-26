@@ -53,6 +53,7 @@ nopeui::Ref<nopeui::Element> BuildControlsScene(
 
     auto card = nopeui::Border::Create();
     card->UseSurfaceBackground(true);
+    card->SetCornerRadius(8.0f);
     card->SetPadding(nopeui::Thickness{24.0f, 20.0f, 24.0f, 20.0f});
 
     auto panel = nopeui::StackPanel::Create(12.0f);
@@ -64,6 +65,15 @@ nopeui::Ref<nopeui::Element> BuildControlsScene(
     row->Add(nopeui::Button::Create(L"Light"));
     row->Add(nopeui::Button::Create(L"Dark"));
     panel->Add(row);
+
+    auto states = nopeui::StackPanel::Create(10.0f);
+    states->SetOrientation(nopeui::Orientation::Horizontal);
+    auto enabled = nopeui::Button::Create(L"Enabled");
+    auto disabled = nopeui::Button::Create(L"Disabled");
+    disabled->SetEnabled(false);
+    states->Add(enabled);
+    states->Add(disabled);
+    panel->Add(states);
 
     panel->Add(nopeui::Label::Create(L"Spacing, borders and text share one theme"));
 

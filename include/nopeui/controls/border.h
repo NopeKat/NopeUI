@@ -17,6 +17,7 @@ public:
 
     void SetChild(Ref<Element> child) noexcept;
     void SetPadding(Thickness padding) noexcept;
+    void SetCornerRadius(float radius) noexcept;
 
     // By default the background follows the theme. UseSurfaceBackground(true)
     // picks the card surface instead of the window background.
@@ -39,6 +40,7 @@ private:
     Thickness padding_;
     Property<std::uint32_t> background_{0};
     Property<std::uint32_t> border_color_{0};
+    Property<float> corner_radius_{0.0f};
     bool use_theme_background_ = true;
     bool surface_ = false;
     bool border_visible_ = true;

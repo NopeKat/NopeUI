@@ -94,6 +94,9 @@ Element* StackPanel::HitTestOverride(Point point) noexcept {
 }
 
 void StackPanel::CollectFocusable(std::vector<Element*>& elements) noexcept {
+    if (!IsEnabled()) {
+        return;
+    }
     for (const auto& child : children_) {
         child->CollectFocusable(elements);
     }
