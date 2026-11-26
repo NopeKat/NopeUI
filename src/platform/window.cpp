@@ -31,7 +31,8 @@ constexpr UINT_PTR kResizeSettleTimerId = 3;
 constexpr UINT kLiveResizeIntervalMs = 8;
 constexpr UINT kResizeSettleIntervalMs = 300;
 constexpr std::size_t kMaxQueuedCommits = 1;
-constexpr int kAsyncSurfaceCount = 2;
+constexpr int kMaxAsyncSurfaces = 3;
+constexpr int kMinAsyncSurfaces = 2;
 
 double MillisecondsToNextVblank(LONGLONG submit_qpc) noexcept {
     DWM_TIMING_INFO timing{};
@@ -131,18 +132,31 @@ public:
         return value + slack;
     }
 
+    static int SurfaceCountFor(int width, int height) noexcept {
+        constexpr std::uint64_t triple_limit =
+            static_cast<std::uint64_t>(1920) * static_cast<std::uint64_t>(1200);
+        const std::uint64_t area =
+            static_cast<std::uint64_t>(width) * static_cast<std::uint64_t>(height);
+        return area <= triple_limit ? kMaxAsyncSurfaces : kMinAsyncSurfaces;
+    }
+
     Result<void> Resize(int width, int height, bool exact = false) noexcept {
         if (width <= 0 || height <= 0) {
             return Result<void>::Ok();
         }
 
-        const int needed_surfaces = async_commit_ ? kAsyncSurfaceCount : std::max(1, surface_count_);
         const int target_width =
             exact ? width : (surface_width_ >= width ? surface_width_ : AllocationExtent(width));
         const int target_height =
             exact ? height : (surface_height_ >= height ? surface_height_ : AllocationExtent(height));
 
-        bool all_target = surface_count_ >= needed_surfaces;
+        const int async_surfaces = SurfaceCountFor(target_width, target_height);
+        const int needed_surfaces = async_commit_ ? async_surfaces : 1;
+        if (async_commit_) {
+            async_surface_count_ = async_surfaces;
+        }
+        bool all_target =
+            surface_count_ >= needed_surfaces && surface_count_ <= needed_surfaces;
         for (int index = 0; index < needed_surfaces; ++index) {
             const auto& state = surfaces_[index];
             if (state.surface == nullptr || state.width != target_width ||
@@ -195,7 +209,17 @@ public:
             state.height = target_height;
             state.target_bitmap.Reset();
         }
-        surface_count_ = std::max(surface_count_, needed_surfaces);
+        for (int index = needed_surfaces; index < surface_count_; ++index) {
+            auto& state = surfaces_[index];
+            state.surface.Reset();
+            state.target_bitmap.Reset();
+            state.width = 0;
+            state.height = 0;
+        }
+        surface_count_ = needed_surfaces;
+        if (draw_index_ >= surface_count_) {
+            draw_index_ = 0;
+        }
         target_bound_index_ = -1;
         full_redraw_required_ = true;
         surface_width_ = target_width;
@@ -603,7 +627,7 @@ public:
             const int content_width = content_width_ > 0 ? content_width_ : surface_width_;
             const int content_height = content_height_ > 0 ? content_height_ : surface_height_;
             auto resized = Resize(content_width, content_height, true);
-            if (!resized.ok() || surface_count_ < kAsyncSurfaceCount) {
+            if (!resized.ok() || surface_count_ < async_surface_count_) {
                 async_commit_ = false;
                 draw_index_ = 0;
                 return;
@@ -619,6 +643,9 @@ public:
         WaitForAllCommits();
         async_commit_ = false;
         draw_index_ = 0;
+        const int content_width = content_width_ > 0 ? content_width_ : surface_width_;
+        const int content_height = content_height_ > 0 ? content_height_ : surface_height_;
+        Resize(content_width, content_height, true);
         full_redraw_required_ = true;
     }
 
@@ -712,7 +739,7 @@ private:
     void WaitForAllCommits() noexcept {
         std::unique_lock<std::mutex> lock(commit_mutex_);
         commit_cv_.wait(lock, [this] {
-            for (int index = 0; index < kAsyncSurfaceCount; ++index) {
+            for (int index = 0; index < kMaxAsyncSurfaces; ++index) {
                 if (surface_busy_[index]) {
                     return false;
                 }
@@ -1042,7 +1069,7 @@ private:
     ComPtr<IDCompositionDevice> dcomp_device_;
     ComPtr<IDCompositionTarget> target_;
     ComPtr<IDCompositionVisual> visual_;
-    SurfaceState surfaces_[kAsyncSurfaceCount];
+    SurfaceState surfaces_[kMaxAsyncSurfaces];
     ComPtr<ID2D1Factory1> d2d_factory_;
     ComPtr<ID2D1Device> d2d_device_;
     ComPtr<ID2D1DeviceContext> d2d_context_;
@@ -1067,6 +1094,7 @@ private:
     int content_width_ = 0;
     int content_height_ = 0;
     int surface_count_ = 0;
+    int async_surface_count_ = kMinAsyncSurfaces;
     int draw_index_ = 0;
     int pending_surface_index_ = -1;
     int target_bound_index_ = -1;
@@ -1089,7 +1117,7 @@ private:
     bool async_commit_ = false;
     bool commit_running_ = true;
     bool full_redraw_required_ = false;
-    bool surface_busy_[kAsyncSurfaceCount] = {};
+    bool surface_busy_[kMaxAsyncSurfaces] = {};
     int commit_in_flight_ = -1;
     std::deque<CommitJob> commit_queue_;
     std::thread commit_thread_;

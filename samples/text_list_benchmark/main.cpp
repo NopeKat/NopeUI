@@ -18,6 +18,8 @@ int main(int argc, char** argv) {
     std::size_t row_count = 100000;
     double scroll_step = 4.0;
     bool cache_layouts = false;
+    int width = 900;
+    int height = 600;
     for (int index = 1; index < argc; ++index) {
         if (std::strcmp(argv[index], "--rows") == 0 && index + 1 < argc) {
             row_count = static_cast<std::size_t>(std::strtoull(argv[++index], nullptr, 10));
@@ -25,10 +27,18 @@ int main(int argc, char** argv) {
             scroll_step = std::strtod(argv[++index], nullptr);
         } else if (std::strcmp(argv[index], "--cache") == 0) {
             cache_layouts = true;
+        } else if (std::strcmp(argv[index], "--width") == 0 && index + 1 < argc) {
+            width = std::atoi(argv[++index]);
+        } else if (std::strcmp(argv[index], "--height") == 0 && index + 1 < argc) {
+            height = std::atoi(argv[++index]);
         }
     }
     if (row_count == 0) {
         row_count = 1;
+    }
+    if (width <= 0 || height <= 0) {
+        width = 900;
+        height = 600;
     }
 
     std::vector<std::wstring> rows;
@@ -43,7 +53,7 @@ int main(int argc, char** argv) {
         rows.emplace_back(buffer);
     }
 
-    auto result = nopeui::Window::Create(900, 600, u"NopeUI Text List Benchmark");
+    auto result = nopeui::Window::Create(width, height, u"NopeUI Text List Benchmark");
     if (!result.ok()) {
         std::fprintf(stderr, "Window::Create failed: %s\n", result.error().message.c_str());
         return 1;
