@@ -195,7 +195,7 @@ public:
         }
         d2d_context_->BeginDraw();
         if (update_ptr == nullptr) {
-            d2d_context_->Clear(D2D1::ColorF(0xF3F3F3));
+            d2d_context_->FillRectangle(background_rect, background_brush_.Get());
         } else {
             d2d_context_->PushAxisAlignedClip(background_rect, D2D1_ANTIALIAS_MODE_ALIASED);
             d2d_context_->FillRectangle(background_rect, background_brush_.Get());
