@@ -14,6 +14,7 @@
 int main(int argc, char** argv) {
     bool paced = false;
     bool full_frame = false;
+    bool throttle_commits = true;
     for (int index = 1; index < argc; ++index) {
         if (std::strcmp(argv[index], "--paced") == 0) {
             paced = true;
@@ -21,6 +22,8 @@ int main(int argc, char** argv) {
             paced = false;
         } else if (std::strcmp(argv[index], "--full") == 0) {
             full_frame = true;
+        } else if (std::strcmp(argv[index], "--no-throttle") == 0) {
+            throttle_commits = false;
         }
     }
 
@@ -36,6 +39,7 @@ int main(int argc, char** argv) {
 
     auto window = std::move(result).value();
     window->Show();
+    window->SetCommitThrottle(throttle_commits);
 
     constexpr int warmup_frames = 30;
     constexpr int measured_frames = 300;
@@ -62,6 +66,9 @@ int main(int argc, char** argv) {
         frame_times.push_back(window->LastFrameMilliseconds());
     }
 
+    window->Present();
+    const auto commit_count = window->CommitCount();
+
     std::sort(frame_times.begin(), frame_times.end());
     double total = 0.0;
     for (const double frame_time : frame_times) {
@@ -74,10 +81,13 @@ int main(int argc, char** argv) {
     const double p99 = frame_times[p99_index];
 
     std::printf(
-        "content=%s pace=%s frames=%zu avg=%.3f ms p99=%.3f ms min=%.3f ms max=%.3f ms\n",
+        "content=%s pace=%s throttle=%s frames=%zu commits=%llu "
+        "avg=%.3f ms p99=%.3f ms min=%.3f ms max=%.3f ms\n",
         full_frame ? "full" : "dirty",
         paced ? "dwm-synced" : "unpaced",
+        throttle_commits ? "on" : "off",
         frame_times.size(),
+        static_cast<unsigned long long>(commit_count),
         average,
         p99,
         frame_times.front(),

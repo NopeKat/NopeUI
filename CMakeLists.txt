@@ -29,7 +29,7 @@ add_library(nopeui_platform STATIC
 
 target_link_libraries(nopeui_platform
     PUBLIC nopeui_base
-    PRIVATE user32 d3d11 dxgi d2d1 dcomp
+    PRIVATE user32 d3d11 dxgi d2d1 dcomp dwmapi
 )
 target_compile_features(nopeui_platform PUBLIC cxx_std_20)
 

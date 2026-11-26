@@ -3,11 +3,13 @@
 #include <d2d1_1.h>
 #include <dcomp.h>
 #include <d3d11.h>
+#include <dwmapi.h>
 #include <dxgi.h>
 #include <wrl/client.h>
 
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <cstdio>
 #include <mutex>
 #include <string>
@@ -16,6 +18,22 @@
 namespace {
 
 constexpr const wchar_t* kWindowClassName = L"NopeUI.Window";
+constexpr UINT_PTR kCommitTimerId = 1;
+
+double QueryRefreshIntervalMilliseconds(HWND hwnd) noexcept {
+    DWM_TIMING_INFO timing{};
+    timing.cbSize = sizeof(timing);
+    if (SUCCEEDED(DwmGetCompositionTimingInfo(hwnd, &timing)) && timing.qpcRefreshPeriod > 0) {
+        LARGE_INTEGER frequency{};
+        if (QueryPerformanceFrequency(&frequency) && frequency.QuadPart > 0) {
+            const double milliseconds =
+                static_cast<double>(timing.qpcRefreshPeriod) * 1000.0 /
+                static_cast<double>(frequency.QuadPart);
+            return std::clamp(milliseconds, 1.0, 1000.0);
+        }
+    }
+    return 1000.0 / 60.0;
+}
 
 void EnableDpiAwareness() noexcept {
     static std::once_flag once;
@@ -109,7 +127,7 @@ public:
         return Result<void>::Ok();
     }
 
-    void Render(const RECT* dirty_rect = nullptr) noexcept {
+    void Render(const RECT* dirty_rect = nullptr, bool force_commit = false) noexcept {
         if (virtual_surface_ == nullptr || d2d_context_ == nullptr) {
             return;
         }
@@ -185,15 +203,46 @@ public:
             return;
         }
 
-        result = dcomp_device_->Commit();
-        if (FAILED(result)) {
-            return;
+        commit_pending_ = true;
+        if (force_commit || !throttle_commits_ || CommitDue()) {
+            Present();
+        } else {
+            ScheduleCommit();
         }
 
         const auto elapsed = std::chrono::steady_clock::now() - start;
         last_frame_ms_ =
             std::chrono::duration<double, std::milli>(elapsed).count();
         ++frame_count_;
+    }
+
+    bool Present() noexcept {
+        if (!commit_pending_ || dcomp_device_ == nullptr) {
+            return false;
+        }
+
+        const HRESULT result = dcomp_device_->Commit();
+        if (FAILED(result)) {
+            ScheduleCommit();
+            return false;
+        }
+
+        commit_pending_ = false;
+        last_commit_time_ = std::chrono::steady_clock::now();
+        ++commit_count_;
+        CancelCommitTimer();
+        return true;
+    }
+
+    void SetCommitThrottle(bool enabled) noexcept {
+        throttle_commits_ = enabled;
+        if (!enabled) {
+            Present();
+        }
+    }
+
+    void UpdateCommitInterval() noexcept {
+        commit_interval_ms_ = QueryRefreshIntervalMilliseconds(hwnd_);
     }
 
     double LastFrameMilliseconds() const noexcept {
@@ -204,10 +253,44 @@ public:
         return frame_count_;
     }
 
+    std::uint64_t CommitCount() const noexcept {
+        return commit_count_;
+    }
+
 private:
     WindowGraphics() = default;
 
+    bool CommitDue() const noexcept {
+        if (!throttle_commits_) {
+            return true;
+        }
+        if (last_commit_time_ == std::chrono::steady_clock::time_point{}) {
+            return true;
+        }
+        const auto interval =
+            std::chrono::duration<double, std::milli>(commit_interval_ms_ * 0.95);
+        return std::chrono::steady_clock::now() - last_commit_time_ >= interval;
+    }
+
+    void ScheduleCommit() noexcept {
+        if (commit_timer_active_ || hwnd_ == nullptr) {
+            return;
+        }
+        const UINT interval = static_cast<UINT>(std::ceil(commit_interval_ms_));
+        commit_timer_active_ =
+            SetTimer(hwnd_, kCommitTimerId, interval, nullptr) != 0;
+    }
+
+    void CancelCommitTimer() noexcept {
+        if (commit_timer_active_ && hwnd_ != nullptr) {
+            KillTimer(hwnd_, kCommitTimerId);
+        }
+        commit_timer_active_ = false;
+    }
+
     Result<void> Initialize(HWND hwnd, int width, int height) {
+        hwnd_ = hwnd;
+        UpdateCommitInterval();
         D3D_FEATURE_LEVEL feature_levels[] = {
             D3D_FEATURE_LEVEL_11_0,
             D3D_FEATURE_LEVEL_10_1,
@@ -318,11 +401,12 @@ private:
             return surface_result;
         }
 
-        Render();
+        Render(nullptr, true);
         return Result<void>::Ok();
     }
 
     void ReleaseSurface() noexcept {
+        CancelCommitTimer();
         target_bitmap_.Reset();
         virtual_surface_.Reset();
         surface_width_ = 0;
@@ -341,10 +425,17 @@ private:
     ComPtr<ID2D1Bitmap1> target_bitmap_;
     ComPtr<ID2D1SolidColorBrush> background_brush_;
     ComPtr<ID2D1SolidColorBrush> accent_brush_;
+    HWND hwnd_ = nullptr;
     int surface_width_ = 0;
     int surface_height_ = 0;
+    double commit_interval_ms_ = 1000.0 / 60.0;
     double last_frame_ms_ = 0.0;
+    std::chrono::steady_clock::time_point last_commit_time_{};
     std::uint64_t frame_count_ = 0;
+    std::uint64_t commit_count_ = 0;
+    bool throttle_commits_ = true;
+    bool commit_pending_ = false;
+    bool commit_timer_active_ = false;
 };
 
 Window::Window() noexcept = default;
@@ -437,7 +528,8 @@ void Window::Show() noexcept {
         ShowWindow(hwnd_, SW_SHOWNORMAL);
         UpdateWindow(hwnd_);
         if (graphics_ != nullptr) {
-            graphics_->Render();
+            graphics_->UpdateCommitInterval();
+            graphics_->Render(nullptr, true);
         }
     }
 }
@@ -467,6 +559,10 @@ std::uint64_t Window::FrameCount() const noexcept {
     return graphics_ != nullptr ? graphics_->FrameCount() : 0;
 }
 
+std::uint64_t Window::CommitCount() const noexcept {
+    return graphics_ != nullptr ? graphics_->CommitCount() : 0;
+}
+
 void Window::RenderFrame() noexcept {
     if (graphics_ != nullptr) {
         graphics_->Render();
@@ -486,6 +582,18 @@ void Window::RenderFrame(const Rect& dirty_rect) noexcept {
     graphics_->Render(&native_rect);
 }
 
+void Window::Present() noexcept {
+    if (graphics_ != nullptr) {
+        graphics_->Present();
+    }
+}
+
+void Window::SetCommitThrottle(bool enabled) noexcept {
+    if (graphics_ != nullptr) {
+        graphics_->SetCommitThrottle(enabled);
+    }
+}
+
 HWND Window::Handle() const noexcept {
     return hwnd_;
 }
@@ -497,11 +605,14 @@ void Window::OnSize(int width, int height) noexcept {
 
     auto resized = graphics_->Resize(width, height);
     if (resized.ok()) {
-        graphics_->Render();
+        graphics_->Render(nullptr, true);
     }
 }
 
 void Window::ReleaseGraphics() noexcept {
+    if (hwnd_ != nullptr) {
+        KillTimer(hwnd_, kCommitTimerId);
+    }
     graphics_.reset();
 }
 
@@ -538,6 +649,13 @@ LRESULT CALLBACK Window::WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM 
 
         case WM_ERASEBKGND:
             return 1;
+
+        case WM_TIMER:
+            if (window != nullptr && wparam == kCommitTimerId) {
+                window->Present();
+                return 0;
+            }
+            break;
 
         case WM_PAINT: {
             PAINTSTRUCT paint{};

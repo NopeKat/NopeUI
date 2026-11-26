@@ -35,8 +35,15 @@ public:
 
     double LastFrameMilliseconds() const noexcept;
     std::uint64_t FrameCount() const noexcept;
+    std::uint64_t CommitCount() const noexcept;
     void RenderFrame() noexcept;
     void RenderFrame(const Rect& dirty_rect) noexcept;
+
+    // Presents the latest rendered surface immediately.
+    void Present() noexcept;
+
+    // Batches commits to at most one per display refresh. Enabled by default.
+    void SetCommitThrottle(bool enabled) noexcept;
 
     HWND Handle() const noexcept;
 

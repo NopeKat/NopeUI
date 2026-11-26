@@ -29,8 +29,15 @@ int main() {
             320,
             SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE) != FALSE);
     NOPEUI_CHECK(window->FrameCount() >= 2);
+    NOPEUI_CHECK(window->CommitCount() >= 2);
     window->RenderFrame(nopeui::Rect{0.0f, 0.0f, 200.0f, 4.0f});
     NOPEUI_CHECK(window->FrameCount() >= 3);
+
+    window->Present();
+    const auto commits_before = window->CommitCount();
+    window->SetCommitThrottle(false);
+    window->RenderFrame(nopeui::Rect{0.0f, 0.0f, 200.0f, 4.0f});
+    NOPEUI_CHECK(window->CommitCount() > commits_before);
 
     window->Close();
     NOPEUI_CHECK(window->Handle() == nullptr);
