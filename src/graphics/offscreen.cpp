@@ -130,6 +130,10 @@ ID2D1RenderTarget* OffscreenSurface::Target() const noexcept {
     return impl_->target.Get();
 }
 
+IWICBitmap* OffscreenSurface::WicBitmap() const noexcept {
+    return impl_->bitmap.Get();
+}
+
 int OffscreenSurface::Width() const noexcept {
     return impl_->width;
 }

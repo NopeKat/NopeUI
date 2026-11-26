@@ -57,6 +57,9 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR command_line_ptr, int) {
         window->SetAsyncCommit(false);
         window->RenderFrame();
     }
+    if (command_line.find(L"--software") != std::wstring_view::npos) {
+        window->SetSoftwareRender(true);
+    }
 
     const auto trace_path = FindTracePath(command_line);
     std::FILE* trace = nullptr;

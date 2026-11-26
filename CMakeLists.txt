@@ -29,11 +29,12 @@ add_library(nopeui_platform STATIC
 
 target_link_libraries(nopeui_platform
     PUBLIC nopeui_base
-    PRIVATE user32 d3d11 dxgi d2d1 dcomp dwrite dwmapi
+    PRIVATE user32 d3d11 dxgi d2d1 dcomp dwrite dwmapi nopeui_graphics
 )
 target_compile_features(nopeui_platform PUBLIC cxx_std_20)
 
 add_library(nopeui_graphics STATIC
+    src/graphics/hardware.cpp
     src/graphics/image.cpp
     src/graphics/offscreen.cpp
     src/graphics/scene.cpp
@@ -41,7 +42,7 @@ add_library(nopeui_graphics STATIC
 
 target_link_libraries(nopeui_graphics
     PUBLIC nopeui_base
-    PRIVATE d2d1 dwrite windowscodecs ole32
+    PRIVATE d2d1 d3d11 dwrite dxgi windowscodecs ole32
 )
 target_compile_features(nopeui_graphics PUBLIC cxx_std_20)
 

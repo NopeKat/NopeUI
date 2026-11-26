@@ -6,7 +6,7 @@ NopeUI 是一个仅面向 Windows 的开源 C++ 桌面 UI 框架。外观参考 
 
 ## 当前状态
 
-项目处于 P0 初期，`base` 最小内核与 `platform` 窗口层已建立：`Result` 与 `Error`、`Ref`、`Event` 与 `Subscription`、几何类型、UTF-8 与 UTF-16 转换，以及 Win32 窗口、消息循环、DirectComposition 虚拟表面、Direct2D 绘制与 DirectWrite 文字。窗口当前显示浅色背景、顶部强调条和一行示例文字，支持全帧与 dirty 矩形重绘；拖动边框缩放时按 `WM_SIZING` 的建议尺寸实时重绘。窗口默认启用按面积自适应的 2–3 块表面异步提交：客户区面积不超过 `2560×1600` 时用 3 块，更大的窗口用 2 块以控制显存。`SetAsyncCommit(false)` 可回退同步，`LastPresentedFrame()` 与 `AsyncCommitStats()` 可读取提交延迟、队列和丢帧。缩放时虚拟表面按小窗口约三分之一、较大窗口固定 256 像素的余量分配，停止缩放 300 ms 后回收到实际客户区尺寸，避免拖动过程中反复重建表面。帧提交默认按显示器刷新间隔节流，可用 `Window::Present()` 立即提交、`Window::SetCommitThrottle(false)` 关闭节流。`Window::LastFrameMilliseconds()`、`Window::FrameCount()`、`Window::CommitCount()` 与 `Window::RenderFrame()` 可读取和驱动帧，`nopeui_frame_benchmark` 提供 300 帧基准，`nopeui_resize_benchmark` 提供 resize 基准。软件回退尚未实现。黄金图已可用：`nopeui_golden` 离屏渲染浅色与深色占位场景并输出 PNG，`nopeui_image_diff` 做像素比对，`eng/golden.ps1` 管理基线。8 个测试在 `x64-debug` 与 `x64-release` 下全部通过。
+项目处于 P0 初期，`base` 最小内核与 `platform` 窗口层已建立：`Result` 与 `Error`、`Ref`、`Event` 与 `Subscription`、几何类型、UTF-8 与 UTF-16 转换，以及 Win32 窗口、消息循环、DirectComposition 虚拟表面、Direct2D 绘制与 DirectWrite 文字。窗口当前显示浅色背景、顶部强调条和一行示例文字，支持全帧与 dirty 矩形重绘；拖动边框缩放时按 `WM_SIZING` 的建议尺寸实时重绘。窗口默认启用按面积自适应的 2–3 块表面异步提交：客户区面积不超过 `2560×1600` 时用 3 块，更大的窗口用 2 块以控制显存。`SetAsyncCommit(false)` 可回退同步，`LastPresentedFrame()` 与 `AsyncCommitStats()` 可读取提交延迟、队列和丢帧。缩放时虚拟表面按小窗口约三分之一、较大窗口固定 256 像素的余量分配，停止缩放 300 ms 后回收到实际客户区尺寸，避免拖动过程中反复重建表面。帧提交默认按显示器刷新间隔节流，可用 `Window::Present()` 立即提交、`Window::SetCommitThrottle(false)` 关闭节流。`Window::LastFrameMilliseconds()`、`Window::FrameCount()`、`Window::CommitCount()` 与 `Window::RenderFrame()` 可读取和驱动帧，`nopeui_frame_benchmark` 提供 300 帧基准，`nopeui_resize_benchmark` 提供 resize 基准。软件回退已可用：远程会话自动切到 WIC 软件光栅，`Window::SetSoftwareRender(true)` 可手动切换，软件图与硬件图在黄金图里逐像素一致。黄金图基线与工具：`nopeui_golden` 出图、`nopeui_image_diff` 比对、`eng/golden.ps1` 管理。8 个测试在 `x64-debug` 与 `x64-release` 下全部通过。
 
 ## 构建
 
@@ -50,7 +50,7 @@ NopeUI 是一个仅面向 Windows 的开源 C++ 桌面 UI 框架。外观参考 
 
 ## 黄金图
 
-`nopeui_golden` 用 WIC 位图作为 Direct2D 目标离屏渲染占位场景，文字固定为灰度抗锯齿，输出不依赖显示器配置。`eng/golden.ps1` 负责构建、生成与比对：
+`nopeui_golden` 用 WIC 位图作为 Direct2D 目标离屏渲染占位场景，文字固定为灰度抗锯齿，输出不依赖显示器配置；`--renderer hardware` 走 D3D11 纹理加暂存纹理回读，用来对照两条路径。`eng/golden.ps1` 负责构建、生成与比对：
 
 ```powershell
 .\eng\golden.ps1                              # 构建并比对现有基线
@@ -58,14 +58,15 @@ NopeUI 是一个仅面向 Windows 的开源 C++ 桌面 UI 框架。外观参考 
 .\eng\golden.ps1 -Preset x64-debug -SkipBuild  # 只跑比对
 ```
 
-基线在 `tests/golden/baseline`，当前图与差异图在 `.build/golden`。`nopeui_image_diff` 按单像素 2 级色差、总体 0.5% 判定失败，有差异时写出的图把变化像素标红。两个工具也可单独调用：
+基线在 `tests/golden/baseline`，当前图与差异图在 `.build/golden`。软件与硬件各两张基线，脚本还会直接把浅色、深色的软件图与硬件图互相比对，任一超过容差即失败。`nopeui_image_diff` 按单像素 2 级色差、总体 0.5% 判定，有差异时写出的图把变化像素标红。两个工具也可单独调用：
 
 ```powershell
-.\.build\x64-release\tools\Release\nopeui_golden.exe --out .\.build\golden\basic.png --theme light
+.\.build\x64-release\tools\Release\nopeui_golden.exe --out .\.build\golden\basic.png --theme light --renderer software
+.\.build\x64-release\tools\Release\nopeui_golden.exe --out .\.build\golden\basic-hw.png --theme light --renderer hardware
 .\.build\x64-release\tools\Release\nopeui_image_diff.exe <baseline.png> <current.png> --diff <diff.png>
 ```
 
-窗口层当前仍单独绘制这套占位场景，与 `graphics/scene` 共用代码放到软件回退时一并做。
+窗口的软件路径已经使用 `graphics/scene`，硬件路径仍是内联绘制，两者合并放到后面做。
 
 ## 目录
 

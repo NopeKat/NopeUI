@@ -7,7 +7,11 @@
 #include <dwmapi.h>
 #include <dxgi.h>
 #include <dxgi1_2.h>
+#include <wincodec.h>
 #include <wrl/client.h>
+
+#include "nopeui/graphics/offscreen.h"
+#include "nopeui/graphics/scene.h"
 
 #include <algorithm>
 #include <atomic>
@@ -201,6 +205,84 @@ public:
         swap_state_.height = height;
         full_redraw_required_ = true;
         return Result<void>::Ok();
+    }
+
+    void SetSoftwareRender(bool enabled) noexcept {
+        if (software_render_ == enabled) {
+            return;
+        }
+        software_render_ = enabled;
+        software_bitmap_.Reset();
+        full_redraw_required_ = true;
+        Render(nullptr, true);
+    }
+
+    bool IsSoftwareRender() const noexcept {
+        return software_render_;
+    }
+
+    void DrawSoftwareScene(const RECT* update_ptr, const D2D1_RECT_F& background_rect) noexcept {
+        if (!EnsureSoftwareSurface(content_width_, content_height_)) {
+            return;
+        }
+        auto* surface = software_surface_.get();
+        if (!surface->BeginDraw().ok()) {
+            return;
+        }
+        const auto painted = graphics::PaintPlaceholderScene(
+            surface->Target(),
+            graphics::LightPalette(),
+            static_cast<float>(content_width_),
+            static_cast<float>(content_height_));
+        if (!surface->EndDraw().ok() || !painted.ok()) {
+            return;
+        }
+
+        if (software_bitmap_ == nullptr) {
+            const HRESULT result = d2d_context_->CreateBitmapFromWicBitmap(
+                surface->WicBitmap(),
+                nullptr,
+                software_bitmap_.GetAddressOf());
+            if (FAILED(result)) {
+                return;
+            }
+        }
+
+        if (update_ptr != nullptr) {
+            d2d_context_->PushAxisAlignedClip(background_rect, D2D1_ANTIALIAS_MODE_ALIASED);
+        }
+        d2d_context_->DrawBitmap(
+            software_bitmap_.Get(),
+            D2D1::RectF(
+                0.0f,
+                0.0f,
+                static_cast<float>(content_width_),
+                static_cast<float>(content_height_)),
+            1.0f,
+            D2D1_BITMAP_INTERPOLATION_MODE_NEAREST_NEIGHBOR);
+        if (update_ptr != nullptr) {
+            d2d_context_->PopAxisAlignedClip();
+        }
+    }
+
+    bool EnsureSoftwareSurface(int width, int height) noexcept {
+        if (width <= 0 || height <= 0) {
+            return false;
+        }
+        if (software_surface_ != nullptr &&
+            software_surface_->Width() == width &&
+            software_surface_->Height() == height) {
+            return true;
+        }
+        auto created = graphics::OffscreenSurface::Create(width, height, 96.0f);
+        if (!created.ok()) {
+            software_surface_.reset();
+            software_bitmap_.Reset();
+            return false;
+        }
+        software_surface_ = std::move(created.value());
+        software_bitmap_.Reset();
+        return true;
     }
 
     void SetFlipModel(bool enabled) noexcept {
@@ -436,6 +518,9 @@ public:
             static_cast<float>(offset.x),
             static_cast<float>(offset.y)));
         d2d_context_->BeginDraw();
+        if (software_render_) {
+            DrawSoftwareScene(update_ptr, background_rect);
+        } else {
         if (update_ptr == nullptr) {
             d2d_context_->FillRectangle(background_rect, background_brush_.Get());
         } else {
@@ -581,6 +666,7 @@ public:
                     draw_diagnostic_text(x, y);
                 }
             }
+        }
         }
         if (update_ptr != nullptr) {
             d2d_context_->PopAxisAlignedClip();
@@ -1241,6 +1327,8 @@ private:
                 Error{ErrorCode::PlatformFailure, PlatformError("CreateSolidColorBrush", result)});
         }
 
+        software_render_ = GetSystemMetrics(SM_REMOTESESSION) != 0;
+
         auto surface_result = Resize(width, height);
         if (!surface_result.ok()) {
             return surface_result;
@@ -1279,6 +1367,9 @@ private:
     ComPtr<ID2D1Factory1> d2d_factory_;
     ComPtr<ID2D1Device> d2d_device_;
     ComPtr<ID2D1DeviceContext> d2d_context_;
+    std::unique_ptr<graphics::OffscreenSurface> software_surface_;
+    ComPtr<ID2D1Bitmap1> software_bitmap_;
+    bool software_render_ = false;
     ComPtr<IDWriteFactory> dwrite_factory_;
     ComPtr<IDWriteTextFormat> text_format_;
     ComPtr<IDWriteTextLayout> text_layout_;
@@ -1574,6 +1665,16 @@ void Window::SetAsyncCommit(bool enabled) noexcept {
     if (graphics_ != nullptr) {
         graphics_->SetAsyncCommit(enabled);
     }
+}
+
+void Window::SetSoftwareRender(bool enabled) noexcept {
+    if (graphics_ != nullptr) {
+        graphics_->SetSoftwareRender(enabled);
+    }
+}
+
+bool Window::IsSoftwareRender() const noexcept {
+    return graphics_ != nullptr && graphics_->IsSoftwareRender();
 }
 
 HWND Window::Handle() const noexcept {

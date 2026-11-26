@@ -25,14 +25,17 @@ foreach ($path in @($currentDir, $diffDir, $baselineDir)) {
 }
 
 $cases = @(
-    @{ Name = "basic-light-1280x800"; Theme = "light"; Width = 1280; Height = 800 },
-    @{ Name = "basic-dark-1280x800"; Theme = "dark"; Width = 1280; Height = 800 }
+    @{ Name = "basic-light-1280x800"; Renderer = "software"; Theme = "light"; Width = 1280; Height = 800 },
+    @{ Name = "basic-dark-1280x800"; Renderer = "software"; Theme = "dark"; Width = 1280; Height = 800 },
+    @{ Name = "hardware-light-1280x800"; Renderer = "hardware"; Theme = "light"; Width = 1280; Height = 800 },
+    @{ Name = "hardware-dark-1280x800"; Renderer = "hardware"; Theme = "dark"; Width = 1280; Height = 800 }
 )
 
 $failed = $false
 foreach ($case in $cases) {
     $currentPath = Join-Path $currentDir "$($case.Name).png"
-    & $goldenExe --out $currentPath --theme $case.Theme --width $case.Width --height $case.Height
+    & $goldenExe --out $currentPath --renderer $case.Renderer --theme $case.Theme `
+        --width $case.Width --height $case.Height
     if ($LASTEXITCODE -ne 0) {
         throw "golden render failed: $($case.Name)"
     }
@@ -57,6 +60,26 @@ foreach ($case in $cases) {
         $failed = $true
     } else {
         Write-Output "PASS: $($case.Name)"
+    }
+}
+
+$pathPairs = @(
+    @{ Software = "basic-light-1280x800"; Hardware = "hardware-light-1280x800" },
+    @{ Software = "basic-dark-1280x800"; Hardware = "hardware-dark-1280x800" }
+)
+foreach ($pair in $pathPairs) {
+    $softwarePath = Join-Path $currentDir "$($pair.Software).png"
+    $hardwarePath = Join-Path $currentDir "$($pair.Hardware).png"
+    if (-not (Test-Path -LiteralPath $softwarePath) -or -not (Test-Path -LiteralPath $hardwarePath)) {
+        continue
+    }
+    $pathDiff = Join-Path $diffDir "path-$($pair.Software).png"
+    & $diffExe $softwarePath $hardwarePath --diff $pathDiff
+    if ($LASTEXITCODE -ne 0) {
+        Write-Output "FAILED: software and hardware paths differ ($($pair.Software))"
+        $failed = $true
+    } else {
+        Write-Output "PASS: software and hardware paths agree ($($pair.Software))"
     }
 }
 

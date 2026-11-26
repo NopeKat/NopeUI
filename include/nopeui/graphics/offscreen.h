@@ -8,6 +8,7 @@
 #include "nopeui/base/result.h"
 
 struct ID2D1RenderTarget;
+struct IWICBitmap;
 
 namespace nopeui::graphics {
 
@@ -27,6 +28,7 @@ public:
     OffscreenSurface& operator=(const OffscreenSurface&) = delete;
 
     ID2D1RenderTarget* Target() const noexcept;
+    IWICBitmap* WicBitmap() const noexcept;
     int Width() const noexcept;
     int Height() const noexcept;
 

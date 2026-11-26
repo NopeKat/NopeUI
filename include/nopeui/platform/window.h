@@ -104,6 +104,11 @@ public:
     // to synchronous.
     void SetAsyncCommit(bool enabled) noexcept;
 
+    // Rasterizes the scene into a WIC bitmap on the CPU and blits it into the
+    // composition surface. Enabled automatically in remote sessions.
+    void SetSoftwareRender(bool enabled) noexcept;
+    bool IsSoftwareRender() const noexcept;
+
     HWND Handle() const noexcept;
 
 private:

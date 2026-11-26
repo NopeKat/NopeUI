@@ -3,6 +3,7 @@
 #include <cstring>
 #include <string>
 
+#include "nopeui/graphics/hardware.h"
 #include "nopeui/graphics/offscreen.h"
 #include "nopeui/graphics/scene.h"
 
@@ -11,8 +12,8 @@ namespace {
 void PrintUsage() {
     std::fprintf(
         stderr,
-        "usage: nopeui_golden --out <path> [--theme light|dark] [--width 1280] "
-        "[--height 800] [--dpi 96]\n");
+        "usage: nopeui_golden --out <path> [--renderer software|hardware] "
+        "[--theme light|dark] [--width 1280] [--height 800] [--dpi 96]\n");
 }
 
 bool ParseInt(const char* text, int* value) {
@@ -35,11 +36,59 @@ bool ParseFloat(const char* text, float* value) {
     return true;
 }
 
+template <typename Surface>
+int RenderAndSave(
+    Surface& surface,
+    const nopeui::graphics::ScenePalette& palette,
+    const char* renderer_name,
+    const std::string& theme,
+    int width,
+    int height,
+    float dpi,
+    const std::string& out) {
+    auto begin_result = surface.BeginDraw();
+    if (!begin_result.ok()) {
+        std::fprintf(stderr, "%s\n", begin_result.error().message.c_str());
+        return 4;
+    }
+    auto painted = nopeui::graphics::PaintPlaceholderScene(
+        surface.Target(),
+        palette,
+        static_cast<float>(width),
+        static_cast<float>(height));
+    auto end_result = surface.EndDraw();
+    if (!painted.ok()) {
+        std::fprintf(stderr, "%s\n", painted.error().message.c_str());
+        return 4;
+    }
+    if (!end_result.ok()) {
+        std::fprintf(stderr, "%s\n", end_result.error().message.c_str());
+        return 4;
+    }
+
+    auto saved = surface.SavePng(out);
+    if (!saved.ok()) {
+        std::fprintf(stderr, "%s\n", saved.error().message.c_str());
+        return 5;
+    }
+
+    std::printf(
+        "golden: %dx%d theme=%s renderer=%s dpi=%.0f -> %s\n",
+        width,
+        height,
+        theme.c_str(),
+        renderer_name,
+        static_cast<double>(dpi),
+        out.c_str());
+    return 0;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
     std::string out;
     std::string theme = "light";
+    std::string renderer = "software";
     int width = 1280;
     int height = 800;
     float dpi = 96.0f;
@@ -50,6 +99,8 @@ int main(int argc, char** argv) {
             out = argv[++index];
         } else if (argument == "--theme" && index + 1 < argc) {
             theme = argv[++index];
+        } else if (argument == "--renderer" && index + 1 < argc) {
+            renderer = argv[++index];
         } else if (argument == "--width" && index + 1 < argc) {
             if (!ParseInt(argv[++index], &width)) {
                 PrintUsage();
@@ -79,50 +130,30 @@ int main(int argc, char** argv) {
         std::fprintf(stderr, "unknown theme '%s'\n", theme.c_str());
         return 2;
     }
+    if (renderer != "software" && renderer != "hardware") {
+        std::fprintf(stderr, "unknown renderer '%s'\n", renderer.c_str());
+        return 2;
+    }
 
-    auto surface_result = nopeui::graphics::OffscreenSurface::Create(width, height, dpi);
+    const nopeui::graphics::ScenePalette palette = theme == "dark"
+        ? nopeui::graphics::DarkPalette()
+        : nopeui::graphics::LightPalette();
+
+    if (renderer == "software") {
+        auto surface_result = nopeui::graphics::OffscreenSurface::Create(width, height, dpi);
+        if (!surface_result.ok()) {
+            std::fprintf(stderr, "%s\n", surface_result.error().message.c_str());
+            return 3;
+        }
+        auto& surface = surface_result.value();
+        return RenderAndSave(*surface, palette, "software", theme, width, height, dpi, out);
+    }
+
+    auto surface_result = nopeui::graphics::HardwareSurface::Create(width, height, dpi, true);
     if (!surface_result.ok()) {
         std::fprintf(stderr, "%s\n", surface_result.error().message.c_str());
         return 3;
     }
     auto& surface = surface_result.value();
-
-    nopeui::graphics::ScenePalette palette = theme == "dark"
-        ? nopeui::graphics::DarkPalette()
-        : nopeui::graphics::LightPalette();
-
-    auto begin_result = surface->BeginDraw();
-    if (!begin_result.ok()) {
-        std::fprintf(stderr, "%s\n", begin_result.error().message.c_str());
-        return 4;
-    }
-    auto paint_result = nopeui::graphics::PaintPlaceholderScene(
-        surface->Target(),
-        palette,
-        static_cast<float>(width),
-        static_cast<float>(height));
-    auto end_result = surface->EndDraw();
-    if (!paint_result.ok()) {
-        std::fprintf(stderr, "%s\n", paint_result.error().message.c_str());
-        return 4;
-    }
-    if (!end_result.ok()) {
-        std::fprintf(stderr, "%s\n", end_result.error().message.c_str());
-        return 4;
-    }
-
-    auto save_result = surface->SavePng(out);
-    if (!save_result.ok()) {
-        std::fprintf(stderr, "%s\n", save_result.error().message.c_str());
-        return 5;
-    }
-
-    std::printf(
-        "golden: %dx%d theme=%s dpi=%.0f -> %s\n",
-        width,
-        height,
-        theme.c_str(),
-        static_cast<double>(dpi),
-        out.c_str());
-    return 0;
+    return RenderAndSave(*surface, palette, "hardware", theme, width, height, dpi, out);
 }
