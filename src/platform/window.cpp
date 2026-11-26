@@ -309,18 +309,44 @@ public:
             D2D1::RectF(0.0f, 0.0f, static_cast<float>(content_width_), 4.0f),
             accent_brush_.Get());
         if (diagnostic_rectangles_ > 0) {
-            for (std::uint32_t index = 0; index < diagnostic_rectangles_; ++index) {
-                const float x = 4.0f + static_cast<float>(index % 64) * 10.0f;
-                const float y = 100.0f + static_cast<float>((index / 64) % 64) * 10.0f;
-                d2d_context_->FillRectangle(
-                    D2D1::RectF(x, y, x + 6.0f, y + 6.0f),
-                    (index & 1U) != 0 ? accent_brush_.Get() : text_brush_.Get());
+            if (diagnostic_virtual_list_) {
+                constexpr std::uint32_t columns = 64;
+                constexpr float row_step = 10.0f;
+                constexpr float first_y = 100.0f;
+                const std::uint32_t total_rows =
+                    (diagnostic_rectangles_ + columns - 1) / columns;
+                const int first_row = std::max(
+                    0,
+                    static_cast<int>(std::floor((background_rect.top - first_y) / row_step)));
+                const int last_row = std::min(
+                    static_cast<int>(total_rows) - 1,
+                    static_cast<int>(std::floor((background_rect.bottom - first_y) / row_step)));
+                for (int row = first_row; row <= last_row; ++row) {
+                    for (std::uint32_t column = 0; column < columns; ++column) {
+                        const std::uint32_t index =
+                            static_cast<std::uint32_t>(row) * columns + column;
+                        if (index >= diagnostic_rectangles_) {
+                            break;
+                        }
+                        const float x = 4.0f + static_cast<float>(column) * 10.0f;
+                        const float y = first_y + static_cast<float>(row) * row_step;
+                        d2d_context_->FillRectangle(
+                            D2D1::RectF(x, y, x + 6.0f, y + 6.0f),
+                            (index & 1U) != 0 ? accent_brush_.Get() : text_brush_.Get());
+                    }
+                }
+            } else {
+                for (std::uint32_t index = 0; index < diagnostic_rectangles_; ++index) {
+                    const float x = 4.0f + static_cast<float>(index % 64) * 10.0f;
+                    const float y = 100.0f + static_cast<float>((index / 64) % 64) * 10.0f;
+                    d2d_context_->FillRectangle(
+                        D2D1::RectF(x, y, x + 6.0f, y + 6.0f),
+                        (index & 1U) != 0 ? accent_brush_.Get() : text_brush_.Get());
+                }
             }
         }
         if (diagnostic_text_runs_ > 0) {
-            for (std::uint32_t index = 0; index < diagnostic_text_runs_; ++index) {
-                const float x = 24.0f + static_cast<float>(index % 8) * 12.0f;
-                const float y = 28.0f + static_cast<float>((index / 8) % 32) * 8.0f;
+            const auto draw_diagnostic_text = [&](float x, float y) {
                 if (text_bitmap_ != nullptr) {
                     d2d_context_->DrawBitmap(
                         text_bitmap_.Get(),
@@ -332,6 +358,37 @@ public:
                         D2D1::Point2F(x, y),
                         text_layout_.Get(),
                         text_brush_.Get());
+                }
+            };
+            if (diagnostic_virtual_list_) {
+                constexpr std::uint32_t columns = 8;
+                constexpr float row_step = 20.0f;
+                constexpr float first_y = 28.0f;
+                const std::uint32_t total_rows =
+                    (diagnostic_text_runs_ + columns - 1) / columns;
+                const int first_row = std::max(
+                    0,
+                    static_cast<int>(std::floor((background_rect.top - first_y) / row_step)));
+                const int last_row = std::min(
+                    static_cast<int>(total_rows) - 1,
+                    static_cast<int>(std::floor((background_rect.bottom - first_y) / row_step)));
+                for (int row = first_row; row <= last_row; ++row) {
+                    for (std::uint32_t column = 0; column < columns; ++column) {
+                        const std::uint32_t index =
+                            static_cast<std::uint32_t>(row) * columns + column;
+                        if (index >= diagnostic_text_runs_) {
+                            break;
+                        }
+                        draw_diagnostic_text(
+                            24.0f + static_cast<float>(column) * 120.0f,
+                            first_y + static_cast<float>(row) * row_step);
+                    }
+                }
+            } else {
+                for (std::uint32_t index = 0; index < diagnostic_text_runs_; ++index) {
+                    const float x = 24.0f + static_cast<float>(index % 8) * 12.0f;
+                    const float y = 28.0f + static_cast<float>((index / 8) % 32) * 8.0f;
+                    draw_diagnostic_text(x, y);
                 }
             }
         }
@@ -428,9 +485,13 @@ public:
         return true;
     }
 
-    void SetDiagnosticLoad(std::uint32_t rectangles, std::uint32_t text_runs) noexcept {
+    void SetDiagnosticLoad(
+        std::uint32_t rectangles,
+        std::uint32_t text_runs,
+        bool virtual_list) noexcept {
         diagnostic_rectangles_ = rectangles;
         diagnostic_text_runs_ = text_runs;
+        diagnostic_virtual_list_ = virtual_list;
         full_redraw_required_ = true;
     }
 
@@ -907,6 +968,7 @@ private:
     ComPtr<ID2D1SolidColorBrush> accent_brush_;
     std::uint32_t diagnostic_rectangles_ = 0;
     std::uint32_t diagnostic_text_runs_ = 0;
+    bool diagnostic_virtual_list_ = false;
     HWND hwnd_ = nullptr;
     int surface_width_ = 0;
     int surface_height_ = 0;
@@ -1107,9 +1169,12 @@ void Window::RenderFrame() noexcept {
     graphics_->Render();
 }
 
-void Window::SetDiagnosticLoad(std::uint32_t rectangles, std::uint32_t text_runs) noexcept {
+void Window::SetDiagnosticLoad(
+    std::uint32_t rectangles,
+    std::uint32_t text_runs,
+    bool virtual_list) noexcept {
     if (graphics_ != nullptr) {
-        graphics_->SetDiagnosticLoad(rectangles, text_runs);
+        graphics_->SetDiagnosticLoad(rectangles, text_runs, virtual_list);
     }
 }
 

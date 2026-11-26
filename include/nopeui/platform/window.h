@@ -71,7 +71,10 @@ public:
     void RenderFrame(const Rect& dirty_rect) noexcept;
 
     // Benchmark-only synthetic load; not part of the stable API.
-    void SetDiagnosticLoad(std::uint32_t rectangles, std::uint32_t text_runs) noexcept;
+    void SetDiagnosticLoad(
+        std::uint32_t rectangles,
+        std::uint32_t text_runs,
+        bool virtual_list = false) noexcept;
 
     // Presents the latest rendered surface immediately.
     void Present() noexcept;

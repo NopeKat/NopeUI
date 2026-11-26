@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <numeric>
 #include <tuple>
@@ -17,9 +18,15 @@
 
 int main(int argc, char** argv) {
     bool async = true;
+    int interval_ms = 0;
     for (int index = 1; index < argc; ++index) {
         if (std::strcmp(argv[index], "--sync") == 0) {
             async = false;
+        } else if (std::strcmp(argv[index], "--interval") == 0 && index + 1 < argc) {
+            interval_ms = std::atoi(argv[++index]);
+            if (interval_ms < 0) {
+                interval_ms = 0;
+            }
         }
     }
 
@@ -83,6 +90,9 @@ int main(int argc, char** argv) {
             nullptr,
             nullptr,
             nullptr);
+        if (interval_ms > 0) {
+            Sleep(static_cast<DWORD>(interval_ms));
+        }
     }
 
     constexpr int measured = 100;
@@ -116,6 +126,9 @@ int main(int argc, char** argv) {
             &frame_phase_times,
             &begin_phase_times,
             &end_phase_times);
+        if (interval_ms > 0) {
+            Sleep(static_cast<DWORD>(interval_ms));
+        }
     }
 
     const auto summarize = [](std::vector<double> values) {
@@ -138,13 +151,14 @@ int main(int argc, char** argv) {
     window->SetAsyncCommit(false);
     const auto stats = window->AsyncCommitStats();
     std::printf(
-        "resize async=%s samples=%d "
+        "resize async=%s interval=%d samples=%d "
         "set=%.3f/%.3f/%.3f render=%.3f/%.3f/%.3f "
         "phase_resize=%.3f/%.3f/%.3f draw=%.3f/%.3f/%.3f "
         "frame=%.3f/%.3f/%.3f begin=%.3f/%.3f/%.3f end=%.3f/%.3f/%.3f "
         "total=%.3f/%.3f/%.3f "
         "submitted=%llu completed=%llu dropped=%llu waits=%llu wait_avg=%.3f maxq=%u\n",
         async ? "on" : "off",
+        interval_ms,
         measured,
         set_average,
         set_p99,

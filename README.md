@@ -19,15 +19,18 @@ NopeUI 是一个仅面向 Windows 的开源 C++ 桌面 UI 框架。外观参考 
 
 `-Preset` 可选 `x64-debug` 或 `x64-release`。脚本优先使用 PATH 中的 CMake；找不到时会自动定位 winget 安装的 CMake 4.4.4。也可以用 `NOPEUI_CMAKE` 指向指定的 `cmake.exe`。
 
-帧基准默认按 120Hz 固定节拍运行，只统计真正 `Commit` 的帧；`--unpaced` 关闭节拍，`--full` 改跑全帧，`--no-throttle` 关闭提交节流，`--async-commit` 打开异步提交。基准默认关闭异步提交以便与同步路径对比；窗口运行时默认是异步提交。输出新增 `queue`、`present` 与 `submitted/completed/dropped/waits` 统计，其中 `present` 是按 DWM vblank 估算的提交到上屏延迟：
+帧基准默认按 120Hz 固定节拍运行，只统计真正 `Commit` 的帧；`--unpaced` 关闭节拍，`--full` 改跑全帧，`--no-throttle` 关闭提交节流，`--async-commit` 打开异步提交。`--rects N` 与 `--text N` 生成合成重内容；默认是同一小区域反复绘制，`--virtual` 改成按行展开的虚拟长列表，只绘制当前内容区域内的行，用来验证裁剪和十万行路径。基准默认关闭异步提交以便与同步路径对比；窗口运行时默认是异步提交。输出新增 `queue`、`present` 与 `submitted/completed/dropped/waits` 统计，其中 `present` 是按 DWM vblank 估算的提交到上屏延迟：
 
 ```powershell
 .\.build\x64-release\samples\Release\nopeui_frame_benchmark.exe
 .\.build\x64-release\samples\Release\nopeui_frame_benchmark.exe --full
-.\.build\x64-release\samples\Release\nopeui_frame_benchmark.exe --full --async-commit
+.\.build\x64-release\samples\Release\nopeui_frame_benchmark.exe --full --async-commit --text 100000 --virtual
 .\.build\x64-release\samples\Release\nopeui_resize_benchmark.exe
 .\.build\x64-release\samples\Release\nopeui_resize_benchmark.exe --sync
+.\.build\x64-release\samples\Release\nopeui_resize_benchmark.exe --interval 16
 ```
+
+`nopeui_resize_benchmark.exe --interval <ms>` 在每步 resize 后等待指定毫秒数，用来模拟真实拖动的节奏；`--interval 0` 是连续无间隔的压力测试。
 
 `nopeui_window_smoke.exe --trace <csv>` 会在交互期间输出帧、提交和延迟统计，用于观察拖动与缩放；`--sync` 可切到同步提交做对比。
 

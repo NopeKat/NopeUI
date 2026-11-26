@@ -26,6 +26,7 @@ int main(int argc, char** argv) {
     bool full_frame = false;
     bool throttle_commits = true;
     bool async_commit = false;
+    bool diagnostic_virtual = false;
     double target_hz = 120.0;
     std::uint32_t diagnostic_rectangles = 0;
     std::uint32_t diagnostic_text_runs = 0;
@@ -40,6 +41,8 @@ int main(int argc, char** argv) {
             throttle_commits = false;
         } else if (std::strcmp(argv[index], "--async-commit") == 0) {
             async_commit = true;
+        } else if (std::strcmp(argv[index], "--virtual") == 0) {
+            diagnostic_virtual = true;
         } else if (std::strcmp(argv[index], "--rects") == 0 && index + 1 < argc) {
             diagnostic_rectangles = static_cast<std::uint32_t>(std::strtoul(argv[++index], nullptr, 10));
         } else if (std::strcmp(argv[index], "--text") == 0 && index + 1 < argc) {
@@ -66,7 +69,7 @@ int main(int argc, char** argv) {
     window->Show();
     window->SetCommitThrottle(throttle_commits);
     window->SetAsyncCommit(async_commit);
-    window->SetDiagnosticLoad(diagnostic_rectangles, diagnostic_text_runs);
+    window->SetDiagnosticLoad(diagnostic_rectangles, diagnostic_text_runs, diagnostic_virtual);
 
     DWM_TIMING_INFO composition_timing{};
     composition_timing.cbSize = sizeof(composition_timing);
@@ -238,7 +241,7 @@ int main(int argc, char** argv) {
 
     std::printf(
         "content=%s pace=%s throttle=%s async=%s target_hz=%.0f dwm_refresh=%.1f "
-        "load_rects=%u load_text=%u "
+        "load_rects=%u load_text=%u virtual=%d "
         "frames=%zu attempts=%d "
         "commits=%llu avg=%.3f ms p99=%.3f ms min=%.3f ms max=%.3f ms "
         "drain=%.1f ms begin=%.3f/%.3f draw=%.3f/%.3f end=%.3f/%.3f commit=%.3f/%.3f "
@@ -252,6 +255,7 @@ int main(int argc, char** argv) {
         dwm_refresh_hz,
         diagnostic_rectangles,
         diagnostic_text_runs,
+        diagnostic_virtual ? 1 : 0,
         frame_times.size(),
         attempts,
         static_cast<unsigned long long>(commit_count),
