@@ -23,10 +23,27 @@ namespace nopeui {
 class WindowGraphics;
 
 struct FrameTimings {
+    std::uint64_t sequence = 0;
     double begin_draw_ms = 0.0;
     double draw_ms = 0.0;
     double end_draw_ms = 0.0;
     double commit_ms = 0.0;
+};
+
+struct FrameLatency {
+    std::uint64_t sequence = 0;
+    double queue_ms = 0.0;
+    double commit_ms = 0.0;
+    double present_ms = 0.0;
+};
+
+struct CommitQueueStats {
+    std::uint64_t submitted = 0;
+    std::uint64_t completed = 0;
+    std::uint64_t dropped = 0;
+    std::uint64_t waits = 0;
+    double total_wait_ms = 0.0;
+    std::uint32_t max_depth = 0;
 };
 
 class Window : public RefCounted {
@@ -42,6 +59,11 @@ public:
 
     double LastFrameMilliseconds() const noexcept;
     FrameTimings LastFrameTimings() const noexcept;
+
+    // Estimated queue, commit and next-vblank latency of the last submitted frame.
+    FrameLatency LastPresentedFrame() const noexcept;
+    CommitQueueStats AsyncCommitStats() const noexcept;
+    bool IsAsyncCommitEnabled() const noexcept;
     std::uint64_t FrameCount() const noexcept;
     std::uint64_t CommitCount() const noexcept;
     void RenderFrame() noexcept;
@@ -53,7 +75,8 @@ public:
     // Batches commits to at most one per display refresh. Enabled by default.
     void SetCommitThrottle(bool enabled) noexcept;
 
-    // Experimental: alternates two surfaces and commits them off the UI thread.
+    // Alternates two surfaces and commits them off the UI thread. Enabled by
+    // default; disabling waits for pending commits and falls back to synchronous.
     void SetAsyncCommit(bool enabled) noexcept;
 
     HWND Handle() const noexcept;

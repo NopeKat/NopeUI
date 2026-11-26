@@ -24,6 +24,33 @@ namespace {
 
 constexpr const wchar_t* kWindowClassName = L"NopeUI.Window";
 constexpr UINT_PTR kCommitTimerId = 1;
+constexpr std::size_t kMaxQueuedCommits = 1;
+
+double MillisecondsToNextVblank(LONGLONG submit_qpc) noexcept {
+    DWM_TIMING_INFO timing{};
+    timing.cbSize = sizeof(timing);
+    if (FAILED(DwmGetCompositionTimingInfo(nullptr, &timing)) ||
+        timing.qpcRefreshPeriod <= 0 ||
+        timing.qpcVBlank <= 0) {
+        return 0.0;
+    }
+
+    LARGE_INTEGER frequency{};
+    LARGE_INTEGER now{};
+    if (!QueryPerformanceFrequency(&frequency) || frequency.QuadPart <= 0 ||
+        !QueryPerformanceCounter(&now)) {
+        return 0.0;
+    }
+
+    LONGLONG next_vblank = timing.qpcVBlank;
+    while (next_vblank <= now.QuadPart) {
+        next_vblank += timing.qpcRefreshPeriod;
+    }
+    const double milliseconds =
+        static_cast<double>(next_vblank - submit_qpc) * 1000.0 /
+        static_cast<double>(frequency.QuadPart);
+    return std::max(0.0, milliseconds);
+}
 
 double QueryRefreshIntervalMilliseconds(HWND hwnd) noexcept {
     DWM_TIMING_INFO timing{};
@@ -97,7 +124,7 @@ public:
             return Result<void>::Ok();
         }
         if (async_commit_) {
-            WaitForAllCommits();
+            PrepareForResize();
         }
         if (surface_count_ >= (async_commit_ ? 2 : 1) &&
             width == surface_width_ && height == surface_height_) {
@@ -147,6 +174,7 @@ public:
 
     void Render(const RECT* dirty_rect = nullptr, bool force_commit = false) noexcept {
         const auto start = std::chrono::steady_clock::now();
+        const auto sequence = ++frame_sequence_;
         if (async_commit_) {
             WaitForSurface(draw_index_);
         }
@@ -263,6 +291,11 @@ public:
 
         commit_pending_ = true;
         pending_surface_index_ = draw_index_;
+        pending_sequence_ = sequence;
+        pending_submit_time_ = std::chrono::steady_clock::now();
+        LARGE_INTEGER submit_qpc{};
+        QueryPerformanceCounter(&submit_qpc);
+        pending_submit_qpc_ = submit_qpc.QuadPart;
         bool committed = false;
         if (force_commit || !throttle_commits_ || CommitDue()) {
             committed = Present();
@@ -272,6 +305,7 @@ public:
         const auto frame_end = std::chrono::steady_clock::now();
 
         FrameTimings timings;
+        timings.sequence = sequence;
         timings.begin_draw_ms = std::chrono::duration<double, std::milli>(
             begin_end - begin_start).count();
         timings.draw_ms =
@@ -294,7 +328,11 @@ public:
 
         if (async_commit_) {
             const int surface_index = pending_surface_index_;
-            QueueCommit(surface_index);
+            QueueCommit(
+                surface_index,
+                pending_sequence_,
+                pending_submit_time_,
+                pending_submit_qpc_);
             pending_surface_index_ = -1;
             commit_pending_ = false;
             last_commit_time_ = std::chrono::steady_clock::now();
@@ -317,6 +355,15 @@ public:
         last_commit_time_ = commit_end;
         ++commit_count_;
         CancelCommitTimer();
+
+        FrameLatency latency;
+        latency.sequence = pending_sequence_;
+        latency.commit_ms = last_commit_ms_;
+        latency.present_ms = MillisecondsToNextVblank(pending_submit_qpc_);
+        {
+            std::lock_guard<std::mutex> lock(commit_mutex_);
+            last_latency_ = latency;
+        }
         return true;
     }
 
@@ -366,6 +413,20 @@ public:
         return last_timings_;
     }
 
+    FrameLatency LastPresentedFrame() const noexcept {
+        std::lock_guard<std::mutex> lock(commit_mutex_);
+        return last_latency_;
+    }
+
+    CommitQueueStats AsyncCommitStats() const noexcept {
+        std::lock_guard<std::mutex> lock(commit_mutex_);
+        return queue_stats_;
+    }
+
+    bool IsAsyncCommitEnabled() const noexcept {
+        return async_commit_;
+    }
+
     std::uint64_t FrameCount() const noexcept {
         return frame_count_;
     }
@@ -382,29 +443,78 @@ private:
         ComPtr<ID2D1Bitmap1> target_bitmap;
     };
 
+    struct CommitJob {
+        int surface_index = 0;
+        std::uint64_t sequence = 0;
+        std::chrono::steady_clock::time_point submit_time{};
+        LONGLONG submit_qpc = 0;
+    };
+
     void WaitForSurface(int index) noexcept {
         std::unique_lock<std::mutex> lock(commit_mutex_);
+        if (!surface_busy_[index]) {
+            return;
+        }
+
+        const auto wait_start = std::chrono::steady_clock::now();
         commit_cv_.wait(lock, [this, index] {
             return !surface_busy_[index];
         });
+        ++queue_stats_.waits;
+        queue_stats_.total_wait_ms += std::chrono::duration<double, std::milli>(
+            std::chrono::steady_clock::now() - wait_start).count();
     }
 
     void WaitForAllCommits() noexcept {
         std::unique_lock<std::mutex> lock(commit_mutex_);
         commit_cv_.wait(lock, [this] {
-            return !surface_busy_[0] && !surface_busy_[1];
+            return !surface_busy_[0] && !surface_busy_[1] && commit_in_flight_ < 0;
         });
     }
 
-    void QueueCommit(int index) noexcept {
+    void DropQueuedCommits() noexcept {
+        std::unique_lock<std::mutex> lock(commit_mutex_);
+        while (!commit_queue_.empty()) {
+            const auto job = commit_queue_.front();
+            commit_queue_.pop_front();
+            surface_busy_[job.surface_index] = false;
+            ++queue_stats_.dropped;
+        }
+        commit_cv_.notify_all();
+    }
+
+    void PrepareForResize() noexcept {
+        DropQueuedCommits();
+        std::unique_lock<std::mutex> lock(commit_mutex_);
+        commit_cv_.wait(lock, [this] {
+            return commit_in_flight_ < 0;
+        });
+    }
+
+    void QueueCommit(
+        int index,
+        std::uint64_t sequence,
+        std::chrono::steady_clock::time_point submit_time,
+        LONGLONG submit_qpc) noexcept {
         std::lock_guard<std::mutex> lock(commit_mutex_);
+        if (commit_queue_.size() >= kMaxQueuedCommits) {
+            const auto dropped = commit_queue_.front();
+            commit_queue_.pop_front();
+            surface_busy_[dropped.surface_index] = false;
+            ++queue_stats_.dropped;
+        }
         surface_busy_[index] = true;
-        commit_queue_.push_back(index);
+        commit_queue_.push_back(CommitJob{index, sequence, submit_time, submit_qpc});
+        queue_stats_.submitted++;
+        queue_stats_.max_depth = std::max(
+            queue_stats_.max_depth,
+            static_cast<std::uint32_t>(commit_queue_.size()));
         commit_cv_.notify_one();
     }
 
     void CommitThreadMain() noexcept {
         const HRESULT com_result = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+        SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_ABOVE_NORMAL);
         for (;;) {
             std::unique_lock<std::mutex> lock(commit_mutex_);
             commit_cv_.wait(lock, [this] {
@@ -414,26 +524,37 @@ private:
                 break;
             }
 
-            const int index = commit_queue_.front();
+            const auto job = commit_queue_.front();
             commit_queue_.pop_front();
+            commit_in_flight_ = job.surface_index;
             lock.unlock();
 
             const auto commit_start = std::chrono::steady_clock::now();
             HRESULT result = E_FAIL;
-            if (visual_ != nullptr && surfaces_[index].surface != nullptr) {
-                result = visual_->SetContent(surfaces_[index].surface.Get());
+            if (visual_ != nullptr && surfaces_[job.surface_index].surface != nullptr) {
+                result = visual_->SetContent(surfaces_[job.surface_index].surface.Get());
                 if (SUCCEEDED(result)) {
                     result = dcomp_device_->Commit();
                 }
             }
             const auto commit_end = std::chrono::steady_clock::now();
 
-            lock.lock();
-            last_commit_ms_ = std::chrono::duration<double, std::milli>(
+            FrameLatency latency;
+            latency.sequence = job.sequence;
+            latency.queue_ms = std::chrono::duration<double, std::milli>(
+                commit_start - job.submit_time).count();
+            latency.commit_ms = std::chrono::duration<double, std::milli>(
                 commit_end - commit_start).count();
-            surface_busy_[index] = false;
+            latency.present_ms = MillisecondsToNextVblank(job.submit_qpc);
+
+            lock.lock();
+            last_latency_ = latency;
+            last_commit_ms_ = latency.commit_ms;
+            surface_busy_[job.surface_index] = false;
+            commit_in_flight_ = -1;
             if (SUCCEEDED(result)) {
                 commit_count_.fetch_add(1, std::memory_order_relaxed);
+                ++queue_stats_.completed;
             }
             commit_cv_.notify_all();
         }
@@ -657,6 +778,7 @@ private:
         }
 
         Render(nullptr, true);
+        SetAsyncCommit(true);
         return Result<void>::Ok();
     }
 
@@ -695,10 +817,16 @@ private:
     int draw_index_ = 0;
     int pending_surface_index_ = -1;
     int target_bound_index_ = -1;
+    std::uint64_t frame_sequence_ = 0;
+    std::uint64_t pending_sequence_ = 0;
+    std::chrono::steady_clock::time_point pending_submit_time_{};
+    LONGLONG pending_submit_qpc_ = 0;
     double commit_interval_ms_ = 1000.0 / 120.0;
     double last_frame_ms_ = 0.0;
     double last_commit_ms_ = 0.0;
     FrameTimings last_timings_{};
+    FrameLatency last_latency_{};
+    CommitQueueStats queue_stats_{};
     std::chrono::steady_clock::time_point last_commit_time_{};
     std::uint64_t frame_count_ = 0;
     std::atomic<std::uint64_t> commit_count_{0};
@@ -709,9 +837,10 @@ private:
     bool commit_running_ = true;
     bool full_redraw_required_ = false;
     bool surface_busy_[2] = {false, false};
-    std::deque<int> commit_queue_;
+    int commit_in_flight_ = -1;
+    std::deque<CommitJob> commit_queue_;
     std::thread commit_thread_;
-    std::mutex commit_mutex_;
+    mutable std::mutex commit_mutex_;
     std::condition_variable commit_cv_;
 };
 
@@ -840,6 +969,18 @@ double Window::LastFrameMilliseconds() const noexcept {
 
 FrameTimings Window::LastFrameTimings() const noexcept {
     return graphics_ != nullptr ? graphics_->LastFrameTimings() : FrameTimings{};
+}
+
+FrameLatency Window::LastPresentedFrame() const noexcept {
+    return graphics_ != nullptr ? graphics_->LastPresentedFrame() : FrameLatency{};
+}
+
+CommitQueueStats Window::AsyncCommitStats() const noexcept {
+    return graphics_ != nullptr ? graphics_->AsyncCommitStats() : CommitQueueStats{};
+}
+
+bool Window::IsAsyncCommitEnabled() const noexcept {
+    return graphics_ != nullptr && graphics_->IsAsyncCommitEnabled();
 }
 
 std::uint64_t Window::FrameCount() const noexcept {

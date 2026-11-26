@@ -15,3 +15,9 @@ add_executable(nopeui_resize_probe
 )
 
 target_link_libraries(nopeui_resize_probe PRIVATE user32)
+
+add_executable(nopeui_resize_benchmark
+    resize_benchmark/main.cpp
+)
+
+target_link_libraries(nopeui_resize_benchmark PRIVATE nopeui_platform)

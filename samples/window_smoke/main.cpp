@@ -14,8 +14,8 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR command_line, int) {
 
     auto window = std::move(result).value();
     window->Show();
-    if (command_line != nullptr && std::wcsstr(command_line, L"--async") != nullptr) {
-        window->SetAsyncCommit(true);
+    if (command_line != nullptr && std::wcsstr(command_line, L"--sync") != nullptr) {
+        window->SetAsyncCommit(false);
         window->RenderFrame();
     }
 

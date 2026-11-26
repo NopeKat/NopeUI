@@ -126,11 +126,28 @@ int main(int argc, char** argv) {
     std::vector<double> draw_times;
     std::vector<double> end_times;
     std::vector<double> commit_times;
+    std::vector<double> queue_times;
+    std::vector<double> present_times;
+    std::vector<double> latency_commit_times;
     frame_times.reserve(measured_frames);
     begin_times.reserve(measured_frames);
     draw_times.reserve(measured_frames);
     end_times.reserve(measured_frames);
     commit_times.reserve(measured_frames);
+    queue_times.reserve(measured_frames);
+    present_times.reserve(measured_frames);
+    latency_commit_times.reserve(measured_frames);
+    std::uint64_t last_latency_sequence = window->LastPresentedFrame().sequence;
+    const auto collect_latency = [&] {
+        const auto latency = window->LastPresentedFrame();
+        if (latency.sequence == 0 || latency.sequence == last_latency_sequence) {
+            return;
+        }
+        last_latency_sequence = latency.sequence;
+        queue_times.push_back(latency.queue_ms);
+        present_times.push_back(latency.present_ms);
+        latency_commit_times.push_back(latency.commit_ms);
+    };
     int attempts = 0;
     const int max_attempts = measured_frames * 4;
     while (static_cast<int>(frame_times.size()) < measured_frames &&
@@ -141,6 +158,7 @@ int main(int argc, char** argv) {
         const auto start = std::chrono::steady_clock::now();
         render_frame();
         const auto elapsed = std::chrono::steady_clock::now() - start;
+        collect_latency();
 
         if (async_commit || window->CommitCount() != commits_before) {
             const auto timings = window->LastFrameTimings();
@@ -168,6 +186,7 @@ int main(int argc, char** argv) {
         }
         drain_ms = std::chrono::duration<double, std::milli>(
             std::chrono::steady_clock::now() - drain_start).count();
+        collect_latency();
     }
 
     if (frame_times.empty()) {
@@ -182,6 +201,9 @@ int main(int argc, char** argv) {
     const auto commit_count = window->CommitCount();
 
     const auto summarize = [](std::vector<double> values) {
+        if (values.empty()) {
+            return std::pair<double, double>{0.0, 0.0};
+        }
         std::sort(values.begin(), values.end());
         double total = 0.0;
         for (const double value : values) {
@@ -198,6 +220,11 @@ int main(int argc, char** argv) {
     const auto draw_summary = summarize(draw_times);
     const auto end_summary = summarize(end_times);
     const auto commit_summary = summarize(commit_times);
+    const auto queue_summary = summarize(queue_times);
+    const auto latency_commit_summary = summarize(latency_commit_times);
+    const auto present_summary = summarize(present_times);
+    const auto stats = window->AsyncCommitStats();
+    const auto commit_display = async_commit ? latency_commit_summary : commit_summary;
 
     const double average = frame_summary.first;
     const double p99 = frame_summary.second;
@@ -206,7 +233,9 @@ int main(int argc, char** argv) {
         "content=%s pace=%s throttle=%s async=%s target_hz=%.0f dwm_refresh=%.1f "
         "frames=%zu attempts=%d "
         "commits=%llu avg=%.3f ms p99=%.3f ms min=%.3f ms max=%.3f ms "
-        "drain=%.1f ms begin=%.3f/%.3f draw=%.3f/%.3f end=%.3f/%.3f commit=%.3f/%.3f\n",
+        "drain=%.1f ms begin=%.3f/%.3f draw=%.3f/%.3f end=%.3f/%.3f commit=%.3f/%.3f "
+        "queue=%.3f/%.3f present=%.3f/%.3f "
+        "submitted=%llu completed=%llu dropped=%llu waits=%llu wait_avg=%.3f maxq=%u\n",
         full_frame ? "full" : "dirty",
         paced ? "fixed" : "unpaced",
         throttle_commits ? "on" : "off",
@@ -227,8 +256,18 @@ int main(int argc, char** argv) {
         draw_summary.second,
         end_summary.first,
         end_summary.second,
-        commit_summary.first,
-        commit_summary.second);
+        commit_display.first,
+        commit_display.second,
+        queue_summary.first,
+        queue_summary.second,
+        present_summary.first,
+        present_summary.second,
+        static_cast<unsigned long long>(stats.submitted),
+        static_cast<unsigned long long>(stats.completed),
+        static_cast<unsigned long long>(stats.dropped),
+        static_cast<unsigned long long>(stats.waits),
+        stats.waits > 0 ? stats.total_wait_ms / static_cast<double>(stats.waits) : 0.0,
+        stats.max_depth);
 
     wchar_t title[160]{};
     std::swprintf(

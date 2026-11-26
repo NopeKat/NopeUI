@@ -12,6 +12,8 @@ int main() {
     }
 
     auto window = std::move(result).value();
+    NOPEUI_CHECK(window->IsAsyncCommitEnabled());
+    window->SetAsyncCommit(false);
     NOPEUI_CHECK(static_cast<bool>(window));
     NOPEUI_CHECK(window->Handle() != nullptr);
     NOPEUI_CHECK(IsWindow(window->Handle()) != FALSE);
