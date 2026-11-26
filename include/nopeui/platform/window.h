@@ -84,9 +84,14 @@ public:
         bool cache_layouts) noexcept;
 
     // Benchmark-only override of the asynchronous surface count. Zero restores
-    // the area-based selection (three up to 1920x1200, two above).
+    // the area-based selection (three up to 2560x1600, two above).
     void SetDiagnosticAsyncSurfaces(int count) noexcept;
     int DiagnosticAsyncSurfaceCount() const noexcept;
+
+    // Benchmark-only presentation switch: true uses a flip-model swap chain,
+    // false uses the DirectComposition virtual surface path.
+    void SetDiagnosticFlipModel(bool enabled) noexcept;
+    bool IsDiagnosticFlipModel() const noexcept;
 
     // Presents the latest rendered surface immediately.
     void Present() noexcept;

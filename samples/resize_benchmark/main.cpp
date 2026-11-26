@@ -18,10 +18,13 @@
 
 int main(int argc, char** argv) {
     bool async = true;
+    bool flip = false;
     int interval_ms = 0;
     for (int index = 1; index < argc; ++index) {
         if (std::strcmp(argv[index], "--sync") == 0) {
             async = false;
+        } else if (std::strcmp(argv[index], "--flip") == 0) {
+            flip = true;
         } else if (std::strcmp(argv[index], "--interval") == 0 && index + 1 < argc) {
             interval_ms = std::atoi(argv[++index]);
             if (interval_ms < 0) {
@@ -38,6 +41,9 @@ int main(int argc, char** argv) {
 
     auto window = std::move(result).value();
     window->Show();
+    if (flip) {
+        window->SetDiagnosticFlipModel(true);
+    }
     window->SetAsyncCommit(async);
 
     const auto resize_frame = [&](int width,
@@ -151,13 +157,14 @@ int main(int argc, char** argv) {
     window->SetAsyncCommit(false);
     const auto stats = window->AsyncCommitStats();
     std::printf(
-        "resize async=%s interval=%d samples=%d "
+        "resize async=%s mode=%s interval=%d samples=%d "
         "set=%.3f/%.3f/%.3f render=%.3f/%.3f/%.3f "
         "phase_resize=%.3f/%.3f/%.3f draw=%.3f/%.3f/%.3f "
         "frame=%.3f/%.3f/%.3f begin=%.3f/%.3f/%.3f end=%.3f/%.3f/%.3f "
         "total=%.3f/%.3f/%.3f "
         "submitted=%llu completed=%llu dropped=%llu waits=%llu wait_avg=%.3f maxq=%u\n",
-        async ? "on" : "off",
+        window->IsAsyncCommitEnabled() ? "on" : "off",
+        flip ? "flip" : "virtual",
         interval_ms,
         measured,
         set_average,
