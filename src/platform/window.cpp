@@ -123,6 +123,8 @@ public:
         }
 
         target_bitmap_.Reset();
+        target_set_ = false;
+        transform_set_ = false;
         surface_width_ = width;
         surface_height_ = height;
         return Result<void>::Ok();
@@ -179,10 +181,18 @@ public:
             }
         }
 
-        d2d_context_->SetTarget(target_bitmap_.Get());
-        d2d_context_->SetTransform(D2D1::Matrix3x2F::Translation(
-            static_cast<float>(offset.x),
-            static_cast<float>(offset.y)));
+        if (!target_set_) {
+            d2d_context_->SetTarget(target_bitmap_.Get());
+            target_set_ = true;
+        }
+        if (!transform_set_ || offset.x != offset_x_ || offset.y != offset_y_) {
+            d2d_context_->SetTransform(D2D1::Matrix3x2F::Translation(
+                static_cast<float>(offset.x),
+                static_cast<float>(offset.y)));
+            offset_x_ = offset.x;
+            offset_y_ = offset.y;
+            transform_set_ = true;
+        }
         d2d_context_->BeginDraw();
         if (update_ptr == nullptr) {
             d2d_context_->Clear(D2D1::ColorF(0xF3F3F3));
@@ -195,10 +205,18 @@ public:
             (update.right > 24 && update.left < 324 &&
              update.bottom > 28 && update.top < 88);
         if (draw_text) {
-            d2d_context_->DrawTextLayout(
-                D2D1::Point2F(24.0f, 28.0f),
-                text_layout_.Get(),
-                text_brush_.Get());
+            if (text_bitmap_ != nullptr) {
+                d2d_context_->DrawBitmap(
+                    text_bitmap_.Get(),
+                    D2D1::RectF(24.0f, 28.0f, 384.0f, 92.0f),
+                    1.0f,
+                    D2D1_BITMAP_INTERPOLATION_MODE_NEAREST_NEIGHBOR);
+            } else {
+                d2d_context_->DrawTextLayout(
+                    D2D1::Point2F(24.0f, 28.0f),
+                    text_layout_.Get(),
+                    text_brush_.Get());
+            }
         }
 
         d2d_context_->FillRectangle(
@@ -208,7 +226,9 @@ public:
             d2d_context_->PopAxisAlignedClip();
         }
         result = d2d_context_->EndDraw();
-        d2d_context_->SetTarget(nullptr);
+        if (FAILED(result)) {
+            target_set_ = false;
+        }
 
         virtual_surface_->EndDraw();
         if (FAILED(result)) {
@@ -436,6 +456,24 @@ private:
                 Error{ErrorCode::PlatformFailure, PlatformError("CreateSolidColorBrush", result)});
         }
 
+        ComPtr<ID2D1BitmapRenderTarget> text_target;
+        if (SUCCEEDED(d2d_context_->CreateCompatibleRenderTarget(
+                D2D1::SizeF(360.0f, 64.0f), text_target.GetAddressOf()))) {
+            ComPtr<ID2D1SolidColorBrush> cache_brush;
+            if (SUCCEEDED(text_target->CreateSolidColorBrush(
+                    D2D1::ColorF(0x1B1B1B), cache_brush.GetAddressOf()))) {
+                text_target->BeginDraw();
+                text_target->Clear(D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.0f));
+                text_target->DrawTextLayout(
+                    D2D1::Point2F(0.0f, 0.0f),
+                    text_layout_.Get(),
+                    cache_brush.Get());
+                if (SUCCEEDED(text_target->EndDraw())) {
+                    text_target->GetBitmap(text_bitmap_.GetAddressOf());
+                }
+            }
+        }
+
         result = d2d_context_->CreateSolidColorBrush(
             D2D1::ColorF(0xF3F3F3), background_brush_.GetAddressOf());
         if (FAILED(result)) {
@@ -462,6 +500,8 @@ private:
     void ReleaseSurface() noexcept {
         CancelCommitTimer();
         target_bitmap_.Reset();
+        target_set_ = false;
+        transform_set_ = false;
         virtual_surface_.Reset();
         surface_width_ = 0;
         surface_height_ = 0;
@@ -481,6 +521,7 @@ private:
     ComPtr<IDWriteTextFormat> text_format_;
     ComPtr<IDWriteTextLayout> text_layout_;
     ComPtr<ID2D1SolidColorBrush> text_brush_;
+    ComPtr<ID2D1Bitmap> text_bitmap_;
     ComPtr<ID2D1SolidColorBrush> background_brush_;
     ComPtr<ID2D1SolidColorBrush> accent_brush_;
     HWND hwnd_ = nullptr;
@@ -494,6 +535,10 @@ private:
     bool throttle_commits_ = true;
     bool commit_pending_ = false;
     bool commit_timer_active_ = false;
+    bool target_set_ = false;
+    bool transform_set_ = false;
+    LONG offset_x_ = 0;
+    LONG offset_y_ = 0;
 };
 
 Window::Window() noexcept = default;
