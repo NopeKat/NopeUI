@@ -34,11 +34,15 @@ NopeUI 是一个仅面向 Windows 的开源 C++ 桌面 UI 框架。外观参考 
 .\.build\x64-release\samples\Release\nopeui_text_list_benchmark.exe --rows 100000 --scroll 4 --cache --width 3840 --height 2160
 .\.build\x64-release\samples\Release\nopeui_text_list_benchmark.exe --rows 100000 --scroll 4 --cache --width 3840 --height 2160 --surfaces 2
 .\.build\x64-release\samples\Release\nopeui_text_list_benchmark.exe --rows 100000 --scroll 4 --cache --width 3840 --height 2160 --client
+.\.build\x64-release\samples\Release\nopeui_present_benchmark.exe --width 3840 --height 2160
+.\.build\x64-release\samples\Release\nopeui_present_benchmark.exe --width 3840 --height 2160 --flip
 ```
 
-`nopeui_text_list_benchmark.exe` 生成指定行数的不同文本，按行高虚拟化，只对当前视口创建 `IDWriteTextLayout`；`--cache` 打开最多 512 条的布局缓存。`--scroll` 是每帧滚动像素数，`--width/--height` 指定窗口尺寸，`--client` 按客户区尺寸而不是外框尺寸调整，`--surfaces 2|3` 强制异步表面数用于对照；输出包含请求尺寸、实际客户区、DPI、awareness、表面数，以及 `begin/draw/end`、`commit/queue/present` 的平均与 P99。
+`nopeui_text_list_benchmark.exe` 生成指定行数的不同文本，按行高虚拟化，只对当前视口创建 `IDWriteTextLayout`；`--cache` 打开最多 512 条的布局缓存。`--scroll` 是每帧滚动像素数，`--width/--height` 指定窗口尺寸，`--client` 按客户区尺寸而不是外框尺寸调整，`--surfaces 2|3` 强制异步表面数用于对照，`--sync` 回退同步提交；输出包含请求尺寸、实际客户区、DPI、awareness、表面数、异步状态，以及 `begin/draw/end`、`commit/queue/present` 的平均与 P99。
 
 `nopeui_resize_benchmark.exe --interval <ms>` 在每步 resize 后等待指定毫秒数，用来模拟真实拖动的节奏；`--interval 0` 是连续无间隔的压力测试。
+
+`nopeui_present_benchmark.exe` 在独立弹出窗口比较 DirectComposition 虚拟表面 `Commit` 与 flip-model swap chain `Present` 的提交 API 耗时；默认 virtual，`--flip` 切换 flip，`--width/--height` 指定表面尺寸。它只测提交调用，不含完整控件绘制。
 
 `nopeui_window_smoke.exe --trace <csv>` 会在交互期间输出帧、提交和延迟统计，用于观察拖动与缩放；`--sync` 可切到同步提交做对比。
 

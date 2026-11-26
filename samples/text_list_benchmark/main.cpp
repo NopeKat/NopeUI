@@ -22,6 +22,7 @@ int main(int argc, char** argv) {
     int height = 600;
     int surfaces = 0;
     bool exact_client = false;
+    bool async_commit = true;
     for (int index = 1; index < argc; ++index) {
         if (std::strcmp(argv[index], "--rows") == 0 && index + 1 < argc) {
             row_count = static_cast<std::size_t>(std::strtoull(argv[++index], nullptr, 10));
@@ -37,6 +38,8 @@ int main(int argc, char** argv) {
             surfaces = std::atoi(argv[++index]);
         } else if (std::strcmp(argv[index], "--client") == 0) {
             exact_client = true;
+        } else if (std::strcmp(argv[index], "--sync") == 0) {
+            async_commit = false;
         }
     }
     if (row_count == 0) {
@@ -85,7 +88,7 @@ int main(int argc, char** argv) {
         window->RenderFrame();
     }
     window->SetDiagnosticAsyncSurfaces(surfaces);
-    window->SetAsyncCommit(true);
+    window->SetAsyncCommit(async_commit);
     window->SetDiagnosticTextList(rows, 32.0f, cache_layouts);
 
     RECT client{};
@@ -154,7 +157,7 @@ int main(int argc, char** argv) {
     const auto [present_average, present_p99] = summarize(std::move(present_times));
 
     std::printf(
-        "text_list requested=%dx%d client=%dx%d dpi=%d awareness=%d surfaces=%d rows=%zu cache=%s scroll=%.1f "
+        "text_list requested=%dx%d client=%dx%d dpi=%d awareness=%d surfaces=%d async=%s rows=%zu cache=%s scroll=%.1f "
         "avg=%.3f ms p99=%.3f ms begin=%.3f/%.3f draw=%.3f/%.3f end=%.3f/%.3f "
         "commit=%.3f/%.3f queue=%.3f/%.3f present=%.3f/%.3f\n",
         width,
@@ -164,6 +167,7 @@ int main(int argc, char** argv) {
         dpi,
         awareness,
         window->DiagnosticAsyncSurfaceCount(),
+        async_commit ? "on" : "off",
         row_count,
         cache_layouts ? "on" : "off",
         scroll_step,

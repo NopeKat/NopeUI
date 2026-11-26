@@ -27,3 +27,9 @@ add_executable(nopeui_text_list_benchmark
 )
 
 target_link_libraries(nopeui_text_list_benchmark PRIVATE nopeui_platform)
+
+add_executable(nopeui_present_benchmark
+    present_benchmark/main.cpp
+)
+
+target_link_libraries(nopeui_present_benchmark PRIVATE d3d11 dxgi dcomp user32)
