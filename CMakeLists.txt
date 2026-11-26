@@ -27,7 +27,10 @@ add_library(nopeui_platform STATIC
     src/platform/window.cpp
 )
 
-target_link_libraries(nopeui_platform PUBLIC nopeui_base PRIVATE user32)
+target_link_libraries(nopeui_platform
+    PUBLIC nopeui_base
+    PRIVATE user32 d3d11 dxgi d2d1 dcomp
+)
 target_compile_features(nopeui_platform PUBLIC cxx_std_20)
 
 include(CTest)

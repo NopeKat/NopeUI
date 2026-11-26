@@ -10,12 +10,16 @@
 
 #include <Windows.h>
 
+#include <cstdint>
+#include <memory>
 #include <string_view>
 
 #include "nopeui/base/ref.h"
 #include "nopeui/base/result.h"
 
 namespace nopeui {
+
+class WindowGraphics;
 
 class Window : public RefCounted {
 public:
@@ -28,15 +32,22 @@ public:
     void Close() noexcept;
     bool IsVisible() const noexcept;
 
+    double LastFrameMilliseconds() const noexcept;
+    std::uint64_t FrameCount() const noexcept;
+
     HWND Handle() const noexcept;
 
 private:
-    Window() noexcept = default;
+    Window() noexcept;
 
     static LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam);
     static bool EnsureWindowClass() noexcept;
 
+    void OnSize(int width, int height) noexcept;
+    void ReleaseGraphics() noexcept;
+
     HWND hwnd_ = nullptr;
+    std::unique_ptr<WindowGraphics> graphics_;
 };
 
 Result<int> RunMessageLoop();

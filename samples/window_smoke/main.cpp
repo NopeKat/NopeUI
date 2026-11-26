@@ -1,3 +1,5 @@
+#include <cwchar>
+#include <iterator>
 #include <utility>
 
 #include <Windows.h>
@@ -12,6 +14,14 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
 
     auto window = std::move(result).value();
     window->Show();
+
+    wchar_t title[128]{};
+    std::swprintf(
+        title,
+        std::size(title),
+        L"NopeUI Window Smoke - last frame %.2f ms",
+        window->LastFrameMilliseconds());
+    SetWindowTextW(window->Handle(), title);
 
     auto loop = nopeui::RunMessageLoop();
     if (!loop.ok()) {

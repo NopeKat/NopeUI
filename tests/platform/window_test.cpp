@@ -16,6 +16,19 @@ int main() {
     NOPEUI_CHECK(window->Handle() != nullptr);
     NOPEUI_CHECK(IsWindow(window->Handle()) != FALSE);
     NOPEUI_CHECK(!window->IsVisible());
+    NOPEUI_CHECK(window->FrameCount() >= 1);
+    NOPEUI_CHECK(window->LastFrameMilliseconds() >= 0.0);
+
+    NOPEUI_CHECK(
+        SetWindowPos(
+            window->Handle(),
+            nullptr,
+            0,
+            0,
+            480,
+            320,
+            SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE) != FALSE);
+    NOPEUI_CHECK(window->FrameCount() >= 2);
 
     window->Close();
     NOPEUI_CHECK(window->Handle() == nullptr);
