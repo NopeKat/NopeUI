@@ -33,6 +33,9 @@ protected:
     Element* HitTestOverride(Point point) noexcept override;
     void CollectFocusable(std::vector<Element*>& elements) noexcept override;
     bool OnWheel(int delta) noexcept override;
+    bool OnKeyDown(unsigned int key) noexcept override;
+    void OnPointerEnter() noexcept override;
+    void OnPointerLeave() noexcept override;
     void OnPointerDown(Point point) noexcept override;
     void OnPointerMove(Point point) noexcept override;
     void OnPointerUp(Point point) noexcept override;
@@ -51,6 +54,7 @@ private:
     float MaxHorizontalOffset() const noexcept;
     bool HasVerticalScrollbar() const noexcept;
     bool HasHorizontalScrollbar() const noexcept;
+    float ScrollbarThickness() const noexcept;
 
     Rect VerticalTrackRect() const noexcept;
     Rect VerticalThumbRect() const noexcept;
@@ -67,6 +71,7 @@ private:
     float drag_start_offset_x_ = 0.0f;
     float drag_start_offset_y_ = 0.0f;
     DragAxis drag_axis_ = DragAxis::None;
+    bool hovered_ = false;
 };
 
 }  // namespace nopeui

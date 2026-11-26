@@ -4,6 +4,7 @@
 #include <dcomp.h>
 #include <d3d11.h>
 #include <dwrite.h>
+#include <imm.h>
 #include <dwmapi.h>
 #include <dxgi.h>
 #include <dxgi1_2.h>
@@ -106,6 +107,25 @@ std::string PlatformError(const char* operation, HRESULT result) {
         operation,
         static_cast<unsigned int>(result));
     return message;
+}
+
+std::wstring ReadImeString(HWND hwnd, DWORD type) {
+    HIMC context = ImmGetContext(hwnd);
+    if (context == nullptr) {
+        return {};
+    }
+    const LONG bytes = ImmGetCompositionStringW(context, type, nullptr, 0);
+    std::wstring text;
+    if (bytes > 0) {
+        text.resize(static_cast<std::size_t>(bytes) / sizeof(wchar_t));
+        ImmGetCompositionStringW(
+            context,
+            type,
+            text.data(),
+            static_cast<DWORD>(bytes));
+    }
+    ImmReleaseContext(hwnd, context);
+    return text;
 }
 
 }  // namespace
@@ -1916,17 +1936,25 @@ void Window::ClearFocus() noexcept {
 }
 
 bool Window::OnKeyDown(unsigned int key) noexcept {
-    if (focused_ == nullptr) {
-        return false;
+    Element* node = focused_;
+    while (node != nullptr) {
+        if (node->OnKeyDown(key)) {
+            return true;
+        }
+        node = node->Parent();
     }
-    return focused_->OnKeyDown(key);
+    return false;
 }
 
 bool Window::OnKeyUp(unsigned int key) noexcept {
-    if (focused_ == nullptr) {
-        return false;
+    Element* node = focused_;
+    while (node != nullptr) {
+        if (node->OnKeyUp(key)) {
+            return true;
+        }
+        node = node->Parent();
     }
-    return focused_->OnKeyUp(key);
+    return false;
 }
 
 bool Window::OnChar(wchar_t character) noexcept {
@@ -1934,6 +1962,42 @@ bool Window::OnChar(wchar_t character) noexcept {
         return false;
     }
     return focused_->OnChar(character);
+}
+
+void Window::OnImeStart() noexcept {
+    if (focused_ == nullptr) {
+        return;
+    }
+    focused_->OnImeStart();
+    HIMC context = ImmGetContext(hwnd_);
+    if (context == nullptr) {
+        return;
+    }
+    COMPOSITIONFORM form{};
+    form.dwStyle = CFS_POINT;
+    const Point caret = focused_->ImeCaretPoint();
+    form.ptCurrentPos.x = static_cast<LONG>(caret.x);
+    form.ptCurrentPos.y = static_cast<LONG>(caret.y);
+    ImmSetCompositionWindow(context, &form);
+    ImmReleaseContext(hwnd_, context);
+}
+
+void Window::OnImeComposition(std::wstring_view text) noexcept {
+    if (focused_ != nullptr) {
+        focused_->OnImeComposition(text);
+    }
+}
+
+void Window::OnImeResult(std::wstring_view text) noexcept {
+    if (focused_ != nullptr) {
+        focused_->OnImeResult(text);
+    }
+}
+
+void Window::OnImeEnd() noexcept {
+    if (focused_ != nullptr) {
+        focused_->OnImeEnd();
+    }
 }
 
 HWND Window::Handle() const noexcept {
@@ -2225,6 +2289,32 @@ LRESULT CALLBACK Window::WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM 
         case WM_CHAR:
             if (window != nullptr &&
                 window->OnChar(static_cast<wchar_t>(wparam))) {
+                return 0;
+            }
+            break;
+
+        case WM_IME_STARTCOMPOSITION:
+            if (window != nullptr) {
+                window->OnImeStart();
+                return 0;
+            }
+            break;
+
+        case WM_IME_COMPOSITION:
+            if (window != nullptr) {
+                if ((lparam & GCS_RESULTSTR) != 0) {
+                    window->OnImeResult(ReadImeString(hwnd, GCS_RESULTSTR));
+                }
+                if ((lparam & GCS_COMPSTR) != 0) {
+                    window->OnImeComposition(ReadImeString(hwnd, GCS_COMPSTR));
+                }
+                return 0;
+            }
+            break;
+
+        case WM_IME_ENDCOMPOSITION:
+            if (window != nullptr) {
+                window->OnImeEnd();
                 return 0;
             }
             break;

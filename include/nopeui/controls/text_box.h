@@ -41,21 +41,42 @@ protected:
     bool IsFocusable() const noexcept override;
     bool OnKeyDown(unsigned int key) noexcept override;
     bool OnChar(wchar_t character) noexcept override;
+    void OnPointerMove(Point point) noexcept override;
+    void OnPointerUp(Point point) noexcept override;
+    void OnImeStart() noexcept override;
+    void OnImeComposition(std::wstring_view text) noexcept override;
+    void OnImeResult(std::wstring_view text) noexcept override;
+    void OnImeEnd() noexcept override;
+    Point ImeCaretPoint() const noexcept override;
 
 private:
     TextBox() noexcept = default;
 
     void RebuildRun() noexcept;
     void RebuildPlaceholder() noexcept;
+    void RebuildCompositionRun() noexcept;
+    void ClearComposition() noexcept;
+    void DropSelection() noexcept;
+    void MoveCaret(std::size_t position, bool extend) noexcept;
+    void EnsureCaretVisible() noexcept;
+    std::size_t SelectionStart() const noexcept;
+    std::size_t SelectionEnd() const noexcept;
+    bool HasSelection() const noexcept;
 
     std::wstring text_;
     std::wstring placeholder_;
+    std::wstring composition_;
     graphics::TextStyle style_;
     std::unique_ptr<graphics::TextRun> run_;
     std::unique_ptr<graphics::TextRun> placeholder_run_;
+    std::unique_ptr<graphics::TextRun> composition_run_;
     std::function<void()> submit_;
     std::size_t caret_ = 0;
+    std::size_t anchor_ = 0;
+    float scroll_x_ = 0.0f;
     bool hovered_ = false;
+    bool dragging_ = false;
+    bool composing_ = false;
 };
 
 }  // namespace nopeui

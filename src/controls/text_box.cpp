@@ -12,6 +12,7 @@
 #include <wrl/client.h>
 
 #include <algorithm>
+#include <cstring>
 #include <utility>
 
 #include "nopeui/graphics/text.h"
@@ -28,6 +29,56 @@ constexpr float kPaddingY = 8.0f;
 constexpr float kMinHeight = 32.0f;
 constexpr float kCornerRadius = 4.0f;
 
+std::wstring ReadClipboardText() {
+    if (OpenClipboard(nullptr) == FALSE) {
+        return {};
+    }
+    std::wstring text;
+    if (HANDLE handle = GetClipboardData(CF_UNICODETEXT); handle != nullptr) {
+        const wchar_t* data = static_cast<const wchar_t*>(GlobalLock(handle));
+        if (data != nullptr) {
+            text.assign(data);
+            GlobalUnlock(handle);
+        }
+    }
+    CloseClipboard();
+    return text;
+}
+
+bool WriteClipboardText(const std::wstring& text) {
+    if (text.empty() || OpenClipboard(nullptr) == FALSE) {
+        return false;
+    }
+    EmptyClipboard();
+    const std::size_t bytes = (text.size() + 1) * sizeof(wchar_t);
+    HGLOBAL handle = GlobalAlloc(GMEM_MOVEABLE, bytes);
+    bool written = false;
+    if (handle != nullptr) {
+        void* data = GlobalLock(handle);
+        if (data != nullptr) {
+            std::memcpy(data, text.c_str(), bytes);
+            GlobalUnlock(handle);
+            if (SetClipboardData(CF_UNICODETEXT, handle) != nullptr) {
+                written = true;
+            }
+        }
+        if (!written) {
+            GlobalFree(handle);
+        }
+    }
+    CloseClipboard();
+    return written;
+}
+
+std::wstring ToSingleLine(std::wstring text) {
+    for (wchar_t& character : text) {
+        if (character == L'\r' || character == L'\n' || character == L'\t') {
+            character = L' ';
+        }
+    }
+    return text;
+}
+
 }  // namespace
 
 Ref<TextBox> TextBox::Create(std::wstring text, graphics::TextStyle style) noexcept {
@@ -35,6 +86,7 @@ Ref<TextBox> TextBox::Create(std::wstring text, graphics::TextStyle style) noexc
     box->text_ = std::move(text);
     box->style_ = std::move(style);
     box->caret_ = box->text_.size();
+    box->anchor_ = box->caret_;
     box->RebuildRun();
     return box;
 }
@@ -42,6 +94,9 @@ Ref<TextBox> TextBox::Create(std::wstring text, graphics::TextStyle style) noexc
 void TextBox::SetText(std::wstring text) noexcept {
     text_ = std::move(text);
     caret_ = text_.size();
+    anchor_ = caret_;
+    scroll_x_ = 0.0f;
+    ClearComposition();
     RebuildRun();
     InvalidateLayout();
 }
@@ -76,6 +131,57 @@ void TextBox::RebuildPlaceholder() noexcept {
     }
 }
 
+void TextBox::RebuildCompositionRun() noexcept {
+    composition_run_.reset();
+    if (composition_.empty()) {
+        return;
+    }
+    std::wstring display = text_;
+    display.insert(caret_, composition_);
+    auto created = graphics::TextRun::Create(display, style_, 8192.0f);
+    if (created.ok()) {
+        composition_run_ = std::move(created.value());
+    }
+}
+
+void TextBox::ClearComposition() noexcept {
+    composition_.clear();
+    composition_run_.reset();
+    composing_ = false;
+}
+
+void TextBox::DropSelection() noexcept {
+    if (!HasSelection()) {
+        return;
+    }
+    const std::size_t start = SelectionStart();
+    text_.erase(start, SelectionEnd() - start);
+    caret_ = start;
+    anchor_ = start;
+    RebuildRun();
+    InvalidateLayout();
+}
+
+void TextBox::MoveCaret(std::size_t position, bool extend) noexcept {
+    caret_ = std::min(position, text_.size());
+    if (!extend) {
+        anchor_ = caret_;
+    }
+    Invalidate();
+}
+
+std::size_t TextBox::SelectionStart() const noexcept {
+    return std::min(caret_, anchor_);
+}
+
+std::size_t TextBox::SelectionEnd() const noexcept {
+    return std::max(caret_, anchor_);
+}
+
+bool TextBox::HasSelection() const noexcept {
+    return caret_ != anchor_;
+}
+
 Size TextBox::MeasureOverride(Size available) noexcept {
     float text_height = style_.size + 4.0f;
     if (run_ != nullptr) {
@@ -84,6 +190,25 @@ Size TextBox::MeasureOverride(Size available) noexcept {
     return Size{
         available.width,
         std::min(std::max(text_height + kPaddingY * 2.0f, kMinHeight), available.height)};
+}
+
+void TextBox::EnsureCaretVisible() noexcept {
+    const graphics::TextRun* display = composition_run_ != nullptr
+        ? composition_run_.get()
+        : run_.get();
+    if (display == nullptr) {
+        scroll_x_ = 0.0f;
+        return;
+    }
+    const std::size_t index = composing_ ? caret_ + composition_.size() : caret_;
+    const float caret_x = display->CaretX(index);
+    const float viewport = std::max(1.0f, bounds_.width - kPaddingX * 2.0f);
+    if (caret_x - scroll_x_ < 0.0f) {
+        scroll_x_ = caret_x;
+    } else if (caret_x - scroll_x_ > viewport) {
+        scroll_x_ = caret_x - viewport + 2.0f;
+    }
+    scroll_x_ = std::max(0.0f, scroll_x_);
 }
 
 void TextBox::PaintContent(ID2D1RenderTarget* target) noexcept {
@@ -128,16 +253,63 @@ void TextBox::PaintContent(ID2D1RenderTarget* target) noexcept {
             focused ? 2.0f : 1.0f);
     }
 
+    EnsureCaretVisible();
+
     PushContentClip(target);
 
-    const float text_x = bounds_.x + kPaddingX;
-    if (run_ != nullptr) {
-        const Size text = run_->Measure();
-        const float text_y = bounds_.y + (bounds_.height - text.height) / 2.0f;
-        run_->Draw(target, Point{text_x, text_y}, colors.text);
+    const float text_x = bounds_.x + kPaddingX - scroll_x_;
+    const graphics::TextRun* display = composition_run_ != nullptr
+        ? composition_run_.get()
+        : run_.get();
+    float text_y = bounds_.y + kPaddingY;
+
+    if (display != nullptr) {
+        const Size text = display->Measure();
+        text_y = bounds_.y + (bounds_.height - text.height) / 2.0f;
+
+        if (!composing_ && run_ != nullptr && HasSelection()) {
+            ComPtr<ID2D1SolidColorBrush> selection_brush;
+            if (SUCCEEDED(target->CreateSolidColorBrush(
+                    D2D1::ColorF(colors.accent, 0.28f),
+                    selection_brush.GetAddressOf()))) {
+                const std::size_t start = SelectionStart();
+                const std::size_t end = SelectionEnd();
+                for (std::size_t index = start; index < end; ++index) {
+                    const float left = run_->CaretX(index);
+                    const float right = run_->CaretX(index + 1);
+                    if (right <= left) {
+                        continue;
+                    }
+                    target->FillRectangle(
+                        D2D1::RectF(
+                            text_x + left,
+                            text_y,
+                            text_x + right,
+                            text_y + text.height),
+                        selection_brush.Get());
+                }
+            }
+        }
+
+        display->Draw(target, Point{text_x, text_y}, colors.text);
+
+        if (composing_ && !composition_.empty()) {
+            const float left = display->CaretX(caret_);
+            const float right = display->CaretX(caret_ + composition_.size());
+            ComPtr<ID2D1SolidColorBrush> underline;
+            if (SUCCEEDED(target->CreateSolidColorBrush(
+                    D2D1::ColorF(colors.accent), underline.GetAddressOf()))) {
+                const float y = text_y + text.height - 1.0f;
+                target->DrawLine(
+                    D2D1::Point2F(text_x + left, y),
+                    D2D1::Point2F(text_x + right, y),
+                    underline.Get(),
+                    1.5f);
+            }
+        }
     } else if (placeholder_run_ != nullptr) {
         const Size text = placeholder_run_->Measure();
-        const float text_y = bounds_.y + (bounds_.height - text.height) / 2.0f;
+        text_y = bounds_.y + (bounds_.height - text.height) / 2.0f;
         placeholder_run_->Draw(
             target,
             Point{text_x, text_y},
@@ -145,9 +317,10 @@ void TextBox::PaintContent(ID2D1RenderTarget* target) noexcept {
     }
 
     if (focused) {
-        const float caret_x = run_ != nullptr
-            ? text_x + run_->CaretX(caret_)
-            : text_x;
+        const std::size_t index = composing_ ? caret_ + composition_.size() : caret_;
+        const float caret_x = display != nullptr
+            ? text_x + display->CaretX(index)
+            : bounds_.x + kPaddingX;
         const float caret_top = bounds_.y + kPaddingY;
         const float caret_bottom = bounds_.Bottom() - kPaddingY;
         ComPtr<ID2D1SolidColorBrush> caret_brush;
@@ -171,16 +344,44 @@ void TextBox::OnPointerEnter() noexcept {
 
 void TextBox::OnPointerLeave() noexcept {
     hovered_ = false;
+    dragging_ = false;
     Invalidate();
 }
 
 void TextBox::OnPointerDown(Point point) noexcept {
-    if (!IsEnabled() || run_ == nullptr) {
+    if (!IsEnabled()) {
         return;
     }
-    const float local_x = point.x - (bounds_.x + kPaddingX);
-    caret_ = run_->IndexFromX(local_x);
+    ClearComposition();
+    if (run_ == nullptr) {
+        caret_ = 0;
+        anchor_ = 0;
+        dragging_ = true;
+        Invalidate();
+        return;
+    }
+    const float local_x = point.x - (bounds_.x + kPaddingX) + scroll_x_;
+    const std::size_t index = run_->IndexFromX(std::max(0.0f, local_x));
+    const bool shift = (GetKeyState(VK_SHIFT) & 0x8000) != 0;
+    caret_ = index;
+    if (!shift) {
+        anchor_ = index;
+    }
+    dragging_ = true;
     Invalidate();
+}
+
+void TextBox::OnPointerMove(Point point) noexcept {
+    if (!dragging_ || run_ == nullptr) {
+        return;
+    }
+    const float local_x = point.x - (bounds_.x + kPaddingX) + scroll_x_;
+    caret_ = run_->IndexFromX(std::max(0.0f, local_x));
+    Invalidate();
+}
+
+void TextBox::OnPointerUp(Point) noexcept {
+    dragging_ = false;
 }
 
 bool TextBox::IsFocusable() const noexcept {
@@ -191,41 +392,87 @@ bool TextBox::OnKeyDown(unsigned int key) noexcept {
     if (!IsEnabled()) {
         return false;
     }
+    const bool ctrl = (GetKeyState(VK_CONTROL) & 0x8000) != 0;
+    const bool shift = (GetKeyState(VK_SHIFT) & 0x8000) != 0;
+
+    if (ctrl) {
+        switch (key) {
+            case 'A':
+                anchor_ = 0;
+                caret_ = text_.size();
+                Invalidate();
+                return true;
+            case 'C':
+                if (HasSelection()) {
+                    WriteClipboardText(
+                        text_.substr(SelectionStart(), SelectionEnd() - SelectionStart()));
+                }
+                return true;
+            case 'X':
+                if (HasSelection()) {
+                    WriteClipboardText(
+                        text_.substr(SelectionStart(), SelectionEnd() - SelectionStart()));
+                    DropSelection();
+                }
+                return true;
+            case 'V': {
+                const std::wstring pasted = ToSingleLine(ReadClipboardText());
+                if (pasted.empty()) {
+                    return true;
+                }
+                DropSelection();
+                text_.insert(caret_, pasted);
+                caret_ += pasted.size();
+                anchor_ = caret_;
+                RebuildRun();
+                InvalidateLayout();
+                return true;
+            }
+            default:
+                break;
+        }
+    }
+
     switch (key) {
         case VK_BACK:
-            if (caret_ > 0) {
+            if (HasSelection()) {
+                DropSelection();
+            } else if (caret_ > 0) {
                 text_.erase(caret_ - 1, 1);
                 --caret_;
+                anchor_ = caret_;
                 RebuildRun();
                 InvalidateLayout();
             }
             return true;
         case VK_DELETE:
-            if (caret_ < text_.size()) {
+            if (HasSelection()) {
+                DropSelection();
+            } else if (caret_ < text_.size()) {
                 text_.erase(caret_, 1);
                 RebuildRun();
                 InvalidateLayout();
             }
             return true;
         case VK_LEFT:
-            if (caret_ > 0) {
-                --caret_;
-                Invalidate();
+            if (HasSelection() && !shift) {
+                MoveCaret(SelectionStart(), false);
+            } else {
+                MoveCaret(caret_ > 0 ? caret_ - 1 : 0, shift);
             }
             return true;
         case VK_RIGHT:
-            if (caret_ < text_.size()) {
-                ++caret_;
-                Invalidate();
+            if (HasSelection() && !shift) {
+                MoveCaret(SelectionEnd(), false);
+            } else {
+                MoveCaret(caret_ + 1, shift);
             }
             return true;
         case VK_HOME:
-            caret_ = 0;
-            Invalidate();
+            MoveCaret(0, shift);
             return true;
         case VK_END:
-            caret_ = text_.size();
-            Invalidate();
+            MoveCaret(text_.size(), shift);
             return true;
         case VK_RETURN:
             if (submit_) {
@@ -244,11 +491,70 @@ bool TextBox::OnChar(wchar_t character) noexcept {
     if (character < 0x20 || character == 0x7F) {
         return false;
     }
+    if (HasSelection()) {
+        DropSelection();
+    }
     text_.insert(caret_, 1, character);
     ++caret_;
+    anchor_ = caret_;
     RebuildRun();
     InvalidateLayout();
     return true;
+}
+
+void TextBox::OnImeStart() noexcept {
+    composing_ = true;
+}
+
+void TextBox::OnImeComposition(std::wstring_view text) noexcept {
+    composing_ = true;
+    if (text.empty()) {
+        composition_.clear();
+        composition_run_.reset();
+        Invalidate();
+        return;
+    }
+    if (composition_.empty() && HasSelection()) {
+        DropSelection();
+    }
+    composition_.assign(text);
+    RebuildCompositionRun();
+    Invalidate();
+}
+
+void TextBox::OnImeResult(std::wstring_view text) noexcept {
+    if (text.empty()) {
+        ClearComposition();
+        Invalidate();
+        return;
+    }
+    if (HasSelection()) {
+        DropSelection();
+    }
+    const std::wstring commit(text);
+    text_.insert(caret_, commit);
+    caret_ += commit.size();
+    anchor_ = caret_;
+    ClearComposition();
+    RebuildRun();
+    InvalidateLayout();
+}
+
+void TextBox::OnImeEnd() noexcept {
+    ClearComposition();
+    Invalidate();
+}
+
+Point TextBox::ImeCaretPoint() const noexcept {
+    const graphics::TextRun* display = composition_run_ != nullptr
+        ? composition_run_.get()
+        : run_.get();
+    float caret_x = bounds_.x + kPaddingX - scroll_x_;
+    if (display != nullptr) {
+        const std::size_t index = composing_ ? caret_ + composition_.size() : caret_;
+        caret_x += display->CaretX(index);
+    }
+    return Point{caret_x, bounds_.Bottom() - kPaddingY};
 }
 
 }  // namespace nopeui

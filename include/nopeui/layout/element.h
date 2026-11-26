@@ -3,6 +3,7 @@
 
 #include <cstdint>
 #include <functional>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -95,6 +96,18 @@ public:
     // Printable character produced by the host after key translation.
     virtual bool OnChar(wchar_t) noexcept {
         return false;
+    }
+
+    // IME composition starts, updates and commits. The composition text is a
+    // preview; only the result belongs to the document.
+    virtual void OnImeStart() noexcept {}
+    virtual void OnImeComposition(std::wstring_view) noexcept {}
+    virtual void OnImeResult(std::wstring_view) noexcept {}
+    virtual void OnImeEnd() noexcept {}
+
+    // Client-space point used to place the IME composition window.
+    virtual Point ImeCaretPoint() const noexcept {
+        return Point{bounds_.x, bounds_.y + bounds_.height};
     }
 
     // Wheel input walks from the hit element up to the nearest scrollable

@@ -151,6 +151,10 @@ private:
     bool OnKeyDown(unsigned int key) noexcept;
     bool OnKeyUp(unsigned int key) noexcept;
     bool OnChar(wchar_t character) noexcept;
+    void OnImeStart() noexcept;
+    void OnImeComposition(std::wstring_view text) noexcept;
+    void OnImeResult(std::wstring_view text) noexcept;
+    void OnImeEnd() noexcept;
 
     HWND hwnd_ = nullptr;
     std::unique_ptr<WindowGraphics> graphics_;

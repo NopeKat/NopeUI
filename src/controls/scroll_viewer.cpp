@@ -25,6 +25,8 @@ namespace {
 // Effectively unbounded height for measuring the scrollable content.
 constexpr float kUnboundedHeight = 1.0e6f;
 constexpr float kScrollbarWidth = 6.0f;
+constexpr float kScrollbarHoverWidth = 10.0f;
+constexpr float kScrollbarHitBand = 14.0f;
 constexpr float kScrollbarMargin = 3.0f;
 constexpr float kMinThumbSize = 28.0f;
 constexpr float kLineHeight = 16.0f;
@@ -71,6 +73,12 @@ bool ScrollViewer::HasVerticalScrollbar() const noexcept {
 
 bool ScrollViewer::HasHorizontalScrollbar() const noexcept {
     return content_width_ > bounds_.width + 0.5f;
+}
+
+float ScrollViewer::ScrollbarThickness() const noexcept {
+    return (hovered_ || drag_axis_ != DragAxis::None)
+        ? kScrollbarHoverWidth
+        : kScrollbarWidth;
 }
 
 void ScrollViewer::SetVerticalOffset(float offset) noexcept {
@@ -128,14 +136,15 @@ Rect ScrollViewer::VerticalTrackRect() const noexcept {
     if (!HasVerticalScrollbar()) {
         return Rect{};
     }
-    const float right = bounds_.Right() - kScrollbarMargin - kScrollbarWidth;
+    const float thickness = ScrollbarThickness();
+    const float right_edge = bounds_.Right() - kScrollbarMargin;
     const float top = bounds_.y + kScrollbarMargin;
     const float bottom = bounds_.Bottom() - kScrollbarMargin -
-        (HasHorizontalScrollbar() ? kScrollbarWidth + kScrollbarMargin : 0.0f);
+        (HasHorizontalScrollbar() ? thickness + kScrollbarMargin : 0.0f);
     if (bottom <= top) {
         return Rect{};
     }
-    return Rect{right, top, kScrollbarWidth, bottom - top};
+    return Rect{right_edge - thickness, top, thickness, bottom - top};
 }
 
 Rect ScrollViewer::VerticalThumbRect() const noexcept {
@@ -153,7 +162,7 @@ Rect ScrollViewer::VerticalThumbRect() const noexcept {
     return Rect{
         track.x,
         track.y + progress * range,
-        kScrollbarWidth,
+        track.width,
         thumb_height};
 }
 
@@ -161,14 +170,15 @@ Rect ScrollViewer::HorizontalTrackRect() const noexcept {
     if (!HasHorizontalScrollbar()) {
         return Rect{};
     }
+    const float thickness = ScrollbarThickness();
     const float left = bounds_.x + kScrollbarMargin;
     const float right = bounds_.Right() - kScrollbarMargin -
-        (HasVerticalScrollbar() ? kScrollbarWidth + kScrollbarMargin : 0.0f);
-    const float top = bounds_.Bottom() - kScrollbarMargin - kScrollbarWidth;
+        (HasVerticalScrollbar() ? thickness + kScrollbarMargin : 0.0f);
+    const float bottom_edge = bounds_.Bottom() - kScrollbarMargin;
     if (right <= left) {
         return Rect{};
     }
-    return Rect{left, top, right - left, kScrollbarWidth};
+    return Rect{left, bottom_edge - thickness, right - left, thickness};
 }
 
 Rect ScrollViewer::HorizontalThumbRect() const noexcept {
@@ -187,7 +197,7 @@ Rect ScrollViewer::HorizontalThumbRect() const noexcept {
         track.x + progress * range,
         track.y,
         thumb_width,
-        kScrollbarWidth};
+        track.height};
 }
 
 void ScrollViewer::PaintContent(ID2D1RenderTarget* target) noexcept {
@@ -198,7 +208,7 @@ void ScrollViewer::PaintContent(ID2D1RenderTarget* target) noexcept {
     PopContentClip(target);
 
     const Theme& colors = Colors();
-    const float radius = kScrollbarWidth / 2.0f;
+    const float radius = ScrollbarThickness() / 2.0f;
 
     const Rect vertical_track = VerticalTrackRect();
     const Rect vertical_thumb = VerticalThumbRect();
@@ -265,12 +275,13 @@ void ScrollViewer::PaintContent(ID2D1RenderTarget* target) noexcept {
 }
 
 Element* ScrollViewer::HitTestOverride(Point point) noexcept {
-    const Rect vertical = VerticalThumbRect();
-    if (!vertical.IsEmpty() && ContainsPoint(vertical, point)) {
+    const float band = kScrollbarHitBand;
+    if (HasVerticalScrollbar() &&
+        point.x >= bounds_.Right() - kScrollbarMargin - band) {
         return this;
     }
-    const Rect horizontal = HorizontalThumbRect();
-    if (!horizontal.IsEmpty() && ContainsPoint(horizontal, point)) {
+    if (HasHorizontalScrollbar() &&
+        point.y >= bounds_.Bottom() - kScrollbarMargin - band) {
         return this;
     }
     if (child_) {
@@ -332,16 +343,55 @@ bool ScrollViewer::OnWheel(int delta) noexcept {
     return true;
 }
 
+bool ScrollViewer::OnKeyDown(unsigned int key) noexcept {
+    if (!IsEnabled() || !HasVerticalScrollbar()) {
+        return false;
+    }
+    const float page = std::max(24.0f, bounds_.height * 0.9f);
+    switch (key) {
+        case VK_PRIOR:
+            SetVerticalOffset(offset_y_ - page);
+            return true;
+        case VK_NEXT:
+            SetVerticalOffset(offset_y_ + page);
+            return true;
+        case VK_HOME:
+            SetVerticalOffset(0.0f);
+            return true;
+        case VK_END:
+            SetVerticalOffset(MaxVerticalOffset());
+            return true;
+        default:
+            return false;
+    }
+}
+
+void ScrollViewer::OnPointerEnter() noexcept {
+    if (!hovered_) {
+        hovered_ = true;
+        Invalidate();
+    }
+}
+
+void ScrollViewer::OnPointerLeave() noexcept {
+    if (drag_axis_ == DragAxis::None && hovered_) {
+        hovered_ = false;
+        Invalidate();
+    }
+}
+
 void ScrollViewer::OnPointerDown(Point point) noexcept {
     if (!IsEnabled()) {
         return;
     }
     drag_axis_ = DragAxis::None;
+    hovered_ = true;
     const Rect vertical = VerticalThumbRect();
     if (!vertical.IsEmpty() && ContainsPoint(vertical, point)) {
         drag_axis_ = DragAxis::Vertical;
         drag_start_y_ = point.y;
         drag_start_offset_y_ = offset_y_;
+        Invalidate();
         return;
     }
     const Rect horizontal = HorizontalThumbRect();
@@ -350,6 +400,7 @@ void ScrollViewer::OnPointerDown(Point point) noexcept {
         drag_start_x_ = point.x;
         drag_start_offset_x_ = offset_x_;
     }
+    Invalidate();
 }
 
 void ScrollViewer::OnPointerMove(Point point) noexcept {
@@ -376,6 +427,7 @@ void ScrollViewer::OnPointerMove(Point point) noexcept {
 
 void ScrollViewer::OnPointerUp(Point) noexcept {
     drag_axis_ = DragAxis::None;
+    Invalidate();
 }
 
 void ScrollViewer::BringChildIntoView(const Element* descendant) noexcept {
