@@ -41,6 +41,16 @@ protected:
     void OnPointerMove(Point point) noexcept override;
     void OnPointerUp(Point point) noexcept override;
     void BringChildIntoView(const Element* descendant) noexcept override;
+    bool HasAccessibilityScroll() const noexcept override;
+    bool AccessibilityHorizontallyScrollable() const noexcept override;
+    bool AccessibilityVerticallyScrollable() const noexcept override;
+    double AccessibilityHorizontalScrollPercent() const noexcept override;
+    double AccessibilityVerticalScrollPercent() const noexcept override;
+    double AccessibilityHorizontalViewSize() const noexcept override;
+    double AccessibilityVerticalViewSize() const noexcept override;
+    bool SetAccessibilityScrollPercent(double horizontal, double vertical) noexcept override;
+    bool ScrollAccessibilityHorizontal(double percent_delta) noexcept override;
+    bool ScrollAccessibilityVertical(double percent_delta) noexcept override;
 
 private:
     enum class DragAxis {

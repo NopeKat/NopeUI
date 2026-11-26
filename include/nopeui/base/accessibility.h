@@ -8,7 +8,10 @@ enum class AccessibleRole {
     Text,
     Button,
     CheckBox,
+    RadioButton,
     Edit,
+    Slider,
+    ProgressBar,
     Group,
     Window,
 };

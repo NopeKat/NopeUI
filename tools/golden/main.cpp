@@ -7,10 +7,14 @@
 #include "nopeui/controls/button.h"
 #include "nopeui/controls/check_box.h"
 #include "nopeui/controls/label.h"
+#include "nopeui/controls/progress_bar.h"
+#include "nopeui/controls/radio_button.h"
 #include "nopeui/controls/scroll_viewer.h"
+#include "nopeui/controls/slider.h"
 #include "nopeui/controls/stack_panel.h"
 #include "nopeui/controls/text_box.h"
 #include "nopeui/controls/toggle_button.h"
+#include "nopeui/controls/toggle_switch.h"
 #include "nopeui/graphics/hardware.h"
 #include "nopeui/graphics/offscreen.h"
 #include "nopeui/graphics/scene.h"
@@ -92,6 +96,29 @@ nopeui::Ref<nopeui::Element> BuildControlsScene(
     options->Add(off);
     options->Add(on);
     panel->Add(options);
+
+    auto radios = nopeui::StackPanel::Create(16.0f);
+    radios->SetOrientation(nopeui::Orientation::Horizontal);
+    auto radio_a = nopeui::RadioButton::Create(L"Radio A");
+    auto radio_b = nopeui::RadioButton::Create(L"Radio B");
+    radio_a->SetChecked(true);
+    radios->Add(radio_a);
+    radios->Add(radio_b);
+    panel->Add(radios);
+
+    auto switch_off = nopeui::ToggleSwitch::Create(L"Switch off");
+    panel->Add(switch_off);
+    auto switch_on = nopeui::ToggleSwitch::Create(L"Switch on");
+    switch_on->SetChecked(true);
+    panel->Add(switch_on);
+
+    auto progress = nopeui::ProgressBar::Create(0.45f);
+    progress->SetAccessibilityName(L"Progress");
+    panel->Add(progress);
+
+    auto slider = nopeui::Slider::Create(40.0, 0.0, 100.0);
+    slider->SetAccessibilityName(L"Volume");
+    panel->Add(slider);
 
     panel->Add(nopeui::TextBox::Create(L"Editable single line"));
 

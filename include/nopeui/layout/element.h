@@ -76,11 +76,14 @@ public:
 
     // Accessibility metadata and automation actions. Controls override the
     // parts they support; the window maps them to UI Automation properties.
+    void SetAccessibilityName(std::wstring name) {
+        accessibility_name_ = std::move(name);
+    }
     virtual AccessibleRole AccessibilityRole() const noexcept {
         return AccessibleRole::Pane;
     }
     virtual std::wstring AccessibilityName() const {
-        return {};
+        return accessibility_name_;
     }
     virtual std::wstring AccessibilityValue() const {
         return {};
@@ -102,6 +105,87 @@ public:
     }
     virtual void InvokeAccessibility() noexcept {}
     virtual void ToggleAccessibility() noexcept {}
+
+    // Radio buttons in one parent form a group; a newly selected button asks
+    // its siblings to clear their own state.
+    virtual void DeselectRadioGroup(const Element*) noexcept {}
+
+    // Text pattern support. Offsets are UTF-16 code units in a single-line
+    // document, matching the text box storage.
+    virtual bool HasAccessibilityText() const noexcept {
+        return false;
+    }
+    virtual std::wstring AccessibilityText() const {
+        return {};
+    }
+    virtual int AccessibilitySelectionStart() const noexcept {
+        return 0;
+    }
+    virtual int AccessibilitySelectionEnd() const noexcept {
+        return 0;
+    }
+    virtual bool SetAccessibilitySelection(int, int) {
+        return false;
+    }
+
+    // Range value support for sliders and progress bars.
+    virtual bool HasAccessibilityRange() const noexcept {
+        return false;
+    }
+    virtual double AccessibilityRangeValue() const noexcept {
+        return 0.0;
+    }
+    virtual double AccessibilityRangeMinimum() const noexcept {
+        return 0.0;
+    }
+    virtual double AccessibilityRangeMaximum() const noexcept {
+        return 0.0;
+    }
+    virtual double AccessibilityRangeSmallChange() const noexcept {
+        return 0.0;
+    }
+    virtual double AccessibilityRangeLargeChange() const noexcept {
+        return 0.0;
+    }
+    virtual bool IsAccessibilityRangeReadOnly() const noexcept {
+        return true;
+    }
+    virtual bool SetAccessibilityRangeValue(double) {
+        return false;
+    }
+
+    // Scroll pattern support. Percent and view size follow UIA conventions:
+    // 0 to 100, with -1 for an axis that cannot scroll.
+    virtual bool HasAccessibilityScroll() const noexcept {
+        return false;
+    }
+    virtual bool AccessibilityHorizontallyScrollable() const noexcept {
+        return false;
+    }
+    virtual bool AccessibilityVerticallyScrollable() const noexcept {
+        return false;
+    }
+    virtual double AccessibilityHorizontalScrollPercent() const noexcept {
+        return -1.0;
+    }
+    virtual double AccessibilityVerticalScrollPercent() const noexcept {
+        return -1.0;
+    }
+    virtual double AccessibilityHorizontalViewSize() const noexcept {
+        return 100.0;
+    }
+    virtual double AccessibilityVerticalViewSize() const noexcept {
+        return 100.0;
+    }
+    virtual bool SetAccessibilityScrollPercent(double, double) noexcept {
+        return false;
+    }
+    virtual bool ScrollAccessibilityHorizontal(double) noexcept {
+        return false;
+    }
+    virtual bool ScrollAccessibilityVertical(double) noexcept {
+        return false;
+    }
 
     // Child order for the automation tree.
     virtual void CollectChildren(std::vector<Element*>&) noexcept {}
@@ -180,6 +264,7 @@ private:
     const Theme* theme_ = nullptr;
     std::function<void()> invalidate_;
     std::function<void()> relayout_;
+    std::wstring accessibility_name_;
     bool focused_ = false;
     bool enabled_ = true;
 };

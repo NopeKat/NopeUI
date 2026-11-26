@@ -13,10 +13,14 @@
 #include "nopeui/controls/button.h"
 #include "nopeui/controls/check_box.h"
 #include "nopeui/controls/label.h"
+#include "nopeui/controls/progress_bar.h"
+#include "nopeui/controls/radio_button.h"
 #include "nopeui/controls/scroll_viewer.h"
+#include "nopeui/controls/slider.h"
 #include "nopeui/controls/stack_panel.h"
 #include "nopeui/controls/text_box.h"
 #include "nopeui/controls/toggle_button.h"
+#include "nopeui/controls/toggle_switch.h"
 #include "nopeui/platform/window.h"
 #include "nopeui/theme/theme.h"
 
@@ -104,6 +108,29 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR command_line_ptr, int) {
     options_row->Add(check);
     options_row->Add(toggle);
     panel->Add(options_row);
+
+    auto radio_row = nopeui::StackPanel::Create(16.0f);
+    radio_row->SetOrientation(nopeui::Orientation::Horizontal);
+    auto radio_a = nopeui::RadioButton::Create(L"Radio A");
+    auto radio_b = nopeui::RadioButton::Create(L"Radio B");
+    auto radio_c = nopeui::RadioButton::Create(L"Radio C");
+    radio_a->SetChecked(true);
+    radio_row->Add(radio_a);
+    radio_row->Add(radio_b);
+    radio_row->Add(radio_c);
+    panel->Add(radio_row);
+
+    auto switch_control = nopeui::ToggleSwitch::Create(L"Toggle switch");
+    switch_control->SetChecked(true);
+    panel->Add(switch_control);
+
+    auto progress = nopeui::ProgressBar::Create(0.45f);
+    progress->SetAccessibilityName(L"Progress");
+    panel->Add(progress);
+
+    auto volume = nopeui::Slider::Create(40.0, 0.0, 100.0);
+    volume->SetAccessibilityName(L"Volume");
+    panel->Add(volume);
 
     auto input = nopeui::TextBox::Create(L"Editable single line");
     input->SetPlaceholder(L"Type here and press Enter");

@@ -6,7 +6,7 @@ NopeUI 是一个仅面向 Windows 的开源 C++ 桌面 UI 框架。外观参考 
 
 ## 当前状态
 
-项目处于 P0 初期，`base` 最小内核与 `platform` 窗口层已建立：`Result` 与 `Error`、`Ref`、`Event` 与 `Subscription`、几何类型、UTF-8 与 UTF-16 转换，以及 Win32 窗口、消息循环、DirectComposition 虚拟表面、Direct2D 绘制与 DirectWrite 文字。窗口默认显示浅色背景、顶部强调条与一行示例文字的占位场景；`Window::SetContent` 可挂一棵元素树，覆盖客户区并接管鼠标命中。窗口默认启用按面积自适应的 2–3 块表面异步提交：客户区面积不超过 `2560×1600` 时用 3 块，更大的窗口用 2 块以控制显存。`SetAsyncCommit(false)` 可回退同步，`LastPresentedFrame()` 与 `AsyncCommitStats()` 可读取提交延迟、队列和丢帧。缩放时虚拟表面按小窗口约三分之一、较大窗口固定 256 像素的余量分配，停止缩放 300 ms 后回收到实际客户区尺寸，避免拖动过程中反复重建表面。帧提交默认按显示器刷新间隔节流，可用 `Window::Present()` 立即提交、`Window::SetCommitThrottle(false)` 关闭节流。`Window::LastFrameMilliseconds()`、`Window::FrameCount()`、`Window::CommitCount()` 与 `Window::RenderFrame()` 可读取和驱动帧，`nopeui_frame_benchmark` 提供 300 帧基准，`nopeui_resize_benchmark` 提供 resize 基准。软件回退已可用：远程会话自动切到 WIC 软件光栅，`Window::SetSoftwareRender(true)` 可手动切换，软件图与硬件图在黄金图里逐像素一致。黄金图基线与工具：`nopeui_golden` 出图、`nopeui_image_diff` 比对、`eng/golden.ps1` 管理。`layout` 提供 Measure/Arrange/HitTest/Paint 的最小元素树，`controls` 已落地 `Border`、`Label`、`Button`、`StackPanel`、`ScrollViewer`；`nopeui_window_smoke` 的默认界面就是这些控件拼出的卡片。`Theme` 定义浅色与深色两套调色板，窗口默认跟随系统应用深浅色偏好，可用 `SetTheme` 覆盖；元素沿父链继承主题，控件从主题取色，占位场景的调色板也跟随主题。8 个测试在 `x64-debug` 与 `x64-release` 下全部通过。
+项目处于 P0 初期，`base` 最小内核与 `platform` 窗口层已建立：`Result` 与 `Error`、`Ref`、`Event` 与 `Subscription`、几何类型、UTF-8 与 UTF-16 转换，以及 Win32 窗口、消息循环、DirectComposition 虚拟表面、Direct2D 绘制与 DirectWrite 文字。窗口默认显示浅色背景、顶部强调条与一行示例文字的占位场景；`Window::SetContent` 可挂一棵元素树，覆盖客户区并接管鼠标命中。窗口默认启用按面积自适应的 2–3 块表面异步提交：客户区面积不超过 `2560×1600` 时用 3 块，更大的窗口用 2 块以控制显存。`SetAsyncCommit(false)` 可回退同步，`LastPresentedFrame()` 与 `AsyncCommitStats()` 可读取提交延迟、队列和丢帧。缩放时虚拟表面按小窗口约三分之一、较大窗口固定 256 像素的余量分配，停止缩放 300 ms 后回收到实际客户区尺寸，避免拖动过程中反复重建表面。帧提交默认按显示器刷新间隔节流，可用 `Window::Present()` 立即提交、`Window::SetCommitThrottle(false)` 关闭节流。`Window::LastFrameMilliseconds()`、`Window::FrameCount()`、`Window::CommitCount()` 与 `Window::RenderFrame()` 可读取和驱动帧，`nopeui_frame_benchmark` 提供 300 帧基准，`nopeui_resize_benchmark` 提供 resize 基准。软件回退已可用：远程会话自动切到 WIC 软件光栅，`Window::SetSoftwareRender(true)` 可手动切换，软件图与硬件图在黄金图里逐像素一致。黄金图基线与工具：`nopeui_golden` 出图、`nopeui_image_diff` 比对、`eng/golden.ps1` 管理。`layout` 提供 Measure/Arrange/HitTest/Paint 的最小元素树，`controls` 已落地 `Border`、`Label`、`Button`、`StackPanel`、`ScrollViewer`、`CheckBox`、`RadioButton`、`ToggleButton`、`ToggleSwitch`、`TextBox`、`ProgressBar` 与 `Slider`；`nopeui_window_smoke` 的默认界面就是这些控件拼出的卡片。`Theme` 定义浅色与深色两套调色板，窗口默认跟随系统应用深浅色偏好，可用 `SetTheme` 覆盖；元素沿父链继承主题，控件从主题取色，占位场景的调色板也跟随主题。8 个测试在 `x64-debug` 与 `x64-release` 下全部通过。
 
 ## 构建
 
@@ -70,7 +70,7 @@ NopeUI 是一个仅面向 Windows 的开源 C++ 桌面 UI 框架。外观参考 
 
 ## 布局与控件
 
-元素树只做四件事：`Measure` 用可用尺寸算期望尺寸，`Arrange` 落最终矩形，`HitTest` 找最上层命中的元素，`Paint` 由窗口在硬件与软件两条路径里统一调用。`StackPanel` 支持纵向与横向排列，`Border` 负责背景、1 像素描边、内边距与可选圆角，`ScrollViewer` 提供单子元素的横向与纵向滚动。`Label`、`Button`、`CheckBox`、`ToggleButton`、`TextBox` 共用 `graphics::TextRun` 缓存的文字布局；`Button` 带圆角、悬停与按下底色、焦点矩形和点击回调，`CheckBox` 与 `ToggleButton` 保留选中态，鼠标点击或 Enter/Space 都会切换；`SetEnabled(false)` 后按 `ControlState::Disabled` 取色，不参与命中、焦点和滚轮。
+元素树只做四件事：`Measure` 用可用尺寸算期望尺寸，`Arrange` 落最终矩形，`HitTest` 找最上层命中的元素，`Paint` 由窗口在硬件与软件两条路径里统一调用。`StackPanel` 支持纵向与横向排列，`Border` 负责背景、1 像素描边、内边距与可选圆角，`ScrollViewer` 提供单子元素的横向与纵向滚动。`Label`、`Button`、`CheckBox`、`RadioButton`、`ToggleButton`、`ToggleSwitch`、`TextBox`、`ProgressBar` 与 `Slider` 共用 `graphics::TextRun` 缓存的文字布局；`Button` 带圆角、悬停与按下底色、焦点矩形和点击回调，`CheckBox` 与 `ToggleButton` 保留选中态，鼠标点击或 Enter/Space 都会切换；同一父容器下的 `RadioButton` 自动互斥，`ToggleSwitch` 用 Space 切换；`ProgressBar` 支持确定值与不确定值，`Slider` 支持鼠标拖动、方向键、Home/End 与 PageUp/PageDown。`SetEnabled(false)` 后按 `ControlState::Disabled` 取色，不参与命中、焦点和滚轮。
 
 `TextStyle` 控制字号、粗细、字族、对齐、行高倍数、换行与省略。`Label` 换行时按可用宽度重建文本布局并在高度上增长，省略时用 DirectWrite 的尾部裁剪，居中或右对齐时占满可用宽度；布局变化通过 `InvalidateLayout` 回到窗口重新测量与排列，单纯改颜色只触发重绘。`TextBox` 是单行编辑框，支持字符输入、光标、拖选与 Shift 选区、Ctrl+A/C/X/V、退格/删除、方向键、Home/End 和回车提交，长文本会跟随光标横向滚动；IME 组合过程作为预览显示并加下划线，提交结果后才写入文本，`SetPlaceholder` 提供空内容提示。
 
@@ -78,7 +78,7 @@ NopeUI 是一个仅面向 Windows 的开源 C++ 桌面 UI 框架。外观参考 
 
 焦点按视觉顺序排序：`IsFocusable()` 标记可聚焦元素，`CollectFocusable()` 递归收集，窗口维护 Tab 与 Shift+Tab，失去窗口焦点时清空。禁用元素及其子树不进入焦点序列。`Button` 的 `SetOnClick` 保存单个回调，`SubscribeClick` 返回可管理的订阅。
 
-无障碍走 UI Automation 的服务端 Provider：窗口响应 `WM_GETOBJECT`，根节点是 Window，控件按元素树暴露 Name、ControlType、BoundingRectangle、IsEnabled 和焦点状态。`Button`、`ToggleButton`、`CheckBox` 和 `TextBox` 分别提供 Invoke、Toggle 和 Value 模式，焦点变化时发出 UIA 焦点事件。
+无障碍走 UI Automation 的服务端 Provider：窗口响应 `WM_GETOBJECT`，根节点是 Window，控件按元素树暴露 Name、ControlType、BoundingRectangle、IsEnabled 和焦点状态。`Button`、`ToggleButton`、`CheckBox`、`RadioButton` 提供 Invoke 或 Toggle 模式，`TextBox` 提供 Value 与 Text 模式，`Slider` 和 `ProgressBar` 提供 RangeValue，`ScrollViewer` 提供 Scroll 模式，焦点变化时发出 UIA 焦点事件。
 
 颜色不再写死在控件里：`Theme` 有浅色与深色两套值，`Window::SetTheme` 把主题指针交给内容树，子元素沿父链找到它；`Property<T>` 是带变更检测的最小属性槽，`Set` 返回是否真的变化，控件据此调用 `Invalidate` 触发重绘。窗口默认读系统应用深浅色偏好，`nopeui_window_smoke --light` 与 `--dark` 可强制指定。
 

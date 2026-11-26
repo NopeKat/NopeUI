@@ -14,6 +14,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <cwctype>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -33,8 +34,14 @@ PROPERTYID ControlTypeForRole(AccessibleRole role) noexcept {
             return UIA_ButtonControlTypeId;
         case AccessibleRole::CheckBox:
             return UIA_CheckBoxControlTypeId;
+        case AccessibleRole::RadioButton:
+            return UIA_RadioButtonControlTypeId;
         case AccessibleRole::Edit:
             return UIA_EditControlTypeId;
+        case AccessibleRole::Slider:
+            return UIA_SliderControlTypeId;
+        case AccessibleRole::ProgressBar:
+            return UIA_ProgressBarControlTypeId;
         case AccessibleRole::Group:
             return UIA_GroupControlTypeId;
         case AccessibleRole::Window:
@@ -57,6 +64,12 @@ void VariantInt(VARIANT* value, int number) {
     VariantInit(value);
     value->vt = VT_I4;
     value->lVal = number;
+}
+
+void VariantDouble(VARIANT* value, double number) {
+    VariantInit(value);
+    value->vt = VT_R8;
+    value->dblVal = number;
 }
 
 void VariantBool(VARIANT* value, bool flag) {
@@ -152,6 +165,453 @@ IRawElementProviderFragment* MakeElementProvider(
     Window* window,
     Element* element,
     IRawElementProviderFragmentRoot* root);
+
+bool IsWordCharacter(wchar_t character) noexcept {
+    return character != L' ' && character != L'\t' &&
+           character != L'\n' && character != L'\r';
+}
+
+int NextWordStart(const std::wstring& text, int position) noexcept {
+    const int length = static_cast<int>(text.size());
+    int index = std::clamp(position, 0, length);
+    if (index < length && IsWordCharacter(text[static_cast<std::size_t>(index)])) {
+        while (index < length &&
+               IsWordCharacter(text[static_cast<std::size_t>(index)])) {
+            ++index;
+        }
+    }
+    while (index < length &&
+           !IsWordCharacter(text[static_cast<std::size_t>(index)])) {
+        ++index;
+    }
+    return index;
+}
+
+int PreviousWordStart(const std::wstring& text, int position) noexcept {
+    int index = std::clamp(position, 0, static_cast<int>(text.size()));
+    while (index > 0 && !IsWordCharacter(text[static_cast<std::size_t>(index - 1)])) {
+        --index;
+    }
+    while (index > 0 && IsWordCharacter(text[static_cast<std::size_t>(index - 1)])) {
+        --index;
+    }
+    return index;
+}
+
+int MoveTextOffset(
+    const std::wstring& text,
+    int position,
+    TextUnit unit,
+    int count) noexcept {
+    const int length = static_cast<int>(text.size());
+    int index = std::clamp(position, 0, length);
+    if (unit == TextUnit_Character) {
+        index = std::clamp(index + count, 0, length);
+        return index - position;
+    }
+    if (unit != TextUnit_Word) {
+        return 0;
+    }
+    int moved = 0;
+    if (count > 0) {
+        for (int step = 0; step < count; ++step) {
+            const int next = NextWordStart(text, index);
+            if (next == index) {
+                break;
+            }
+            index = next;
+            ++moved;
+        }
+    } else if (count < 0) {
+        for (int step = 0; step < -count; ++step) {
+            const int previous = PreviousWordStart(text, index);
+            if (previous == index) {
+                break;
+            }
+            index = previous;
+            --moved;
+        }
+    }
+    return moved;
+}
+
+class TextRangeProvider final : public ITextRangeProvider {
+public:
+    TextRangeProvider(Window* window, Element* element, int start, int end) noexcept
+        : window_(window), element_(element), start_(start), end_(end) {
+        Clamp();
+    }
+
+    HRESULT STDMETHODCALLTYPE QueryInterface(REFIID iid, void** object) override {
+        if (object == nullptr) {
+            return E_INVALIDARG;
+        }
+        *object = nullptr;
+        if (iid == __uuidof(ITextRangeProvider) || iid == __uuidof(IUnknown)) {
+            *object = this;
+            AddRef();
+            return S_OK;
+        }
+        return E_NOINTERFACE;
+    }
+
+    ULONG STDMETHODCALLTYPE AddRef() override {
+        return static_cast<ULONG>(InterlockedIncrement(&references_));
+    }
+
+    ULONG STDMETHODCALLTYPE Release() override {
+        const LONG remaining = InterlockedDecrement(&references_);
+        if (remaining == 0) {
+            delete this;
+        }
+        return static_cast<ULONG>(remaining);
+    }
+
+    HRESULT STDMETHODCALLTYPE Clone(ITextRangeProvider** result) override {
+        if (result == nullptr) {
+            return E_INVALIDARG;
+        }
+        *result = new TextRangeProvider(window_, element_, start_, end_);
+        return S_OK;
+    }
+
+    HRESULT STDMETHODCALLTYPE Compare(ITextRangeProvider* range, BOOL* equal) override {
+        if (range == nullptr || equal == nullptr) {
+            return E_INVALIDARG;
+        }
+        const TextRangeProvider* other = dynamic_cast<TextRangeProvider*>(range);
+        if (other == nullptr) {
+            return E_INVALIDARG;
+        }
+        *equal = (other->element_ == element_ &&
+                  other->start_ == start_ &&
+                  other->end_ == end_)
+            ? TRUE
+            : FALSE;
+        return S_OK;
+    }
+
+    HRESULT STDMETHODCALLTYPE CompareEndpoints(
+        TextPatternRangeEndpoint endpoint,
+        ITextRangeProvider* target_range,
+        TextPatternRangeEndpoint target_endpoint,
+        int* result) override {
+        if (target_range == nullptr || result == nullptr) {
+            return E_INVALIDARG;
+        }
+        const TextRangeProvider* other = dynamic_cast<TextRangeProvider*>(target_range);
+        if (other == nullptr) {
+            return E_INVALIDARG;
+        }
+        const int value = endpoint == TextPatternRangeEndpoint_Start ? start_ : end_;
+        const int target = target_endpoint == TextPatternRangeEndpoint_Start
+            ? other->start_
+            : other->end_;
+        *result = value < target ? -1 : (value > target ? 1 : 0);
+        return S_OK;
+    }
+
+    HRESULT STDMETHODCALLTYPE ExpandToEnclosingUnit(TextUnit unit) override {
+        const std::wstring text = CurrentText();
+        const int length = static_cast<int>(text.size());
+        switch (unit) {
+            case TextUnit_Character:
+                if (start_ == end_ && start_ < length) {
+                    end_ = start_ + 1;
+                }
+                break;
+            case TextUnit_Word:
+                if (start_ == end_ && start_ < length &&
+                    IsWordCharacter(text[static_cast<std::size_t>(start_)])) {
+                    while (start_ > 0 &&
+                           IsWordCharacter(text[static_cast<std::size_t>(start_ - 1)])) {
+                        --start_;
+                    }
+                    while (end_ < length &&
+                           IsWordCharacter(text[static_cast<std::size_t>(end_)])) {
+                        ++end_;
+                    }
+                }
+                break;
+            case TextUnit_Line:
+            case TextUnit_Paragraph:
+            case TextUnit_Page:
+            case TextUnit_Document:
+            case TextUnit_Format:
+                start_ = 0;
+                end_ = length;
+                break;
+            default:
+                break;
+        }
+        return S_OK;
+    }
+
+    HRESULT STDMETHODCALLTYPE FindAttribute(
+        TEXTATTRIBUTEID,
+        VARIANT,
+        BOOL,
+        ITextRangeProvider** result) override {
+        if (result != nullptr) {
+            *result = nullptr;
+        }
+        return S_FALSE;
+    }
+
+    HRESULT STDMETHODCALLTYPE FindText(
+        BSTR text,
+        BOOL backward,
+        BOOL ignore_case,
+        ITextRangeProvider** result) override {
+        if (result == nullptr) {
+            return E_INVALIDARG;
+        }
+        *result = nullptr;
+        if (text == nullptr || text[0] == L'\0') {
+            return S_FALSE;
+        }
+        std::wstring needle(text, SysStringLen(text));
+        std::wstring haystack = CurrentText();
+        if (ignore_case != FALSE) {
+            needle = ToLower(needle);
+            haystack = ToLower(haystack);
+        }
+        int found = -1;
+        const int needle_length = static_cast<int>(needle.size());
+        if (backward == FALSE) {
+            for (int index = start_; index + needle_length <= end_; ++index) {
+                if (haystack.compare(
+                        static_cast<std::size_t>(index),
+                        static_cast<std::size_t>(needle_length),
+                        needle) == 0) {
+                    found = index;
+                    break;
+                }
+            }
+        } else {
+            for (int index = end_ - needle_length; index >= start_; --index) {
+                if (haystack.compare(
+                        static_cast<std::size_t>(index),
+                        static_cast<std::size_t>(needle_length),
+                        needle) == 0) {
+                    found = index;
+                    break;
+                }
+            }
+        }
+        if (found < 0) {
+            return S_FALSE;
+        }
+        *result = new TextRangeProvider(
+            window_,
+            element_,
+            found,
+            found + needle_length);
+        return S_OK;
+    }
+
+    HRESULT STDMETHODCALLTYPE GetAttributeValue(
+        TEXTATTRIBUTEID,
+        VARIANT* value) override {
+        if (value == nullptr) {
+            return E_INVALIDARG;
+        }
+        VariantInit(value);
+        return S_OK;
+    }
+
+    HRESULT STDMETHODCALLTYPE GetBoundingRectangles(SAFEARRAY** rectangles) override {
+        if (rectangles == nullptr) {
+            return E_INVALIDARG;
+        }
+        *rectangles = SafeArrayCreateVector(VT_R8, 0, 4);
+        if (*rectangles == nullptr) {
+            return E_OUTOFMEMORY;
+        }
+        UiaRect bounds{};
+        if (!ElementScreenRect(window_, element_, &bounds)) {
+            return S_OK;
+        }
+        double values[4] = {bounds.left, bounds.top, bounds.width, bounds.height};
+        for (LONG index = 0; index < 4; ++index) {
+            SafeArrayPutElement(*rectangles, &index, &values[index]);
+        }
+        return S_OK;
+    }
+
+    HRESULT STDMETHODCALLTYPE GetEnclosingElement(
+        IRawElementProviderSimple** result) override {
+        if (result == nullptr) {
+            return E_INVALIDARG;
+        }
+        *result = nullptr;
+        IRawElementProviderFragment* fragment = MakeElementProvider(
+            window_,
+            element_,
+            nullptr);
+        if (fragment == nullptr) {
+            return S_OK;
+        }
+        fragment->QueryInterface(
+            __uuidof(IRawElementProviderSimple),
+            reinterpret_cast<void**>(result));
+        fragment->Release();
+        return S_OK;
+    }
+
+    HRESULT STDMETHODCALLTYPE GetText(int max_length, BSTR* result) override {
+        if (result == nullptr) {
+            return E_INVALIDARG;
+        }
+        std::wstring text = CurrentText();
+        const int length = end_ - start_;
+        int count = length;
+        if (max_length >= 0 && max_length < count) {
+            count = max_length;
+        }
+        const std::wstring slice = text.substr(
+            static_cast<std::size_t>(start_),
+            static_cast<std::size_t>(count));
+        *result = SysAllocStringLen(
+            slice.c_str(),
+            static_cast<UINT>(slice.size()));
+        return *result != nullptr || slice.empty() ? S_OK : E_OUTOFMEMORY;
+    }
+
+    HRESULT STDMETHODCALLTYPE Move(TextUnit unit, int count, int* moved) override {
+        if (moved == nullptr) {
+            return E_INVALIDARG;
+        }
+        const std::wstring text = CurrentText();
+        const int delta = MoveTextOffset(text, start_, unit, count);
+        if (delta != 0) {
+            start_ += delta;
+            end_ += delta;
+            Clamp();
+        }
+        *moved = delta;
+        return S_OK;
+    }
+
+    HRESULT STDMETHODCALLTYPE MoveEndpointByUnit(
+        TextPatternRangeEndpoint endpoint,
+        TextUnit unit,
+        int count,
+        int* moved) override {
+        if (moved == nullptr) {
+            return E_INVALIDARG;
+        }
+        const std::wstring text = CurrentText();
+        int* position = endpoint == TextPatternRangeEndpoint_Start ? &start_ : &end_;
+        const int delta = MoveTextOffset(text, *position, unit, count);
+        *position += delta;
+        if (start_ > end_) {
+            start_ = end_;
+        }
+        Clamp();
+        *moved = delta;
+        return S_OK;
+    }
+
+    HRESULT STDMETHODCALLTYPE MoveEndpointByRange(
+        TextPatternRangeEndpoint endpoint,
+        ITextRangeProvider* target_range,
+        TextPatternRangeEndpoint target_endpoint) override {
+        if (target_range == nullptr) {
+            return E_INVALIDARG;
+        }
+        const TextRangeProvider* other = dynamic_cast<TextRangeProvider*>(target_range);
+        if (other == nullptr) {
+            return E_INVALIDARG;
+        }
+        if (endpoint == TextPatternRangeEndpoint_Start) {
+            start_ = target_endpoint == TextPatternRangeEndpoint_Start
+                ? other->start_
+                : other->end_;
+            if (start_ > end_) {
+                start_ = end_;
+            }
+        } else {
+            end_ = target_endpoint == TextPatternRangeEndpoint_Start
+                ? other->start_
+                : other->end_;
+            if (end_ < start_) {
+                end_ = start_;
+            }
+        }
+        Clamp();
+        return S_OK;
+    }
+
+    HRESULT STDMETHODCALLTYPE Select() override {
+        if (element_ == nullptr || !element_->IsEnabled()) {
+            return UIA_E_ELEMENTNOTENABLED;
+        }
+        return element_->SetAccessibilitySelection(start_, end_)
+            ? S_OK
+            : UIA_E_NOTSUPPORTED;
+    }
+
+    HRESULT STDMETHODCALLTYPE AddToSelection() override {
+        return UIA_E_NOTSUPPORTED;
+    }
+
+    HRESULT STDMETHODCALLTYPE RemoveFromSelection() override {
+        return UIA_E_NOTSUPPORTED;
+    }
+
+    HRESULT STDMETHODCALLTYPE ScrollIntoView(BOOL) override {
+        if (element_ != nullptr && element_->Parent() != nullptr) {
+            element_->Parent()->BringChildIntoView(element_);
+        }
+        return S_OK;
+    }
+
+    HRESULT STDMETHODCALLTYPE GetChildren(SAFEARRAY** children) override {
+        if (children == nullptr) {
+            return E_INVALIDARG;
+        }
+        *children = nullptr;
+        return S_OK;
+    }
+
+    int Start() const noexcept {
+        return start_;
+    }
+
+    int End() const noexcept {
+        return end_;
+    }
+
+private:
+    void Clamp() noexcept {
+        const int length = element_ != nullptr
+            ? static_cast<int>(element_->AccessibilityText().size())
+            : 0;
+        start_ = std::clamp(start_, 0, length);
+        end_ = std::clamp(end_, 0, length);
+        if (start_ > end_) {
+            start_ = end_;
+        }
+    }
+
+    std::wstring CurrentText() const {
+        return element_ != nullptr ? element_->AccessibilityText() : std::wstring{};
+    }
+
+    static std::wstring ToLower(std::wstring text) {
+        for (wchar_t& character : text) {
+            character = static_cast<wchar_t>(towlower(character));
+        }
+        return text;
+    }
+
+    LONG references_ = 1;
+    Window* window_ = nullptr;
+    Element* element_ = nullptr;
+    int start_ = 0;
+    int end_ = 0;
+};
 
 class WindowProvider final : public IRawElementProviderSimple,
                              public IRawElementProviderFragment,
@@ -400,7 +860,10 @@ class ElementProvider final : public IRawElementProviderSimple,
                               public IRawElementProviderFragment,
                               public IInvokeProvider,
                               public IToggleProvider,
-                              public IValueProvider {
+                              public IValueProvider,
+                              public IRangeValueProvider,
+                              public IScrollProvider,
+                              public ITextProvider {
 public:
     ElementProvider(
         Window* window,
@@ -430,6 +893,15 @@ public:
         } else if (iid == __uuidof(IValueProvider) &&
                    element_ != nullptr && element_->HasAccessibilityValue()) {
             *object = static_cast<IValueProvider*>(this);
+        } else if (iid == __uuidof(IRangeValueProvider) &&
+                   element_ != nullptr && element_->HasAccessibilityRange()) {
+            *object = static_cast<IRangeValueProvider*>(this);
+        } else if (iid == __uuidof(IScrollProvider) &&
+                   element_ != nullptr && element_->HasAccessibilityScroll()) {
+            *object = static_cast<IScrollProvider*>(this);
+        } else if (iid == __uuidof(ITextProvider) &&
+                   element_ != nullptr && element_->HasAccessibilityText()) {
+            *object = static_cast<ITextProvider*>(this);
         } else if (iid == __uuidof(IUnknown)) {
             *object = static_cast<IRawElementProviderSimple*>(this);
         }
@@ -477,6 +949,12 @@ public:
             *provider = static_cast<IUnknown*>(static_cast<IToggleProvider*>(this));
         } else if (pattern == UIA_ValuePatternId && element_->HasAccessibilityValue()) {
             *provider = static_cast<IUnknown*>(static_cast<IValueProvider*>(this));
+        } else if (pattern == UIA_RangeValuePatternId && element_->HasAccessibilityRange()) {
+            *provider = static_cast<IUnknown*>(static_cast<IRangeValueProvider*>(this));
+        } else if (pattern == UIA_ScrollPatternId && element_->HasAccessibilityScroll()) {
+            *provider = static_cast<IUnknown*>(static_cast<IScrollProvider*>(this));
+        } else if (pattern == UIA_TextPatternId && element_->HasAccessibilityText()) {
+            *provider = static_cast<IUnknown*>(static_cast<ITextProvider*>(this));
         }
         if (*provider != nullptr) {
             (*provider)->AddRef();
@@ -521,6 +999,75 @@ public:
                 break;
             case UIA_IsValuePatternAvailablePropertyId:
                 VariantBool(value, element_->HasAccessibilityValue());
+                break;
+            case UIA_IsRangeValuePatternAvailablePropertyId:
+                VariantBool(value, element_->HasAccessibilityRange());
+                break;
+            case UIA_IsScrollPatternAvailablePropertyId:
+                VariantBool(value, element_->HasAccessibilityScroll());
+                break;
+            case UIA_IsTextPatternAvailablePropertyId:
+                VariantBool(value, element_->HasAccessibilityText());
+                break;
+            case UIA_RangeValueValuePropertyId:
+                if (element_->HasAccessibilityRange()) {
+                    VariantDouble(value, element_->AccessibilityRangeValue());
+                }
+                break;
+            case UIA_RangeValueMinimumPropertyId:
+                if (element_->HasAccessibilityRange()) {
+                    VariantDouble(value, element_->AccessibilityRangeMinimum());
+                }
+                break;
+            case UIA_RangeValueMaximumPropertyId:
+                if (element_->HasAccessibilityRange()) {
+                    VariantDouble(value, element_->AccessibilityRangeMaximum());
+                }
+                break;
+            case UIA_RangeValueSmallChangePropertyId:
+                if (element_->HasAccessibilityRange()) {
+                    VariantDouble(value, element_->AccessibilityRangeSmallChange());
+                }
+                break;
+            case UIA_RangeValueLargeChangePropertyId:
+                if (element_->HasAccessibilityRange()) {
+                    VariantDouble(value, element_->AccessibilityRangeLargeChange());
+                }
+                break;
+            case UIA_RangeValueIsReadOnlyPropertyId:
+                if (element_->HasAccessibilityRange()) {
+                    VariantBool(value, element_->IsAccessibilityRangeReadOnly());
+                }
+                break;
+            case UIA_ScrollHorizontalScrollPercentPropertyId:
+                if (element_->HasAccessibilityScroll()) {
+                    VariantDouble(value, element_->AccessibilityHorizontalScrollPercent());
+                }
+                break;
+            case UIA_ScrollVerticalScrollPercentPropertyId:
+                if (element_->HasAccessibilityScroll()) {
+                    VariantDouble(value, element_->AccessibilityVerticalScrollPercent());
+                }
+                break;
+            case UIA_ScrollHorizontalViewSizePropertyId:
+                if (element_->HasAccessibilityScroll()) {
+                    VariantDouble(value, element_->AccessibilityHorizontalViewSize());
+                }
+                break;
+            case UIA_ScrollVerticalViewSizePropertyId:
+                if (element_->HasAccessibilityScroll()) {
+                    VariantDouble(value, element_->AccessibilityVerticalViewSize());
+                }
+                break;
+            case UIA_ScrollHorizontallyScrollablePropertyId:
+                if (element_->HasAccessibilityScroll()) {
+                    VariantBool(value, element_->AccessibilityHorizontallyScrollable());
+                }
+                break;
+            case UIA_ScrollVerticallyScrollablePropertyId:
+                if (element_->HasAccessibilityScroll()) {
+                    VariantBool(value, element_->AccessibilityVerticallyScrollable());
+                }
                 break;
             case UIA_IsEnabledPropertyId:
                 VariantBool(value, element_->IsEnabled());
@@ -745,8 +1292,265 @@ public:
         if (read_only == nullptr) {
             return E_INVALIDARG;
         }
-        *read_only = FALSE;
+        if (element_ != nullptr && element_->HasAccessibilityRange()) {
+            *read_only = element_->IsAccessibilityRangeReadOnly() ? TRUE : FALSE;
+        } else {
+            *read_only = FALSE;
+        }
         return S_OK;
+    }
+
+    HRESULT STDMETHODCALLTYPE SetValue(double value) override {
+        if (element_ == nullptr || !element_->HasAccessibilityRange()) {
+            return UIA_E_NOTSUPPORTED;
+        }
+        if (!element_->IsEnabled()) {
+            return UIA_E_ELEMENTNOTENABLED;
+        }
+        if (element_->IsAccessibilityRangeReadOnly()) {
+            return UIA_E_NOTSUPPORTED;
+        }
+        return element_->SetAccessibilityRangeValue(value)
+            ? S_OK
+            : E_FAIL;
+    }
+
+    HRESULT STDMETHODCALLTYPE get_Value(double* value) override {
+        if (value == nullptr) {
+            return E_INVALIDARG;
+        }
+        *value = element_ != nullptr ? element_->AccessibilityRangeValue() : 0.0;
+        return S_OK;
+    }
+
+    HRESULT STDMETHODCALLTYPE get_Maximum(double* value) override {
+        if (value == nullptr) {
+            return E_INVALIDARG;
+        }
+        *value = element_ != nullptr ? element_->AccessibilityRangeMaximum() : 0.0;
+        return S_OK;
+    }
+
+    HRESULT STDMETHODCALLTYPE get_Minimum(double* value) override {
+        if (value == nullptr) {
+            return E_INVALIDARG;
+        }
+        *value = element_ != nullptr ? element_->AccessibilityRangeMinimum() : 0.0;
+        return S_OK;
+    }
+
+    HRESULT STDMETHODCALLTYPE get_LargeChange(double* value) override {
+        if (value == nullptr) {
+            return E_INVALIDARG;
+        }
+        *value = element_ != nullptr ? element_->AccessibilityRangeLargeChange() : 0.0;
+        return S_OK;
+    }
+
+    HRESULT STDMETHODCALLTYPE get_SmallChange(double* value) override {
+        if (value == nullptr) {
+            return E_INVALIDARG;
+        }
+        *value = element_ != nullptr ? element_->AccessibilityRangeSmallChange() : 0.0;
+        return S_OK;
+    }
+
+    HRESULT STDMETHODCALLTYPE Scroll(
+        ScrollAmount horizontal_amount,
+        ScrollAmount vertical_amount) override {
+        if (element_ == nullptr || !element_->HasAccessibilityScroll()) {
+            return UIA_E_NOTSUPPORTED;
+        }
+        if (!element_->IsEnabled()) {
+            return UIA_E_ELEMENTNOTENABLED;
+        }
+        const double horizontal = ScrollDelta(horizontal_amount);
+        const double vertical = ScrollDelta(vertical_amount);
+        if (horizontal != 0.0) {
+            element_->ScrollAccessibilityHorizontal(horizontal);
+        }
+        if (vertical != 0.0) {
+            element_->ScrollAccessibilityVertical(vertical);
+        }
+        return S_OK;
+    }
+
+    HRESULT STDMETHODCALLTYPE SetScrollPercent(
+        double horizontal_percent,
+        double vertical_percent) override {
+        if (element_ == nullptr || !element_->HasAccessibilityScroll()) {
+            return UIA_E_NOTSUPPORTED;
+        }
+        if (!element_->IsEnabled()) {
+            return UIA_E_ELEMENTNOTENABLED;
+        }
+        element_->SetAccessibilityScrollPercent(
+            horizontal_percent,
+            vertical_percent);
+        return S_OK;
+    }
+
+    HRESULT STDMETHODCALLTYPE get_HorizontalScrollPercent(double* value) override {
+        if (value == nullptr) {
+            return E_INVALIDARG;
+        }
+        *value = element_ != nullptr
+            ? element_->AccessibilityHorizontalScrollPercent()
+            : -1.0;
+        return S_OK;
+    }
+
+    HRESULT STDMETHODCALLTYPE get_VerticalScrollPercent(double* value) override {
+        if (value == nullptr) {
+            return E_INVALIDARG;
+        }
+        *value = element_ != nullptr
+            ? element_->AccessibilityVerticalScrollPercent()
+            : -1.0;
+        return S_OK;
+    }
+
+    HRESULT STDMETHODCALLTYPE get_HorizontalViewSize(double* value) override {
+        if (value == nullptr) {
+            return E_INVALIDARG;
+        }
+        *value = element_ != nullptr
+            ? element_->AccessibilityHorizontalViewSize()
+            : 100.0;
+        return S_OK;
+    }
+
+    HRESULT STDMETHODCALLTYPE get_VerticalViewSize(double* value) override {
+        if (value == nullptr) {
+            return E_INVALIDARG;
+        }
+        *value = element_ != nullptr
+            ? element_->AccessibilityVerticalViewSize()
+            : 100.0;
+        return S_OK;
+    }
+
+    HRESULT STDMETHODCALLTYPE get_HorizontallyScrollable(BOOL* value) override {
+        if (value == nullptr) {
+            return E_INVALIDARG;
+        }
+        *value = element_ != nullptr && element_->AccessibilityHorizontallyScrollable()
+            ? TRUE
+            : FALSE;
+        return S_OK;
+    }
+
+    HRESULT STDMETHODCALLTYPE get_VerticallyScrollable(BOOL* value) override {
+        if (value == nullptr) {
+            return E_INVALIDARG;
+        }
+        *value = element_ != nullptr && element_->AccessibilityVerticallyScrollable()
+            ? TRUE
+            : FALSE;
+        return S_OK;
+    }
+
+    HRESULT STDMETHODCALLTYPE GetSelection(SAFEARRAY** selection) override {
+        if (selection == nullptr) {
+            return E_INVALIDARG;
+        }
+        *selection = MakeRangeArray(SelectionRange());
+        return *selection != nullptr ? S_OK : E_OUTOFMEMORY;
+    }
+
+    HRESULT STDMETHODCALLTYPE GetVisibleRanges(SAFEARRAY** ranges) override {
+        if (ranges == nullptr) {
+            return E_INVALIDARG;
+        }
+        *ranges = MakeRangeArray(DocumentRange());
+        return *ranges != nullptr ? S_OK : E_OUTOFMEMORY;
+    }
+
+    HRESULT STDMETHODCALLTYPE RangeFromChild(
+        IRawElementProviderSimple*,
+        ITextRangeProvider** range) override {
+        if (range == nullptr) {
+            return E_INVALIDARG;
+        }
+        *range = nullptr;
+        return S_OK;
+    }
+
+    HRESULT STDMETHODCALLTYPE RangeFromPoint(
+        UiaPoint,
+        ITextRangeProvider** range) override {
+        if (range == nullptr) {
+            return E_INVALIDARG;
+        }
+        *range = DocumentRange();
+        return S_OK;
+    }
+
+    HRESULT STDMETHODCALLTYPE get_DocumentRange(ITextRangeProvider** range) override {
+        if (range == nullptr) {
+            return E_INVALIDARG;
+        }
+        *range = DocumentRange();
+        return S_OK;
+    }
+
+    HRESULT STDMETHODCALLTYPE get_SupportedTextSelection(
+        SupportedTextSelection* selection) override {
+        if (selection == nullptr) {
+            return E_INVALIDARG;
+        }
+        *selection = SupportedTextSelection_Single;
+        return S_OK;
+    }
+
+    static double ScrollDelta(ScrollAmount amount) noexcept {
+        switch (amount) {
+            case ScrollAmount_SmallIncrement:
+                return 5.0;
+            case ScrollAmount_LargeIncrement:
+                return 20.0;
+            case ScrollAmount_SmallDecrement:
+                return -5.0;
+            case ScrollAmount_LargeDecrement:
+                return -20.0;
+            case ScrollAmount_NoAmount:
+            default:
+                return 0.0;
+        }
+    }
+
+    TextRangeProvider* DocumentRange() const {
+        const int length = element_ != nullptr
+            ? static_cast<int>(element_->AccessibilityText().size())
+            : 0;
+        return new TextRangeProvider(window_, element_, 0, length);
+    }
+
+    TextRangeProvider* SelectionRange() const {
+        return new TextRangeProvider(
+            window_,
+            element_,
+            element_ != nullptr ? element_->AccessibilitySelectionStart() : 0,
+            element_ != nullptr ? element_->AccessibilitySelectionEnd() : 0);
+    }
+
+    static SAFEARRAY* MakeRangeArray(TextRangeProvider* range) {
+        SAFEARRAY* array = SafeArrayCreateVector(VT_UNKNOWN, 0, 1);
+        if (array == nullptr) {
+            range->Release();
+            return nullptr;
+        }
+        LONG index = 0;
+        const HRESULT result = SafeArrayPutElement(
+            array,
+            &index,
+            reinterpret_cast<void*>(range));
+        range->Release();
+        if (FAILED(result)) {
+            SafeArrayDestroy(array);
+            return nullptr;
+        }
+        return array;
     }
 
     LONG references_ = 1;

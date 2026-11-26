@@ -67,10 +67,14 @@ add_library(nopeui_controls STATIC
     src/controls/button.cpp
     src/controls/check_box.cpp
     src/controls/label.cpp
+    src/controls/progress_bar.cpp
+    src/controls/radio_button.cpp
     src/controls/scroll_viewer.cpp
+    src/controls/slider.cpp
     src/controls/stack_panel.cpp
     src/controls/text_box.cpp
     src/controls/toggle_button.cpp
+    src/controls/toggle_switch.cpp
 )
 
 target_link_libraries(nopeui_controls

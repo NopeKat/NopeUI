@@ -581,4 +581,34 @@ bool TextBox::HasAccessibilityValue() const noexcept {
     return true;
 }
 
+bool TextBox::HasAccessibilityText() const noexcept {
+    return true;
+}
+
+std::wstring TextBox::AccessibilityText() const {
+    return text_;
+}
+
+int TextBox::AccessibilitySelectionStart() const noexcept {
+    return static_cast<int>(SelectionStart());
+}
+
+int TextBox::AccessibilitySelectionEnd() const noexcept {
+    return static_cast<int>(SelectionEnd());
+}
+
+bool TextBox::SetAccessibilitySelection(int start, int end) {
+    const int length = static_cast<int>(text_.size());
+    int first = std::clamp(start, 0, length);
+    int last = std::clamp(end, 0, length);
+    if (first > last) {
+        std::swap(first, last);
+    }
+    anchor_ = static_cast<std::size_t>(first);
+    caret_ = static_cast<std::size_t>(last);
+    EnsureCaretVisible();
+    Invalidate();
+    return true;
+}
+
 }  // namespace nopeui

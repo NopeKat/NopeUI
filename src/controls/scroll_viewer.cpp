@@ -470,4 +470,81 @@ void ScrollViewer::BringChildIntoView(const Element* descendant) noexcept {
     ArrangeOverride(Size{bounds_.width, bounds_.height});
 }
 
+bool ScrollViewer::HasAccessibilityScroll() const noexcept {
+    return true;
+}
+
+bool ScrollViewer::AccessibilityHorizontallyScrollable() const noexcept {
+    return HasHorizontalScrollbar();
+}
+
+bool ScrollViewer::AccessibilityVerticallyScrollable() const noexcept {
+    return HasVerticalScrollbar();
+}
+
+double ScrollViewer::AccessibilityHorizontalScrollPercent() const noexcept {
+    const float maximum = MaxHorizontalOffset();
+    return maximum > 0.0f
+        ? static_cast<double>(offset_x_ / maximum * 100.0f)
+        : -1.0;
+}
+
+double ScrollViewer::AccessibilityVerticalScrollPercent() const noexcept {
+    const float maximum = MaxVerticalOffset();
+    return maximum > 0.0f
+        ? static_cast<double>(offset_y_ / maximum * 100.0f)
+        : -1.0;
+}
+
+double ScrollViewer::AccessibilityHorizontalViewSize() const noexcept {
+    return content_width_ > 0.0f
+        ? static_cast<double>(
+              std::min(100.0f, bounds_.width / content_width_ * 100.0f))
+        : 100.0;
+}
+
+double ScrollViewer::AccessibilityVerticalViewSize() const noexcept {
+    return content_height_ > 0.0f
+        ? static_cast<double>(
+              std::min(100.0f, bounds_.height / content_height_ * 100.0f))
+        : 100.0;
+}
+
+bool ScrollViewer::SetAccessibilityScrollPercent(
+    double horizontal,
+    double vertical) noexcept {
+    bool changed = false;
+    if (horizontal >= 0.0 && HasHorizontalScrollbar()) {
+        SetHorizontalOffset(
+            MaxHorizontalOffset() * static_cast<float>(horizontal) / 100.0f);
+        changed = true;
+    }
+    if (vertical >= 0.0 && HasVerticalScrollbar()) {
+        SetVerticalOffset(
+            MaxVerticalOffset() * static_cast<float>(vertical) / 100.0f);
+        changed = true;
+    }
+    return changed;
+}
+
+bool ScrollViewer::ScrollAccessibilityHorizontal(double percent_delta) noexcept {
+    if (!HasHorizontalScrollbar()) {
+        return false;
+    }
+    const float target = offset_x_ +
+        MaxHorizontalOffset() * static_cast<float>(percent_delta) / 100.0f;
+    SetHorizontalOffset(target);
+    return true;
+}
+
+bool ScrollViewer::ScrollAccessibilityVertical(double percent_delta) noexcept {
+    if (!HasVerticalScrollbar()) {
+        return false;
+    }
+    const float target = offset_y_ +
+        MaxVerticalOffset() * static_cast<float>(percent_delta) / 100.0f;
+    SetVerticalOffset(target);
+    return true;
+}
+
 }  // namespace nopeui

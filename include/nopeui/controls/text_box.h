@@ -53,6 +53,11 @@ protected:
     std::wstring AccessibilityValue() const override;
     bool SetAccessibilityValue(std::wstring_view value) override;
     bool HasAccessibilityValue() const noexcept override;
+    bool HasAccessibilityText() const noexcept override;
+    std::wstring AccessibilityText() const override;
+    int AccessibilitySelectionStart() const noexcept override;
+    int AccessibilitySelectionEnd() const noexcept override;
+    bool SetAccessibilitySelection(int start, int end) override;
 
 private:
     TextBox() noexcept = default;
