@@ -25,8 +25,11 @@ namespace {
 constexpr const wchar_t* kWindowClassName = L"NopeUI.Window";
 constexpr UINT_PTR kCommitTimerId = 1;
 constexpr UINT_PTR kLiveResizeTimerId = 2;
+constexpr UINT_PTR kResizeSettleTimerId = 3;
 constexpr UINT kLiveResizeIntervalMs = 8;
+constexpr UINT kResizeSettleIntervalMs = 300;
 constexpr std::size_t kMaxQueuedCommits = 1;
+constexpr int kAsyncSurfaceCount = 2;
 
 double MillisecondsToNextVblank(LONGLONG submit_qpc) noexcept {
     DWM_TIMING_INFO timing{};
@@ -121,25 +124,47 @@ public:
         }
     }
 
-    Result<void> Resize(int width, int height) noexcept {
+    static int AllocationExtent(int value) noexcept {
+        const int slack = value <= 2048 ? value / 3 : 256;
+        return value + slack;
+    }
+
+    Result<void> Resize(int width, int height, bool exact = false) noexcept {
         if (width <= 0 || height <= 0) {
             return Result<void>::Ok();
         }
-        if (async_commit_) {
-            PrepareForResize();
+
+        const int needed_surfaces = async_commit_ ? kAsyncSurfaceCount : std::max(1, surface_count_);
+        const int target_width =
+            exact ? width : (surface_width_ >= width ? surface_width_ : AllocationExtent(width));
+        const int target_height =
+            exact ? height : (surface_height_ >= height ? surface_height_ : AllocationExtent(height));
+
+        bool all_target = surface_count_ >= needed_surfaces;
+        for (int index = 0; index < needed_surfaces; ++index) {
+            const auto& state = surfaces_[index];
+            if (state.surface == nullptr || state.width != target_width ||
+                state.height != target_height) {
+                all_target = false;
+                break;
+            }
         }
-        if (surface_count_ >= (async_commit_ ? 2 : 1) &&
-            width == surface_width_ && height == surface_height_) {
+        if (all_target) {
+            content_width_ = width;
+            content_height_ = height;
+            full_redraw_required_ = true;
             return Result<void>::Ok();
         }
 
-        const int needed_surfaces = async_commit_ ? 2 : std::max(1, surface_count_);
+        if (async_commit_) {
+            PrepareForResize();
+        }
         for (int index = 0; index < needed_surfaces; ++index) {
             auto& state = surfaces_[index];
             if (state.surface == nullptr) {
                 HRESULT result = dcomp_device_->CreateVirtualSurface(
-                    static_cast<UINT>(width),
-                    static_cast<UINT>(height),
+                    static_cast<UINT>(target_width),
+                    static_cast<UINT>(target_height),
                     DXGI_FORMAT_B8G8R8A8_UNORM,
                     DXGI_ALPHA_MODE_PREMULTIPLIED,
                     state.surface.GetAddressOf());
@@ -157,20 +182,24 @@ public:
                 }
             } else {
                 HRESULT result =
-                    state.surface->Resize(static_cast<UINT>(width), static_cast<UINT>(height));
+                    state.surface->Resize(static_cast<UINT>(target_width), static_cast<UINT>(target_height));
                 if (FAILED(result)) {
                     return Result<void>::Fail(
                         Error{ErrorCode::PlatformFailure, PlatformError("Resize", result)});
                 }
             }
 
+            state.width = target_width;
+            state.height = target_height;
             state.target_bitmap.Reset();
         }
         surface_count_ = std::max(surface_count_, needed_surfaces);
         target_bound_index_ = -1;
         full_redraw_required_ = true;
-        surface_width_ = width;
-        surface_height_ = height;
+        surface_width_ = target_width;
+        surface_height_ = target_height;
+        content_width_ = width;
+        content_height_ = height;
         return Result<void>::Ok();
     }
 
@@ -179,6 +208,9 @@ public:
         const auto sequence = ++frame_sequence_;
         if (async_commit_) {
             WaitForSurface(draw_index_);
+            if (FAILED(EnsureSurfaceSize(draw_index_))) {
+                return;
+            }
         }
         if (d2d_context_ == nullptr) {
             return;
@@ -194,8 +226,8 @@ public:
         if (dirty_rect != nullptr) {
             update.left = std::max(0L, dirty_rect->left);
             update.top = std::max(0L, dirty_rect->top);
-            update.right = std::min(static_cast<LONG>(surface_width_), dirty_rect->right);
-            update.bottom = std::min(static_cast<LONG>(surface_height_), dirty_rect->bottom);
+            update.right = std::min(static_cast<LONG>(content_width_), dirty_rect->right);
+            update.bottom = std::min(static_cast<LONG>(content_height_), dirty_rect->bottom);
             if (update.right <= update.left || update.bottom <= update.top) {
                 return;
             }
@@ -208,7 +240,7 @@ public:
         }
 
         const D2D1_RECT_F background_rect = update_ptr == nullptr
-            ? D2D1::RectF(0.0f, 0.0f, static_cast<float>(surface_width_), static_cast<float>(surface_height_))
+            ? D2D1::RectF(0.0f, 0.0f, static_cast<float>(content_width_), static_cast<float>(content_height_))
             : D2D1::RectF(
                   static_cast<float>(update.left),
                   static_cast<float>(update.top),
@@ -274,8 +306,35 @@ public:
         }
 
         d2d_context_->FillRectangle(
-            D2D1::RectF(0.0f, 0.0f, static_cast<float>(surface_width_), 4.0f),
+            D2D1::RectF(0.0f, 0.0f, static_cast<float>(content_width_), 4.0f),
             accent_brush_.Get());
+        if (diagnostic_rectangles_ > 0) {
+            for (std::uint32_t index = 0; index < diagnostic_rectangles_; ++index) {
+                const float x = 4.0f + static_cast<float>(index % 64) * 10.0f;
+                const float y = 100.0f + static_cast<float>((index / 64) % 64) * 10.0f;
+                d2d_context_->FillRectangle(
+                    D2D1::RectF(x, y, x + 6.0f, y + 6.0f),
+                    (index & 1U) != 0 ? accent_brush_.Get() : text_brush_.Get());
+            }
+        }
+        if (diagnostic_text_runs_ > 0) {
+            for (std::uint32_t index = 0; index < diagnostic_text_runs_; ++index) {
+                const float x = 24.0f + static_cast<float>(index % 8) * 12.0f;
+                const float y = 28.0f + static_cast<float>((index / 8) % 32) * 8.0f;
+                if (text_bitmap_ != nullptr) {
+                    d2d_context_->DrawBitmap(
+                        text_bitmap_.Get(),
+                        D2D1::RectF(x, y, x + 180.0f, y + 32.0f),
+                        1.0f,
+                        D2D1_BITMAP_INTERPOLATION_MODE_NEAREST_NEIGHBOR);
+                } else if (text_layout_ != nullptr) {
+                    d2d_context_->DrawTextLayout(
+                        D2D1::Point2F(x, y),
+                        text_layout_.Get(),
+                        text_brush_.Get());
+                }
+            }
+        }
         if (update_ptr != nullptr) {
             d2d_context_->PopAxisAlignedClip();
         }
@@ -338,7 +397,7 @@ public:
             pending_surface_index_ = -1;
             commit_pending_ = false;
             last_commit_time_ = std::chrono::steady_clock::now();
-            draw_index_ = surface_index == 0 ? 1 : 0;
+            draw_index_ = (surface_index + 1) % surface_count_;
             CancelCommitTimer();
             return true;
         }
@@ -369,6 +428,12 @@ public:
         return true;
     }
 
+    void SetDiagnosticLoad(std::uint32_t rectangles, std::uint32_t text_runs) noexcept {
+        diagnostic_rectangles_ = rectangles;
+        diagnostic_text_runs_ = text_runs;
+        full_redraw_required_ = true;
+    }
+
     void SetCommitThrottle(bool enabled) noexcept {
         throttle_commits_ = enabled;
         if (!enabled) {
@@ -387,8 +452,10 @@ public:
 
         if (enabled) {
             async_commit_ = true;
-            auto resized = Resize(surface_width_, surface_height_);
-            if (!resized.ok() || surface_count_ < 2) {
+            const int content_width = content_width_ > 0 ? content_width_ : surface_width_;
+            const int content_height = content_height_ > 0 ? content_height_ : surface_height_;
+            auto resized = Resize(content_width, content_height, true);
+            if (!resized.ok() || surface_count_ < kAsyncSurfaceCount) {
                 async_commit_ = false;
                 draw_index_ = 0;
                 return;
@@ -443,6 +510,8 @@ private:
     struct SurfaceState {
         ComPtr<IDCompositionVirtualSurface> surface;
         ComPtr<ID2D1Bitmap1> target_bitmap;
+        int width = 0;
+        int height = 0;
     };
 
     struct CommitJob {
@@ -467,10 +536,40 @@ private:
             std::chrono::steady_clock::now() - wait_start).count();
     }
 
+    void PrepareForResize() noexcept {
+        DropQueuedCommits();
+        std::unique_lock<std::mutex> lock(commit_mutex_);
+        commit_cv_.wait(lock, [this] {
+            return commit_in_flight_ < 0;
+        });
+    }
+
+    HRESULT EnsureSurfaceSize(int index) noexcept {
+        auto& state = surfaces_[index];
+        if (state.surface == nullptr || (state.width == surface_width_ && state.height == surface_height_)) {
+            return S_OK;
+        }
+        HRESULT result =
+            state.surface->Resize(static_cast<UINT>(surface_width_), static_cast<UINT>(surface_height_));
+        if (FAILED(result)) {
+            return result;
+        }
+        state.width = surface_width_;
+        state.height = surface_height_;
+        state.target_bitmap.Reset();
+        target_bound_index_ = -1;
+        return S_OK;
+    }
+
     void WaitForAllCommits() noexcept {
         std::unique_lock<std::mutex> lock(commit_mutex_);
         commit_cv_.wait(lock, [this] {
-            return !surface_busy_[0] && !surface_busy_[1] && commit_in_flight_ < 0;
+            for (int index = 0; index < kAsyncSurfaceCount; ++index) {
+                if (surface_busy_[index]) {
+                    return false;
+                }
+            }
+            return commit_in_flight_ < 0;
         });
     }
 
@@ -483,14 +582,6 @@ private:
             ++queue_stats_.dropped;
         }
         commit_cv_.notify_all();
-    }
-
-    void PrepareForResize() noexcept {
-        DropQueuedCommits();
-        std::unique_lock<std::mutex> lock(commit_mutex_);
-        commit_cv_.wait(lock, [this] {
-            return commit_in_flight_ < 0;
-        });
     }
 
     void QueueCommit(
@@ -794,6 +885,8 @@ private:
         target_bound_index_ = -1;
         surface_width_ = 0;
         surface_height_ = 0;
+        content_width_ = 0;
+        content_height_ = 0;
     }
 
     ComPtr<ID3D11Device> d3d_device_;
@@ -801,7 +894,7 @@ private:
     ComPtr<IDCompositionDevice> dcomp_device_;
     ComPtr<IDCompositionTarget> target_;
     ComPtr<IDCompositionVisual> visual_;
-    SurfaceState surfaces_[2];
+    SurfaceState surfaces_[kAsyncSurfaceCount];
     ComPtr<ID2D1Factory1> d2d_factory_;
     ComPtr<ID2D1Device> d2d_device_;
     ComPtr<ID2D1DeviceContext> d2d_context_;
@@ -812,9 +905,13 @@ private:
     ComPtr<ID2D1Bitmap> text_bitmap_;
     ComPtr<ID2D1SolidColorBrush> background_brush_;
     ComPtr<ID2D1SolidColorBrush> accent_brush_;
+    std::uint32_t diagnostic_rectangles_ = 0;
+    std::uint32_t diagnostic_text_runs_ = 0;
     HWND hwnd_ = nullptr;
     int surface_width_ = 0;
     int surface_height_ = 0;
+    int content_width_ = 0;
+    int content_height_ = 0;
     int surface_count_ = 0;
     int draw_index_ = 0;
     int pending_surface_index_ = -1;
@@ -838,7 +935,7 @@ private:
     bool async_commit_ = false;
     bool commit_running_ = true;
     bool full_redraw_required_ = false;
-    bool surface_busy_[2] = {false, false};
+    bool surface_busy_[kAsyncSurfaceCount] = {};
     int commit_in_flight_ = -1;
     std::deque<CommitJob> commit_queue_;
     std::thread commit_thread_;
@@ -973,6 +1070,10 @@ FrameTimings Window::LastFrameTimings() const noexcept {
     return graphics_ != nullptr ? graphics_->LastFrameTimings() : FrameTimings{};
 }
 
+double Window::LastResizeMilliseconds() const noexcept {
+    return last_resize_ms_;
+}
+
 FrameLatency Window::LastPresentedFrame() const noexcept {
     return graphics_ != nullptr ? graphics_->LastPresentedFrame() : FrameLatency{};
 }
@@ -1004,6 +1105,12 @@ void Window::RenderFrame() noexcept {
     }
 
     graphics_->Render();
+}
+
+void Window::SetDiagnosticLoad(std::uint32_t rectangles, std::uint32_t text_runs) noexcept {
+    if (graphics_ != nullptr) {
+        graphics_->SetDiagnosticLoad(rectangles, text_runs);
+    }
 }
 
 void Window::RenderFrame(const Rect& dirty_rect) noexcept {
@@ -1141,7 +1248,10 @@ void Window::RenderPendingResize() noexcept {
     resize_pending_ = false;
     const int width = pending_width_;
     const int height = pending_height_;
+    const auto resize_start = std::chrono::steady_clock::now();
     auto resized = graphics_->Resize(width, height);
+    last_resize_ms_ = std::chrono::duration<double, std::milli>(
+        std::chrono::steady_clock::now() - resize_start).count();
     if (!resized.ok()) {
         resize_pending_ = true;
         return;
@@ -1149,13 +1259,39 @@ void Window::RenderPendingResize() noexcept {
 
     client_width_ = width;
     client_height_ = height;
-    graphics_->Render(nullptr, true);
+    graphics_->Render(nullptr, !graphics_->IsAsyncCommitEnabled());
+    ScheduleResizeSettle();
+}
+
+void Window::ScheduleResizeSettle() noexcept {
+    if (hwnd_ != nullptr) {
+        SetTimer(hwnd_, kResizeSettleTimerId, kResizeSettleIntervalMs, nullptr);
+    }
+}
+
+void Window::CompactResize() noexcept {
+    if (hwnd_ != nullptr) {
+        KillTimer(hwnd_, kResizeSettleTimerId);
+    }
+    if (live_resizing_ || graphics_ == nullptr || client_width_ <= 0 || client_height_ <= 0) {
+        ScheduleResizeSettle();
+        return;
+    }
+
+    const auto resize_start = std::chrono::steady_clock::now();
+    auto resized = graphics_->Resize(client_width_, client_height_, true);
+    last_resize_ms_ = std::chrono::duration<double, std::milli>(
+        std::chrono::steady_clock::now() - resize_start).count();
+    if (resized.ok()) {
+        graphics_->Render(nullptr, true);
+    }
 }
 
 void Window::ReleaseGraphics() noexcept {
     if (hwnd_ != nullptr) {
         KillTimer(hwnd_, kCommitTimerId);
         KillTimer(hwnd_, kLiveResizeTimerId);
+        KillTimer(hwnd_, kResizeSettleTimerId);
     }
     live_resizing_ = false;
     graphics_.reset();
@@ -1239,6 +1375,10 @@ LRESULT CALLBACK Window::WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM 
             }
             if (window != nullptr && wparam == kLiveResizeTimerId) {
                 window->RenderLiveResize();
+                return 0;
+            }
+            if (window != nullptr && wparam == kResizeSettleTimerId) {
+                window->CompactResize();
                 return 0;
             }
             break;

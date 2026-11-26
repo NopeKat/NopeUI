@@ -59,6 +59,7 @@ public:
 
     double LastFrameMilliseconds() const noexcept;
     FrameTimings LastFrameTimings() const noexcept;
+    double LastResizeMilliseconds() const noexcept;
 
     // Estimated queue, commit and next-vblank latency of the last submitted frame.
     FrameLatency LastPresentedFrame() const noexcept;
@@ -68,6 +69,9 @@ public:
     std::uint64_t CommitCount() const noexcept;
     void RenderFrame() noexcept;
     void RenderFrame(const Rect& dirty_rect) noexcept;
+
+    // Benchmark-only synthetic load; not part of the stable API.
+    void SetDiagnosticLoad(std::uint32_t rectangles, std::uint32_t text_runs) noexcept;
 
     // Presents the latest rendered surface immediately.
     void Present() noexcept;
@@ -93,6 +97,8 @@ private:
     void EndLiveResize() noexcept;
     void RenderLiveResize() noexcept;
     void RenderPendingResize() noexcept;
+    void ScheduleResizeSettle() noexcept;
+    void CompactResize() noexcept;
     void ReleaseGraphics() noexcept;
 
     HWND hwnd_ = nullptr;
@@ -103,6 +109,7 @@ private:
     int pending_height_ = 0;
     bool resize_pending_ = false;
     bool live_resizing_ = false;
+    double last_resize_ms_ = 0.0;
 };
 
 Result<int> RunMessageLoop();
