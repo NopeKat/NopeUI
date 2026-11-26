@@ -6,7 +6,7 @@ NopeUI 是一个仅面向 Windows 的开源 C++ 桌面 UI 框架。外观参考 
 
 ## 当前状态
 
-项目处于 P0 初期，`base` 最小内核与 `platform` 窗口层已建立：`Result` 与 `Error`、`Ref`、`Event` 与 `Subscription`、几何类型、UTF-8 与 UTF-16 转换，以及 Win32 窗口、消息循环、DirectComposition 虚拟表面、Direct2D 绘制与 DirectWrite 文字。窗口默认显示浅色背景、顶部强调条与一行示例文字的占位场景；`Window::SetContent` 可挂一棵元素树，覆盖客户区并接管鼠标命中。窗口支持全帧与 dirty 矩形重绘；拖动边框缩放时按 `WM_SIZING` 的建议尺寸实时重绘。窗口默认启用按面积自适应的 2–3 块表面异步提交：客户区面积不超过 `2560×1600` 时用 3 块，更大的窗口用 2 块以控制显存。`SetAsyncCommit(false)` 可回退同步，`LastPresentedFrame()` 与 `AsyncCommitStats()` 可读取提交延迟、队列和丢帧。缩放时虚拟表面按小窗口约三分之一、较大窗口固定 256 像素的余量分配，停止缩放 300 ms 后回收到实际客户区尺寸，避免拖动过程中反复重建表面。帧提交默认按显示器刷新间隔节流，可用 `Window::Present()` 立即提交、`Window::SetCommitThrottle(false)` 关闭节流。`Window::LastFrameMilliseconds()`、`Window::FrameCount()`、`Window::CommitCount()` 与 `Window::RenderFrame()` 可读取和驱动帧，`nopeui_frame_benchmark` 提供 300 帧基准，`nopeui_resize_benchmark` 提供 resize 基准。软件回退已可用：远程会话自动切到 WIC 软件光栅，`Window::SetSoftwareRender(true)` 可手动切换，软件图与硬件图在黄金图里逐像素一致。黄金图基线与工具：`nopeui_golden` 出图、`nopeui_image_diff` 比对、`eng/golden.ps1` 管理。`layout` 提供 Measure/Arrange/HitTest/Paint 的最小元素树，`controls` 已落地 `Border`、`Label`、`Button`、`StackPanel` 四个基础控件；`nopeui_window_smoke` 的默认界面就是这四件拼出的卡片。`Theme` 定义浅色与深色两套调色板，窗口用 `SetTheme` 下发，元素沿父链继承，控件从主题取色。8 个测试在 `x64-debug` 与 `x64-release` 下全部通过。
+项目处于 P0 初期，`base` 最小内核与 `platform` 窗口层已建立：`Result` 与 `Error`、`Ref`、`Event` 与 `Subscription`、几何类型、UTF-8 与 UTF-16 转换，以及 Win32 窗口、消息循环、DirectComposition 虚拟表面、Direct2D 绘制与 DirectWrite 文字。窗口默认显示浅色背景、顶部强调条与一行示例文字的占位场景；`Window::SetContent` 可挂一棵元素树，覆盖客户区并接管鼠标命中。窗口默认启用按面积自适应的 2–3 块表面异步提交：客户区面积不超过 `2560×1600` 时用 3 块，更大的窗口用 2 块以控制显存。`SetAsyncCommit(false)` 可回退同步，`LastPresentedFrame()` 与 `AsyncCommitStats()` 可读取提交延迟、队列和丢帧。缩放时虚拟表面按小窗口约三分之一、较大窗口固定 256 像素的余量分配，停止缩放 300 ms 后回收到实际客户区尺寸，避免拖动过程中反复重建表面。帧提交默认按显示器刷新间隔节流，可用 `Window::Present()` 立即提交、`Window::SetCommitThrottle(false)` 关闭节流。`Window::LastFrameMilliseconds()`、`Window::FrameCount()`、`Window::CommitCount()` 与 `Window::RenderFrame()` 可读取和驱动帧，`nopeui_frame_benchmark` 提供 300 帧基准，`nopeui_resize_benchmark` 提供 resize 基准。软件回退已可用：远程会话自动切到 WIC 软件光栅，`Window::SetSoftwareRender(true)` 可手动切换，软件图与硬件图在黄金图里逐像素一致。黄金图基线与工具：`nopeui_golden` 出图、`nopeui_image_diff` 比对、`eng/golden.ps1` 管理。`layout` 提供 Measure/Arrange/HitTest/Paint 的最小元素树，`controls` 已落地 `Border`、`Label`、`Button`、`StackPanel` 四个基础控件；`nopeui_window_smoke` 的默认界面就是这四件拼出的卡片。`Theme` 定义浅色与深色两套调色板，窗口用 `SetTheme` 下发，元素沿父链继承，控件从主题取色。8 个测试在 `x64-debug` 与 `x64-release` 下全部通过。
 
 ## 构建
 
@@ -70,7 +70,9 @@ NopeUI 是一个仅面向 Windows 的开源 C++ 桌面 UI 框架。外观参考 
 
 ## 布局与控件
 
-元素树只做四件事：`Measure` 用可用尺寸算期望尺寸，`Arrange` 落最终矩形，`HitTest` 找最上层命中的元素，`Paint` 由窗口在硬件与软件两条路径里统一调用。`StackPanel` 目前只做纵向堆叠，`Border` 负责背景、1 像素描边与内边距，`Label` 和 `Button` 复用 `graphics::TextRun` 缓存的文字布局；`Button` 带悬停、按下底色、焦点矩形和点击回调，鼠标点击或 Enter/Space 都会触发。
+元素树只做四件事：`Measure` 用可用尺寸算期望尺寸，`Arrange` 落最终矩形，`HitTest` 找最上层命中的元素，`Paint` 由窗口在硬件与软件两条路径里统一调用。`StackPanel` 支持纵向与横向排列，`Border` 负责背景、1 像素描边与内边距，`ScrollViewer` 提供单子元素的纵向滚动，`Label` 和 `Button` 复用 `graphics::TextRun` 缓存的文字布局；`Button` 带悬停、按下底色、焦点矩形和点击回调，鼠标点击或 Enter/Space 都会触发。
+
+容器在绘制子元素前按自身 bounds 压裁剪区，`Border`、`StackPanel`、`ScrollViewer` 都这么做。`ScrollViewer` 目前只有滚轮滚动，没有滚动条；偏移在测出内容高度后夹紧，滚轮从命中元素向上冒泡到最近的滚动容器。
 
 焦点按视觉顺序排序：`IsFocusable()` 标记可聚焦元素，`CollectFocusable()` 递归收集，窗口维护 Tab 与 Shift+Tab，失去窗口焦点时清空。`Button` 的 `SetOnClick` 保存单个回调，`SubscribeClick` 返回可管理的订阅。
 

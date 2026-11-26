@@ -144,6 +144,7 @@ private:
     void OnMouseDown(Point point) noexcept;
     void OnMouseUp(Point point) noexcept;
     void OnMouseLeave() noexcept;
+    void OnMouseWheel(Point point, int delta) noexcept;
     void FocusElement(Element* element) noexcept;
     void MoveFocus(bool forward) noexcept;
     void ClearFocus() noexcept;

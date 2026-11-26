@@ -65,6 +65,7 @@ add_library(nopeui_controls STATIC
     src/controls/border.cpp
     src/controls/button.cpp
     src/controls/label.cpp
+    src/controls/scroll_viewer.cpp
     src/controls/stack_panel.cpp
 )
 

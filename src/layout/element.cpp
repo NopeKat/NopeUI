@@ -1,5 +1,15 @@
 #include "nopeui/layout/element.h"
 
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+
+#include <Windows.h>
+#include <d2d1.h>
+
 #include "nopeui/theme/theme.h"
 
 namespace nopeui {
@@ -67,6 +77,32 @@ void Element::Invalidate() noexcept {
 void Element::CollectFocusable(std::vector<Element*>& elements) noexcept {
     if (IsFocusable()) {
         elements.push_back(this);
+    }
+}
+
+bool Element::BubbleWheel(int delta) noexcept {
+    Element* node = this;
+    while (node != nullptr) {
+        if (node->OnWheel(delta)) {
+            return true;
+        }
+        node = node->parent_;
+    }
+    return false;
+}
+
+void Element::PushContentClip(ID2D1RenderTarget* target) noexcept {
+    if (target == nullptr) {
+        return;
+    }
+    target->PushAxisAlignedClip(
+        D2D1::RectF(bounds_.x, bounds_.y, bounds_.Right(), bounds_.Bottom()),
+        D2D1_ANTIALIAS_MODE_ALIASED);
+}
+
+void Element::PopContentClip(ID2D1RenderTarget* target) noexcept {
+    if (target != nullptr) {
+        target->PopAxisAlignedClip();
     }
 }
 

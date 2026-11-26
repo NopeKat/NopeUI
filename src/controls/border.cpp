@@ -130,7 +130,9 @@ void Border::PaintContent(ID2D1RenderTarget* target) noexcept {
         }
     }
     if (child_) {
+        PushContentClip(target);
         child_->Paint(target);
+        PopContentClip(target);
     }
 }
 

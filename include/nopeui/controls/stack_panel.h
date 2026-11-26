@@ -8,12 +8,21 @@
 
 namespace nopeui {
 
-// Stacks children vertically and offsets each by the configured spacing.
+enum class Orientation {
+    Vertical,
+    Horizontal,
+};
+
+// Stacks children along one axis and offsets each by the configured spacing.
 class StackPanel : public Element {
 public:
     static Ref<StackPanel> Create(float spacing = 12.0f) noexcept;
 
     void Add(Ref<Element> child) noexcept;
+    void SetOrientation(Orientation orientation) noexcept;
+    Orientation GetOrientation() const noexcept {
+        return orientation_;
+    }
 
     const std::vector<Ref<Element>>& Children() const noexcept {
         return children_;
@@ -30,6 +39,7 @@ private:
     StackPanel() noexcept = default;
 
     float spacing_ = 12.0f;
+    Orientation orientation_ = Orientation::Vertical;
     std::vector<Ref<Element>> children_;
 };
 

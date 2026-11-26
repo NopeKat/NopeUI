@@ -1808,6 +1808,17 @@ void Window::OnMouseLeave() noexcept {
     RenderFrame();
 }
 
+void Window::OnMouseWheel(Point point, int delta) noexcept {
+    if (!content_ || delta == 0) {
+        return;
+    }
+    Element* hit = content_->HitTest(point);
+    if (hit != nullptr) {
+        // A handler that consumes the wheel is expected to invalidate itself.
+        hit->BubbleWheel(delta);
+    }
+}
+
 void Window::FocusElement(Element* element) noexcept {
     if (focused_ == element) {
         return;
@@ -2108,6 +2119,21 @@ LRESULT CALLBACK Window::WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM 
                 window->OnMouseLeave();
             }
             return 0;
+
+        case WM_MOUSEWHEEL: {
+            if (window != nullptr) {
+                POINT cursor{
+                    GET_X_LPARAM(lparam),
+                    GET_Y_LPARAM(lparam)};
+                ScreenToClient(hwnd, &cursor);
+                window->OnMouseWheel(
+                    Point{
+                        static_cast<float>(cursor.x),
+                        static_cast<float>(cursor.y)},
+                    GET_WHEEL_DELTA_WPARAM(wparam));
+            }
+            return 0;
+        }
 
         case WM_LBUTTONDOWN:
             if (window != nullptr) {

@@ -12,6 +12,7 @@
 #include "nopeui/controls/border.h"
 #include "nopeui/controls/button.h"
 #include "nopeui/controls/label.h"
+#include "nopeui/controls/scroll_viewer.h"
 #include "nopeui/controls/stack_panel.h"
 #include "nopeui/platform/window.h"
 #include "nopeui/theme/theme.h"
@@ -80,10 +81,23 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR command_line_ptr, int) {
     dark_button->SetOnClick([window_ptr] {
         window_ptr->SetTheme(nopeui::DarkTheme());
     });
-    panel->Add(light_button);
-    panel->Add(dark_button);
 
-    card->SetChild(panel);
+    auto theme_row = nopeui::StackPanel::Create(10.0f);
+    theme_row->SetOrientation(nopeui::Orientation::Horizontal);
+    theme_row->Add(light_button);
+    theme_row->Add(dark_button);
+    panel->Add(theme_row);
+    panel->Add(nopeui::Label::Create(L"Wheel over the card scrolls the list."));
+
+    for (int index = 0; index < 40; ++index) {
+        wchar_t row[64]{};
+        std::swprintf(row, std::size(row), L"Scrollable row %02d", index);
+        panel->Add(nopeui::Label::Create(row));
+    }
+
+    auto scroll = nopeui::ScrollViewer::Create();
+    scroll->SetChild(panel);
+    card->SetChild(scroll);
     page->SetChild(card);
     window->SetContent(page);
 

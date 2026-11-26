@@ -79,6 +79,13 @@ public:
         return false;
     }
 
+    // Wheel input walks from the hit element up to the nearest scrollable
+    // ancestor. Returns true when one of them handled the delta.
+    virtual bool OnWheel(int) noexcept {
+        return false;
+    }
+    bool BubbleWheel(int delta) noexcept;
+
     // Pointer dispatch, driven by the host on the element returned by HitTest.
     virtual void OnPointerEnter() noexcept {}
     virtual void OnPointerLeave() noexcept {}
@@ -93,6 +100,10 @@ protected:
     virtual Size ArrangeOverride(Size final_size) noexcept;
     virtual void PaintContent(ID2D1RenderTarget* target) = 0;
     virtual Element* HitTestOverride(Point point) noexcept;
+
+    // Containers clip their children to their own bounds before painting.
+    void PushContentClip(ID2D1RenderTarget* target) noexcept;
+    void PopContentClip(ID2D1RenderTarget* target) noexcept;
 
     bool Contains(Point point) const noexcept;
 
