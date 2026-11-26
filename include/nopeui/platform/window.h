@@ -34,6 +34,7 @@ public:
 
     double LastFrameMilliseconds() const noexcept;
     std::uint64_t FrameCount() const noexcept;
+    void RenderFrame() noexcept;
 
     HWND Handle() const noexcept;
 

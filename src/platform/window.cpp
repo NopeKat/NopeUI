@@ -75,39 +75,41 @@ public:
             return Result<void>::Ok();
         }
 
-        ComPtr<IDCompositionSurface> new_surface;
-        HRESULT result = dcomp_device_->CreateSurface(
-            static_cast<UINT>(width),
-            static_cast<UINT>(height),
-            DXGI_FORMAT_B8G8R8A8_UNORM,
-            DXGI_ALPHA_MODE_PREMULTIPLIED,
-            new_surface.GetAddressOf());
-        if (FAILED(result)) {
-            return Result<void>::Fail(
-                Error{ErrorCode::PlatformFailure, PlatformError("CreateSurface", result)});
-        }
+        HRESULT result = S_OK;
+        if (virtual_surface_ == nullptr) {
+            result = dcomp_device_->CreateVirtualSurface(
+                static_cast<UINT>(width),
+                static_cast<UINT>(height),
+                DXGI_FORMAT_B8G8R8A8_UNORM,
+                DXGI_ALPHA_MODE_PREMULTIPLIED,
+                virtual_surface_.GetAddressOf());
+            if (FAILED(result)) {
+                return Result<void>::Fail(
+                    Error{ErrorCode::PlatformFailure, PlatformError("CreateVirtualSurface", result)});
+            }
 
-        result = visual_->SetContent(new_surface.Get());
-        if (FAILED(result)) {
-            return Result<void>::Fail(
-                Error{ErrorCode::PlatformFailure, PlatformError("SetContent", result)});
-        }
-
-        result = dcomp_device_->Commit();
-        if (FAILED(result)) {
-            return Result<void>::Fail(
-                Error{ErrorCode::PlatformFailure, PlatformError("Commit", result)});
+            result = visual_->SetContent(virtual_surface_.Get());
+            if (FAILED(result)) {
+                return Result<void>::Fail(
+                    Error{ErrorCode::PlatformFailure, PlatformError("SetContent", result)});
+            }
+        } else {
+            result = virtual_surface_->Resize(
+                static_cast<UINT>(width), static_cast<UINT>(height));
+            if (FAILED(result)) {
+                return Result<void>::Fail(
+                    Error{ErrorCode::PlatformFailure, PlatformError("Resize", result)});
+            }
         }
 
         target_bitmap_.Reset();
-        surface_ = std::move(new_surface);
         surface_width_ = width;
         surface_height_ = height;
         return Result<void>::Ok();
     }
 
     void Render() noexcept {
-        if (surface_ == nullptr || d2d_context_ == nullptr) {
+        if (virtual_surface_ == nullptr || d2d_context_ == nullptr) {
             return;
         }
 
@@ -115,7 +117,7 @@ public:
 
         ComPtr<IDXGISurface> dxgi_surface;
         POINT offset{};
-        HRESULT result = surface_->BeginDraw(
+        HRESULT result = virtual_surface_->BeginDraw(
             nullptr,
             __uuidof(IDXGISurface),
             reinterpret_cast<void**>(dxgi_surface.GetAddressOf()),
@@ -131,7 +133,7 @@ public:
             result = d2d_context_->CreateBitmapFromDxgiSurface(
                 dxgi_surface.Get(), properties, target_bitmap_.GetAddressOf());
             if (FAILED(result)) {
-                surface_->EndDraw();
+                virtual_surface_->EndDraw();
                 return;
             }
         }
@@ -148,7 +150,7 @@ public:
         result = d2d_context_->EndDraw();
         d2d_context_->SetTarget(nullptr);
 
-        surface_->EndDraw();
+        virtual_surface_->EndDraw();
         if (FAILED(result)) {
             return;
         }
@@ -285,7 +287,7 @@ private:
 
     void ReleaseSurface() noexcept {
         target_bitmap_.Reset();
-        surface_.Reset();
+        virtual_surface_.Reset();
         surface_width_ = 0;
         surface_height_ = 0;
     }
@@ -295,7 +297,7 @@ private:
     ComPtr<IDCompositionDevice> dcomp_device_;
     ComPtr<IDCompositionTarget> target_;
     ComPtr<IDCompositionVisual> visual_;
-    ComPtr<IDCompositionSurface> surface_;
+    ComPtr<IDCompositionVirtualSurface> virtual_surface_;
     ComPtr<ID2D1Factory1> d2d_factory_;
     ComPtr<ID2D1Device> d2d_device_;
     ComPtr<ID2D1DeviceContext> d2d_context_;
@@ -425,6 +427,12 @@ double Window::LastFrameMilliseconds() const noexcept {
 
 std::uint64_t Window::FrameCount() const noexcept {
     return graphics_ != nullptr ? graphics_->FrameCount() : 0;
+}
+
+void Window::RenderFrame() noexcept {
+    if (graphics_ != nullptr) {
+        graphics_->Render();
+    }
 }
 
 HWND Window::Handle() const noexcept {
