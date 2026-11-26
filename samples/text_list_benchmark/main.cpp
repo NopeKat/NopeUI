@@ -99,12 +99,18 @@ int main(int argc, char** argv) {
     std::vector<double> begin_times;
     std::vector<double> draw_times;
     std::vector<double> end_times;
+    std::vector<double> commit_times;
+    std::vector<double> queue_times;
+    std::vector<double> present_times;
     constexpr int warmup_frames = 30;
     constexpr int measured_frames = 300;
     frame_times.reserve(measured_frames);
     begin_times.reserve(measured_frames);
     draw_times.reserve(measured_frames);
     end_times.reserve(measured_frames);
+    commit_times.reserve(measured_frames);
+    queue_times.reserve(measured_frames);
+    present_times.reserve(measured_frames);
 
     double scroll = 0.0;
     for (int index = 0; index < warmup_frames + measured_frames; ++index) {
@@ -120,6 +126,10 @@ int main(int argc, char** argv) {
             begin_times.push_back(timings.begin_draw_ms);
             draw_times.push_back(timings.draw_ms);
             end_times.push_back(timings.end_draw_ms);
+            const auto latency = window->LastPresentedFrame();
+            commit_times.push_back(latency.commit_ms);
+            queue_times.push_back(latency.queue_ms);
+            present_times.push_back(latency.present_ms);
         }
         Sleep(8);
     }
@@ -139,10 +149,14 @@ int main(int argc, char** argv) {
     const auto [begin_average, begin_p99] = summarize(std::move(begin_times));
     const auto [draw_average, draw_p99] = summarize(std::move(draw_times));
     const auto [end_average, end_p99] = summarize(std::move(end_times));
+    const auto [commit_average, commit_p99] = summarize(std::move(commit_times));
+    const auto [queue_average, queue_p99] = summarize(std::move(queue_times));
+    const auto [present_average, present_p99] = summarize(std::move(present_times));
 
     std::printf(
         "text_list requested=%dx%d client=%dx%d dpi=%d awareness=%d surfaces=%d rows=%zu cache=%s scroll=%.1f "
-        "avg=%.3f ms p99=%.3f ms begin=%.3f/%.3f draw=%.3f/%.3f end=%.3f/%.3f\n",
+        "avg=%.3f ms p99=%.3f ms begin=%.3f/%.3f draw=%.3f/%.3f end=%.3f/%.3f "
+        "commit=%.3f/%.3f queue=%.3f/%.3f present=%.3f/%.3f\n",
         width,
         height,
         client_width,
@@ -160,7 +174,13 @@ int main(int argc, char** argv) {
         draw_average,
         draw_p99,
         end_average,
-        end_p99);
+        end_p99,
+        commit_average,
+        commit_p99,
+        queue_average,
+        queue_p99,
+        present_average,
+        present_p99);
 
     window->Close();
     return 0;
