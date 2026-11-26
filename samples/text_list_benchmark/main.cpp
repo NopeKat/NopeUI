@@ -21,6 +21,7 @@ int main(int argc, char** argv) {
     int width = 900;
     int height = 600;
     int surfaces = 0;
+    bool exact_client = false;
     for (int index = 1; index < argc; ++index) {
         if (std::strcmp(argv[index], "--rows") == 0 && index + 1 < argc) {
             row_count = static_cast<std::size_t>(std::strtoull(argv[++index], nullptr, 10));
@@ -34,6 +35,8 @@ int main(int argc, char** argv) {
             height = std::atoi(argv[++index]);
         } else if (std::strcmp(argv[index], "--surfaces") == 0 && index + 1 < argc) {
             surfaces = std::atoi(argv[++index]);
+        } else if (std::strcmp(argv[index], "--client") == 0) {
+            exact_client = true;
         }
     }
     if (row_count == 0) {
@@ -64,6 +67,23 @@ int main(int argc, char** argv) {
 
     auto window = std::move(result).value();
     window->Show();
+    if (exact_client) {
+        RECT frame{0, 0, width, height};
+        const DWORD style = static_cast<DWORD>(
+            GetWindowLongPtrW(window->Handle(), GWL_STYLE));
+        AdjustWindowRectExForDpi(
+            &frame, style, FALSE, 0, GetDpiForWindow(window->Handle()));
+        SetWindowPos(
+            window->Handle(),
+            nullptr,
+            0,
+            0,
+            frame.right - frame.left,
+            frame.bottom - frame.top,
+            SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+        UpdateWindow(window->Handle());
+        window->RenderFrame();
+    }
     window->SetDiagnosticAsyncSurfaces(surfaces);
     window->SetAsyncCommit(true);
     window->SetDiagnosticTextList(rows, 32.0f, cache_layouts);
@@ -72,6 +92,9 @@ int main(int argc, char** argv) {
     GetClientRect(window->Handle(), &client);
     const int client_width = client.right - client.left;
     const int client_height = client.bottom - client.top;
+    const int awareness = static_cast<int>(
+        GetAwarenessFromDpiAwarenessContext(GetThreadDpiAwarenessContext()));
+    const int dpi = static_cast<int>(GetDpiForWindow(window->Handle()));
     std::vector<double> frame_times;
     std::vector<double> begin_times;
     std::vector<double> draw_times;
@@ -118,12 +141,14 @@ int main(int argc, char** argv) {
     const auto [end_average, end_p99] = summarize(std::move(end_times));
 
     std::printf(
-        "text_list requested=%dx%d client=%dx%d surfaces=%d rows=%zu cache=%s scroll=%.1f "
+        "text_list requested=%dx%d client=%dx%d dpi=%d awareness=%d surfaces=%d rows=%zu cache=%s scroll=%.1f "
         "avg=%.3f ms p99=%.3f ms begin=%.3f/%.3f draw=%.3f/%.3f end=%.3f/%.3f\n",
         width,
         height,
         client_width,
         client_height,
+        dpi,
+        awareness,
         window->DiagnosticAsyncSurfaceCount(),
         row_count,
         cache_layouts ? "on" : "off",

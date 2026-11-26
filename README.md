@@ -33,9 +33,10 @@ NopeUI 是一个仅面向 Windows 的开源 C++ 桌面 UI 框架。外观参考 
 .\.build\x64-release\samples\Release\nopeui_text_list_benchmark.exe --rows 100000 --scroll 4 --cache
 .\.build\x64-release\samples\Release\nopeui_text_list_benchmark.exe --rows 100000 --scroll 4 --cache --width 3840 --height 2160
 .\.build\x64-release\samples\Release\nopeui_text_list_benchmark.exe --rows 100000 --scroll 4 --cache --width 3840 --height 2160 --surfaces 2
+.\.build\x64-release\samples\Release\nopeui_text_list_benchmark.exe --rows 100000 --scroll 4 --cache --width 3840 --height 2160 --client
 ```
 
-`nopeui_text_list_benchmark.exe` 生成指定行数的不同文本，按行高虚拟化，只对当前视口创建 `IDWriteTextLayout`；`--cache` 打开最多 512 条的布局缓存。`--scroll` 是每帧滚动像素数，`--width/--height` 指定窗口尺寸，`--surfaces 2|3` 强制异步表面数用于对照；输出包含实际客户区尺寸与表面数。
+`nopeui_text_list_benchmark.exe` 生成指定行数的不同文本，按行高虚拟化，只对当前视口创建 `IDWriteTextLayout`；`--cache` 打开最多 512 条的布局缓存。`--scroll` 是每帧滚动像素数，`--width/--height` 指定窗口尺寸，`--client` 按客户区尺寸而不是外框尺寸调整，`--surfaces 2|3` 强制异步表面数用于对照；输出包含请求尺寸、实际客户区、DPI、awareness 与表面数。
 
 `nopeui_resize_benchmark.exe --interval <ms>` 在每步 resize 后等待指定毫秒数，用来模拟真实拖动的节奏；`--interval 0` 是连续无间隔的压力测试。
 
