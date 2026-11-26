@@ -22,6 +22,13 @@ namespace nopeui {
 
 class WindowGraphics;
 
+struct FrameTimings {
+    double begin_draw_ms = 0.0;
+    double draw_ms = 0.0;
+    double end_draw_ms = 0.0;
+    double commit_ms = 0.0;
+};
+
 class Window : public RefCounted {
 public:
     static Result<Ref<Window>> Create(int width, int height, std::u16string_view title);
@@ -34,6 +41,7 @@ public:
     bool IsVisible() const noexcept;
 
     double LastFrameMilliseconds() const noexcept;
+    FrameTimings LastFrameTimings() const noexcept;
     std::uint64_t FrameCount() const noexcept;
     std::uint64_t CommitCount() const noexcept;
     void RenderFrame() noexcept;
@@ -54,10 +62,16 @@ private:
     static bool EnsureWindowClass() noexcept;
 
     void OnSize(int width, int height) noexcept;
+    void RenderPendingResize() noexcept;
     void ReleaseGraphics() noexcept;
 
     HWND hwnd_ = nullptr;
     std::unique_ptr<WindowGraphics> graphics_;
+    int client_width_ = 0;
+    int client_height_ = 0;
+    int pending_width_ = 0;
+    int pending_height_ = 0;
+    bool resize_pending_ = false;
 };
 
 Result<int> RunMessageLoop();

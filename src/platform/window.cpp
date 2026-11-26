@@ -160,11 +160,13 @@ public:
 
         ComPtr<IDXGISurface> dxgi_surface;
         POINT offset{};
+        const auto begin_start = std::chrono::steady_clock::now();
         HRESULT result = virtual_surface_->BeginDraw(
             update_ptr,
             __uuidof(IDXGISurface),
             reinterpret_cast<void**>(dxgi_surface.GetAddressOf()),
             &offset);
+        const auto begin_end = std::chrono::steady_clock::now();
         if (FAILED(result)) {
             return;
         }
@@ -229,22 +231,36 @@ public:
         if (FAILED(result)) {
             target_set_ = false;
         }
+        const auto draw_end = std::chrono::steady_clock::now();
 
         virtual_surface_->EndDraw();
+        const auto surface_end = std::chrono::steady_clock::now();
         if (FAILED(result)) {
             return;
         }
 
         commit_pending_ = true;
+        bool committed = false;
         if (force_commit || !throttle_commits_ || CommitDue()) {
-            Present();
+            committed = Present();
         } else {
             ScheduleCommit();
         }
+        const auto frame_end = std::chrono::steady_clock::now();
 
-        const auto elapsed = std::chrono::steady_clock::now() - start;
+        FrameTimings timings;
+        timings.begin_draw_ms = std::chrono::duration<double, std::milli>(
+            begin_end - begin_start).count();
+        timings.draw_ms =
+            std::chrono::duration<double, std::milli>(draw_end - begin_end).count();
+        timings.end_draw_ms =
+            std::chrono::duration<double, std::milli>(surface_end - draw_end).count();
+        if (committed) {
+            timings.commit_ms = last_commit_ms_;
+        }
+        last_timings_ = timings;
         last_frame_ms_ =
-            std::chrono::duration<double, std::milli>(elapsed).count();
+            std::chrono::duration<double, std::milli>(frame_end - start).count();
         ++frame_count_;
     }
 
@@ -253,14 +269,18 @@ public:
             return false;
         }
 
+        const auto commit_start = std::chrono::steady_clock::now();
         const HRESULT result = dcomp_device_->Commit();
+        const auto commit_end = std::chrono::steady_clock::now();
+        last_commit_ms_ = std::chrono::duration<double, std::milli>(
+            commit_end - commit_start).count();
         if (FAILED(result)) {
             ScheduleCommit();
             return false;
         }
 
         commit_pending_ = false;
-        last_commit_time_ = std::chrono::steady_clock::now();
+        last_commit_time_ = commit_end;
         ++commit_count_;
         CancelCommitTimer();
         return true;
@@ -279,6 +299,10 @@ public:
 
     double LastFrameMilliseconds() const noexcept {
         return last_frame_ms_;
+    }
+
+    FrameTimings LastFrameTimings() const noexcept {
+        return last_timings_;
     }
 
     std::uint64_t FrameCount() const noexcept {
@@ -529,6 +553,8 @@ private:
     int surface_height_ = 0;
     double commit_interval_ms_ = 1000.0 / 120.0;
     double last_frame_ms_ = 0.0;
+    double last_commit_ms_ = 0.0;
+    FrameTimings last_timings_{};
     std::chrono::steady_clock::time_point last_commit_time_{};
     std::uint64_t frame_count_ = 0;
     std::uint64_t commit_count_ = 0;
@@ -615,6 +641,8 @@ Result<Ref<Window>> Window::Create(int width, int height, std::u16string_view ti
     }
 
     window->graphics_ = std::move(graphics).value();
+    window->client_width_ = client.right - client.left;
+    window->client_height_ = client.bottom - client.top;
     return Result<Ref<Window>>::Ok(std::move(window));
 }
 
@@ -632,7 +660,11 @@ void Window::Show() noexcept {
         UpdateWindow(hwnd_);
         if (graphics_ != nullptr) {
             graphics_->UpdateCommitInterval();
-            graphics_->Render(nullptr, true);
+            if (resize_pending_) {
+                RenderPendingResize();
+            } else {
+                graphics_->Render(nullptr, true);
+            }
         }
     }
 }
@@ -658,6 +690,10 @@ double Window::LastFrameMilliseconds() const noexcept {
     return graphics_ != nullptr ? graphics_->LastFrameMilliseconds() : 0.0;
 }
 
+FrameTimings Window::LastFrameTimings() const noexcept {
+    return graphics_ != nullptr ? graphics_->LastFrameTimings() : FrameTimings{};
+}
+
 std::uint64_t Window::FrameCount() const noexcept {
     return graphics_ != nullptr ? graphics_->FrameCount() : 0;
 }
@@ -667,13 +703,25 @@ std::uint64_t Window::CommitCount() const noexcept {
 }
 
 void Window::RenderFrame() noexcept {
-    if (graphics_ != nullptr) {
-        graphics_->Render();
+    if (graphics_ == nullptr) {
+        return;
     }
+
+    if (resize_pending_) {
+        RenderPendingResize();
+        return;
+    }
+
+    graphics_->Render();
 }
 
 void Window::RenderFrame(const Rect& dirty_rect) noexcept {
     if (graphics_ == nullptr || dirty_rect.IsEmpty()) {
+        return;
+    }
+
+    if (resize_pending_) {
+        RenderPendingResize();
         return;
     }
 
@@ -702,14 +750,37 @@ HWND Window::Handle() const noexcept {
 }
 
 void Window::OnSize(int width, int height) noexcept {
-    if (graphics_ == nullptr) {
+    if (graphics_ == nullptr || width <= 0 || height <= 0) {
         return;
     }
 
-    auto resized = graphics_->Resize(width, height);
-    if (resized.ok()) {
-        graphics_->Render(nullptr, true);
+    if (width == client_width_ && height == client_height_ && !resize_pending_) {
+        return;
     }
+
+    pending_width_ = width;
+    pending_height_ = height;
+    resize_pending_ = true;
+    InvalidateRect(hwnd_, nullptr, FALSE);
+}
+
+void Window::RenderPendingResize() noexcept {
+    if (!resize_pending_ || graphics_ == nullptr || hwnd_ == nullptr) {
+        return;
+    }
+
+    resize_pending_ = false;
+    const int width = pending_width_;
+    const int height = pending_height_;
+    auto resized = graphics_->Resize(width, height);
+    if (!resized.ok()) {
+        resize_pending_ = true;
+        return;
+    }
+
+    client_width_ = width;
+    client_height_ = height;
+    graphics_->Render(nullptr, true);
 }
 
 void Window::ReleaseGraphics() noexcept {
@@ -770,6 +841,9 @@ LRESULT CALLBACK Window::WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM 
                     static_cast<HBRUSH>(GetStockObject(WHITE_BRUSH)));
             }
             EndPaint(hwnd, &paint);
+            if (window != nullptr) {
+                window->RenderPendingResize();
+            }
             return 0;
         }
 

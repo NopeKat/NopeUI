@@ -19,6 +19,7 @@ int main() {
     NOPEUI_CHECK(window->FrameCount() >= 1);
     NOPEUI_CHECK(window->LastFrameMilliseconds() >= 0.0);
 
+    const auto frames_before_resize = window->FrameCount();
     NOPEUI_CHECK(
         SetWindowPos(
             window->Handle(),
@@ -28,7 +29,9 @@ int main() {
             480,
             320,
             SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE) != FALSE);
-    NOPEUI_CHECK(window->FrameCount() >= 2);
+    NOPEUI_CHECK(window->FrameCount() == frames_before_resize);
+    window->RenderFrame();
+    NOPEUI_CHECK(window->FrameCount() > frames_before_resize);
     NOPEUI_CHECK(window->CommitCount() >= 2);
     window->RenderFrame(nopeui::Rect{0.0f, 0.0f, 200.0f, 4.0f});
     NOPEUI_CHECK(window->FrameCount() >= 3);
