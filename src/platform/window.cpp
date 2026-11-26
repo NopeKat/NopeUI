@@ -114,6 +114,18 @@ namespace nopeui {
 
 using Microsoft::WRL::ComPtr;
 
+namespace {
+
+graphics::ScenePalette PaletteFromTheme(const Theme& theme) noexcept {
+    graphics::ScenePalette palette;
+    palette.background = theme.background;
+    palette.accent = theme.accent;
+    palette.text = theme.text;
+    return palette;
+}
+
+}  // namespace
+
 class WindowGraphics {
 public:
     static Result<std::unique_ptr<WindowGraphics>> Create(HWND hwnd, int width, int height) {
@@ -226,6 +238,18 @@ public:
         content_ = content;
     }
 
+    void SetPalette(const graphics::ScenePalette& palette) noexcept {
+        palette_ = palette;
+        scene_painter_.reset();
+        auto painter = graphics::ScenePainter::Create(d2d_context_.Get(), palette_);
+        if (painter.ok()) {
+            scene_painter_ = std::move(painter.value());
+        }
+        software_painter_.reset();
+        software_bitmap_.Reset();
+        full_redraw_required_ = true;
+    }
+
     void DrawSoftwareScene(const RECT* update_ptr, const D2D1_RECT_F& background_rect) noexcept {
         if (!EnsureSoftwareSurface(content_width_, content_height_)) {
             return;
@@ -282,30 +306,32 @@ public:
         if (width <= 0 || height <= 0) {
             return false;
         }
-        if (software_surface_ != nullptr &&
-            software_surface_->Width() == width &&
-            software_surface_->Height() == height) {
-            return true;
-        }
-        auto created = graphics::OffscreenSurface::Create(width, height, 96.0f);
-        if (!created.ok()) {
-            software_surface_.reset();
+        if (software_surface_ == nullptr ||
+            software_surface_->Width() != width ||
+            software_surface_->Height() != height) {
+            auto created = graphics::OffscreenSurface::Create(width, height, 96.0f);
+            if (!created.ok()) {
+                software_surface_.reset();
+                software_painter_.reset();
+                software_bitmap_.Reset();
+                return false;
+            }
+            software_surface_ = std::move(created.value());
             software_painter_.reset();
             software_bitmap_.Reset();
-            return false;
         }
-        software_surface_ = std::move(created.value());
-        auto painter = graphics::ScenePainter::Create(
-            software_surface_->Target(),
-            graphics::LightPalette());
-        if (!painter.ok()) {
-            software_surface_.reset();
-            software_painter_.reset();
-            software_bitmap_.Reset();
-            return false;
+        if (software_painter_ == nullptr) {
+            auto painter = graphics::ScenePainter::Create(
+                software_surface_->Target(),
+                palette_);
+            if (!painter.ok()) {
+                software_surface_.reset();
+                software_painter_.reset();
+                software_bitmap_.Reset();
+                return false;
+            }
+            software_painter_ = std::move(painter.value());
         }
-        software_painter_ = std::move(painter.value());
-        software_bitmap_.Reset();
         return true;
     }
 
@@ -1335,7 +1361,7 @@ private:
 
         auto painter_result = graphics::ScenePainter::Create(
             d2d_context_.Get(),
-            graphics::LightPalette());
+            palette_);
         if (!painter_result.ok()) {
             return Result<void>::Fail(painter_result.error());
         }
@@ -1380,6 +1406,7 @@ private:
     ComPtr<ID2D1Device> d2d_device_;
     ComPtr<ID2D1DeviceContext> d2d_context_;
     std::unique_ptr<graphics::ScenePainter> scene_painter_;
+    graphics::ScenePalette palette_ = graphics::LightPalette();
     std::unique_ptr<graphics::OffscreenSurface> software_surface_;
     std::unique_ptr<graphics::ScenePainter> software_painter_;
     ComPtr<ID2D1Bitmap1> software_bitmap_;
@@ -1437,7 +1464,7 @@ private:
     std::condition_variable commit_cv_;
 };
 
-Window::Window() noexcept : theme_(LightTheme()) {}
+Window::Window() noexcept : theme_(SystemTheme()) {}
 
 bool Window::EnsureWindowClass() noexcept {
     static std::once_flag once;
@@ -1511,6 +1538,7 @@ Result<Ref<Window>> Window::Create(int width, int height, std::u16string_view ti
     }
 
     window->graphics_ = std::move(graphics).value();
+    window->graphics_->SetPalette(PaletteFromTheme(window->theme_));
     window->client_width_ = client.right - client.left;
     window->client_height_ = client.bottom - client.top;
     return Result<Ref<Window>>::Ok(std::move(window));
@@ -1719,6 +1747,9 @@ void Window::SetTheme(Theme theme) noexcept {
     theme_ = std::move(theme);
     if (content_) {
         content_->SetTheme(&theme_);
+    }
+    if (graphics_ != nullptr) {
+        graphics_->SetPalette(PaletteFromTheme(theme_));
     }
     RenderFrame();
 }

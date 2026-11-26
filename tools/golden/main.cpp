@@ -3,9 +3,15 @@
 #include <cstring>
 #include <string>
 
+#include "nopeui/controls/border.h"
+#include "nopeui/controls/button.h"
+#include "nopeui/controls/label.h"
+#include "nopeui/controls/stack_panel.h"
 #include "nopeui/graphics/hardware.h"
 #include "nopeui/graphics/offscreen.h"
 #include "nopeui/graphics/scene.h"
+#include "nopeui/layout/element.h"
+#include "nopeui/theme/theme.h"
 
 namespace {
 
@@ -13,7 +19,8 @@ void PrintUsage() {
     std::fprintf(
         stderr,
         "usage: nopeui_golden --out <path> [--renderer software|hardware] "
-        "[--theme light|dark] [--width 1280] [--height 800] [--dpi 96]\n");
+        "[--scene placeholder|controls] [--theme light|dark] "
+        "[--width 1280] [--height 800] [--dpi 96]\n");
 }
 
 bool ParseInt(const char* text, int* value) {
@@ -36,31 +43,78 @@ bool ParseFloat(const char* text, float* value) {
     return true;
 }
 
+nopeui::Ref<nopeui::Element> BuildControlsScene(
+    const nopeui::Theme& theme,
+    int width,
+    int height) {
+    auto page = nopeui::Border::Create();
+    page->SetBorderVisible(false);
+    page->SetPadding(nopeui::Thickness{24.0f, 24.0f, 24.0f, 24.0f});
+
+    auto card = nopeui::Border::Create();
+    card->UseSurfaceBackground(true);
+    card->SetPadding(nopeui::Thickness{24.0f, 20.0f, 24.0f, 20.0f});
+
+    auto panel = nopeui::StackPanel::Create(12.0f);
+    panel->Add(nopeui::Label::Create(L"NopeUI controls"));
+    panel->Add(nopeui::Label::Create(L"A fixed control tree for golden images"));
+
+    auto row = nopeui::StackPanel::Create(10.0f);
+    row->SetOrientation(nopeui::Orientation::Horizontal);
+    row->Add(nopeui::Button::Create(L"Light"));
+    row->Add(nopeui::Button::Create(L"Dark"));
+    panel->Add(row);
+
+    panel->Add(nopeui::Label::Create(L"Spacing, borders and text share one theme"));
+
+    card->SetChild(panel);
+    page->SetChild(card);
+    page->SetTheme(&theme);
+
+    const nopeui::Size available{
+        static_cast<float>(width),
+        static_cast<float>(height)};
+    page->Measure(available);
+    page->Arrange(nopeui::Rect{0.0f, 0.0f, available.width, available.height});
+    return page;
+}
+
 template <typename Surface>
 int RenderAndSave(
     Surface& surface,
+    const std::string& scene,
     const nopeui::graphics::ScenePalette& palette,
+    const nopeui::Theme& theme,
     const char* renderer_name,
-    const std::string& theme,
+    const std::string& theme_name,
     int width,
     int height,
     float dpi,
     const std::string& out) {
+    nopeui::Ref<nopeui::Element> tree;
+    if (scene == "controls") {
+        tree = BuildControlsScene(theme, width, height);
+    }
+
     auto begin_result = surface.BeginDraw();
     if (!begin_result.ok()) {
         std::fprintf(stderr, "%s\n", begin_result.error().message.c_str());
         return 4;
     }
-    auto painted = nopeui::graphics::PaintPlaceholderScene(
-        surface.Target(),
-        palette,
-        static_cast<float>(width),
-        static_cast<float>(height));
-    auto end_result = surface.EndDraw();
-    if (!painted.ok()) {
-        std::fprintf(stderr, "%s\n", painted.error().message.c_str());
-        return 4;
+    if (tree) {
+        tree->Paint(surface.Target());
+    } else {
+        auto painted = nopeui::graphics::PaintPlaceholderScene(
+            surface.Target(),
+            palette,
+            static_cast<float>(width),
+            static_cast<float>(height));
+        if (!painted.ok()) {
+            std::fprintf(stderr, "%s\n", painted.error().message.c_str());
+            return 4;
+        }
     }
+    auto end_result = surface.EndDraw();
     if (!end_result.ok()) {
         std::fprintf(stderr, "%s\n", end_result.error().message.c_str());
         return 4;
@@ -73,10 +127,11 @@ int RenderAndSave(
     }
 
     std::printf(
-        "golden: %dx%d theme=%s renderer=%s dpi=%.0f -> %s\n",
+        "golden: %dx%d scene=%s theme=%s renderer=%s dpi=%.0f -> %s\n",
         width,
         height,
-        theme.c_str(),
+        scene.c_str(),
+        theme_name.c_str(),
         renderer_name,
         static_cast<double>(dpi),
         out.c_str());
@@ -89,6 +144,7 @@ int main(int argc, char** argv) {
     std::string out;
     std::string theme = "light";
     std::string renderer = "software";
+    std::string scene = "placeholder";
     int width = 1280;
     int height = 800;
     float dpi = 96.0f;
@@ -101,6 +157,8 @@ int main(int argc, char** argv) {
             theme = argv[++index];
         } else if (argument == "--renderer" && index + 1 < argc) {
             renderer = argv[++index];
+        } else if (argument == "--scene" && index + 1 < argc) {
+            scene = argv[++index];
         } else if (argument == "--width" && index + 1 < argc) {
             if (!ParseInt(argv[++index], &width)) {
                 PrintUsage();
@@ -134,10 +192,17 @@ int main(int argc, char** argv) {
         std::fprintf(stderr, "unknown renderer '%s'\n", renderer.c_str());
         return 2;
     }
+    if (scene != "placeholder" && scene != "controls") {
+        std::fprintf(stderr, "unknown scene '%s'\n", scene.c_str());
+        return 2;
+    }
 
     const nopeui::graphics::ScenePalette palette = theme == "dark"
         ? nopeui::graphics::DarkPalette()
         : nopeui::graphics::LightPalette();
+    const nopeui::Theme theme_value = theme == "dark"
+        ? nopeui::DarkTheme()
+        : nopeui::LightTheme();
 
     if (renderer == "software") {
         auto surface_result = nopeui::graphics::OffscreenSurface::Create(width, height, dpi);
@@ -146,7 +211,8 @@ int main(int argc, char** argv) {
             return 3;
         }
         auto& surface = surface_result.value();
-        return RenderAndSave(*surface, palette, "software", theme, width, height, dpi, out);
+        return RenderAndSave(
+            *surface, scene, palette, theme_value, "software", theme, width, height, dpi, out);
     }
 
     auto surface_result = nopeui::graphics::HardwareSurface::Create(width, height, dpi, true);
@@ -155,5 +221,6 @@ int main(int argc, char** argv) {
         return 3;
     }
     auto& surface = surface_result.value();
-    return RenderAndSave(*surface, palette, "hardware", theme, width, height, dpi, out);
+    return RenderAndSave(
+        *surface, scene, palette, theme_value, "hardware", theme, width, height, dpi, out);
 }

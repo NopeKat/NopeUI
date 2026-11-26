@@ -6,7 +6,7 @@ NopeUI 是一个仅面向 Windows 的开源 C++ 桌面 UI 框架。外观参考 
 
 ## 当前状态
 
-项目处于 P0 初期，`base` 最小内核与 `platform` 窗口层已建立：`Result` 与 `Error`、`Ref`、`Event` 与 `Subscription`、几何类型、UTF-8 与 UTF-16 转换，以及 Win32 窗口、消息循环、DirectComposition 虚拟表面、Direct2D 绘制与 DirectWrite 文字。窗口默认显示浅色背景、顶部强调条与一行示例文字的占位场景；`Window::SetContent` 可挂一棵元素树，覆盖客户区并接管鼠标命中。窗口默认启用按面积自适应的 2–3 块表面异步提交：客户区面积不超过 `2560×1600` 时用 3 块，更大的窗口用 2 块以控制显存。`SetAsyncCommit(false)` 可回退同步，`LastPresentedFrame()` 与 `AsyncCommitStats()` 可读取提交延迟、队列和丢帧。缩放时虚拟表面按小窗口约三分之一、较大窗口固定 256 像素的余量分配，停止缩放 300 ms 后回收到实际客户区尺寸，避免拖动过程中反复重建表面。帧提交默认按显示器刷新间隔节流，可用 `Window::Present()` 立即提交、`Window::SetCommitThrottle(false)` 关闭节流。`Window::LastFrameMilliseconds()`、`Window::FrameCount()`、`Window::CommitCount()` 与 `Window::RenderFrame()` 可读取和驱动帧，`nopeui_frame_benchmark` 提供 300 帧基准，`nopeui_resize_benchmark` 提供 resize 基准。软件回退已可用：远程会话自动切到 WIC 软件光栅，`Window::SetSoftwareRender(true)` 可手动切换，软件图与硬件图在黄金图里逐像素一致。黄金图基线与工具：`nopeui_golden` 出图、`nopeui_image_diff` 比对、`eng/golden.ps1` 管理。`layout` 提供 Measure/Arrange/HitTest/Paint 的最小元素树，`controls` 已落地 `Border`、`Label`、`Button`、`StackPanel` 四个基础控件；`nopeui_window_smoke` 的默认界面就是这四件拼出的卡片。`Theme` 定义浅色与深色两套调色板，窗口用 `SetTheme` 下发，元素沿父链继承，控件从主题取色。8 个测试在 `x64-debug` 与 `x64-release` 下全部通过。
+项目处于 P0 初期，`base` 最小内核与 `platform` 窗口层已建立：`Result` 与 `Error`、`Ref`、`Event` 与 `Subscription`、几何类型、UTF-8 与 UTF-16 转换，以及 Win32 窗口、消息循环、DirectComposition 虚拟表面、Direct2D 绘制与 DirectWrite 文字。窗口默认显示浅色背景、顶部强调条与一行示例文字的占位场景；`Window::SetContent` 可挂一棵元素树，覆盖客户区并接管鼠标命中。窗口默认启用按面积自适应的 2–3 块表面异步提交：客户区面积不超过 `2560×1600` 时用 3 块，更大的窗口用 2 块以控制显存。`SetAsyncCommit(false)` 可回退同步，`LastPresentedFrame()` 与 `AsyncCommitStats()` 可读取提交延迟、队列和丢帧。缩放时虚拟表面按小窗口约三分之一、较大窗口固定 256 像素的余量分配，停止缩放 300 ms 后回收到实际客户区尺寸，避免拖动过程中反复重建表面。帧提交默认按显示器刷新间隔节流，可用 `Window::Present()` 立即提交、`Window::SetCommitThrottle(false)` 关闭节流。`Window::LastFrameMilliseconds()`、`Window::FrameCount()`、`Window::CommitCount()` 与 `Window::RenderFrame()` 可读取和驱动帧，`nopeui_frame_benchmark` 提供 300 帧基准，`nopeui_resize_benchmark` 提供 resize 基准。软件回退已可用：远程会话自动切到 WIC 软件光栅，`Window::SetSoftwareRender(true)` 可手动切换，软件图与硬件图在黄金图里逐像素一致。黄金图基线与工具：`nopeui_golden` 出图、`nopeui_image_diff` 比对、`eng/golden.ps1` 管理。`layout` 提供 Measure/Arrange/HitTest/Paint 的最小元素树，`controls` 已落地 `Border`、`Label`、`Button`、`StackPanel`、`ScrollViewer`；`nopeui_window_smoke` 的默认界面就是这些控件拼出的卡片。`Theme` 定义浅色与深色两套调色板，窗口默认跟随系统应用深浅色偏好，可用 `SetTheme` 覆盖；元素沿父链继承主题，控件从主题取色，占位场景的调色板也跟随主题。8 个测试在 `x64-debug` 与 `x64-release` 下全部通过。
 
 ## 构建
 
@@ -58,11 +58,11 @@ NopeUI 是一个仅面向 Windows 的开源 C++ 桌面 UI 框架。外观参考 
 .\eng\golden.ps1 -Preset x64-debug -SkipBuild  # 只跑比对
 ```
 
-基线在 `tests/golden/baseline`，当前图与差异图在 `.build/golden`。软件与硬件各两张基线，脚本还会直接把浅色、深色的软件图与硬件图互相比对，任一超过容差即失败。`nopeui_image_diff` 按单像素 2 级色差、总体 0.5% 判定，有差异时写出的图把变化像素标红。两个工具也可单独调用：
+基线在 `tests/golden/baseline`，当前图与差异图在 `.build/golden`。占位场景有软件与硬件各两张基线，控件树另有浅色、深色两张（软件路径）；脚本还会直接把占位场景浅色、深色的软件图与硬件图互相比对。`nopeui_image_diff` 按单像素 2 级色差、总体 0.5% 判定，有差异时写出的图把变化像素标红。两个工具也可单独调用：
 
 ```powershell
 .\.build\x64-release\tools\Release\nopeui_golden.exe --out .\.build\golden\basic.png --theme light --renderer software
-.\.build\x64-release\tools\Release\nopeui_golden.exe --out .\.build\golden\basic-hw.png --theme light --renderer hardware
+.\.build\x64-release\tools\Release\nopeui_golden.exe --out .\.build\golden\controls.png --scene controls --theme dark --renderer software
 .\.build\x64-release\tools\Release\nopeui_image_diff.exe <baseline.png> <current.png> --diff <diff.png>
 ```
 
@@ -76,7 +76,7 @@ NopeUI 是一个仅面向 Windows 的开源 C++ 桌面 UI 框架。外观参考 
 
 焦点按视觉顺序排序：`IsFocusable()` 标记可聚焦元素，`CollectFocusable()` 递归收集，窗口维护 Tab 与 Shift+Tab，失去窗口焦点时清空。`Button` 的 `SetOnClick` 保存单个回调，`SubscribeClick` 返回可管理的订阅。
 
-颜色不再写死在控件里：`Theme` 有浅色与深色两套值，`Window::SetTheme` 把主题指针交给内容树，子元素沿父链找到它；`Property<T>` 是带变更检测的最小属性槽，`Set` 返回是否真的变化，控件据此调用 `Invalidate` 触发重绘。`nopeui_window_smoke --dark` 用深色主题启动，默认仍是浅色。
+颜色不再写死在控件里：`Theme` 有浅色与深色两套值，`Window::SetTheme` 把主题指针交给内容树，子元素沿父链找到它；`Property<T>` 是带变更检测的最小属性槽，`Set` 返回是否真的变化，控件据此调用 `Invalidate` 触发重绘。窗口默认读系统应用深浅色偏好，`nopeui_window_smoke --light` 与 `--dark` 可强制指定。
 
 ```cpp
 auto panel = nopeui::StackPanel::Create(12.0f);

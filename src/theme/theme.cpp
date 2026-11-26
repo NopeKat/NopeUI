@@ -1,5 +1,14 @@
 #include "nopeui/theme/theme.h"
 
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+
+#include <Windows.h>
+
 namespace nopeui {
 
 const Theme& LightTheme() noexcept {
@@ -23,6 +32,23 @@ const Theme& DarkTheme() noexcept {
         return dark;
     }()};
     return theme;
+}
+
+Theme SystemTheme() noexcept {
+    DWORD light = 1;
+    DWORD size = sizeof(light);
+    const LONG result = RegGetValueW(
+        HKEY_CURRENT_USER,
+        L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
+        L"AppsUseLightTheme",
+        RRF_RT_REG_DWORD,
+        nullptr,
+        &light,
+        &size);
+    if (result == ERROR_SUCCESS && light == 0) {
+        return DarkTheme();
+    }
+    return LightTheme();
 }
 
 }  // namespace nopeui

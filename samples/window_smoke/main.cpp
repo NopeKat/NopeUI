@@ -101,6 +101,9 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR command_line_ptr, int) {
     page->SetChild(card);
     window->SetContent(page);
 
+    if (command_line.find(L"--light") != std::wstring_view::npos) {
+        window->SetTheme(nopeui::LightTheme());
+    }
     if (command_line.find(L"--dark") != std::wstring_view::npos) {
         window->SetTheme(nopeui::DarkTheme());
     }

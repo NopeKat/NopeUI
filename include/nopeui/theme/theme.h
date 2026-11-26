@@ -22,6 +22,9 @@ struct Theme {
 const Theme& LightTheme() noexcept;
 const Theme& DarkTheme() noexcept;
 
+// Follows the Windows "app mode" preference; falls back to light.
+Theme SystemTheme() noexcept;
+
 }  // namespace nopeui
 
 #endif  // NOPEUI_THEME_THEME_H_

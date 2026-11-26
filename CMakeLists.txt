@@ -27,7 +27,7 @@ add_library(nopeui_theme STATIC
     src/theme/theme.cpp
 )
 
-target_link_libraries(nopeui_theme PUBLIC nopeui_base)
+target_link_libraries(nopeui_theme PUBLIC nopeui_base PRIVATE advapi32)
 target_compile_features(nopeui_theme PUBLIC cxx_std_20)
 
 add_library(nopeui_layout STATIC

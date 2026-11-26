@@ -25,17 +25,19 @@ foreach ($path in @($currentDir, $diffDir, $baselineDir)) {
 }
 
 $cases = @(
-    @{ Name = "basic-light-1280x800"; Renderer = "software"; Theme = "light"; Width = 1280; Height = 800 },
-    @{ Name = "basic-dark-1280x800"; Renderer = "software"; Theme = "dark"; Width = 1280; Height = 800 },
-    @{ Name = "hardware-light-1280x800"; Renderer = "hardware"; Theme = "light"; Width = 1280; Height = 800 },
-    @{ Name = "hardware-dark-1280x800"; Renderer = "hardware"; Theme = "dark"; Width = 1280; Height = 800 }
+    @{ Name = "basic-light-1280x800"; Renderer = "software"; Theme = "light"; Scene = "placeholder"; Width = 1280; Height = 800 },
+    @{ Name = "basic-dark-1280x800"; Renderer = "software"; Theme = "dark"; Scene = "placeholder"; Width = 1280; Height = 800 },
+    @{ Name = "hardware-light-1280x800"; Renderer = "hardware"; Theme = "light"; Scene = "placeholder"; Width = 1280; Height = 800 },
+    @{ Name = "hardware-dark-1280x800"; Renderer = "hardware"; Theme = "dark"; Scene = "placeholder"; Width = 1280; Height = 800 },
+    @{ Name = "controls-light-1280x800"; Renderer = "software"; Theme = "light"; Scene = "controls"; Width = 1280; Height = 800 },
+    @{ Name = "controls-dark-1280x800"; Renderer = "software"; Theme = "dark"; Scene = "controls"; Width = 1280; Height = 800 }
 )
 
 $failed = $false
 foreach ($case in $cases) {
     $currentPath = Join-Path $currentDir "$($case.Name).png"
     & $goldenExe --out $currentPath --renderer $case.Renderer --theme $case.Theme `
-        --width $case.Width --height $case.Height
+        --scene $case.Scene --width $case.Width --height $case.Height
     if ($LASTEXITCODE -ne 0) {
         throw "golden render failed: $($case.Name)"
     }
