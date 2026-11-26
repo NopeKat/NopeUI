@@ -1,4 +1,4 @@
-#include <cassert>
+#include "../test_check.h"
 
 #include "nopeui/base/ref.h"
 
@@ -25,23 +25,23 @@ int main() {
 
     {
         nopeui::Ref<Widget> empty;
-        assert(!empty);
+        NOPEUI_CHECK(!empty);
 
         nopeui::Ref<Widget> first(new Widget());
-        assert(static_cast<bool>(first));
+        NOPEUI_CHECK(static_cast<bool>(first));
         first->value = 7;
 
         nopeui::Ref<Widget> second = first;
-        assert(second->value == 7);
+        NOPEUI_CHECK(second->value == 7);
         second.Reset();
-        assert(Widget::destroyed == 0);
+        NOPEUI_CHECK(Widget::destroyed == 0);
 
         nopeui::Ref<DerivedWidget> derived(new DerivedWidget());
         nopeui::Ref<Widget> base = derived;
-        assert(static_cast<bool>(base));
-        assert(Widget::destroyed == 0);
+        NOPEUI_CHECK(static_cast<bool>(base));
+        NOPEUI_CHECK(Widget::destroyed == 0);
     }
 
-    assert(Widget::destroyed == 2);
+    NOPEUI_CHECK(Widget::destroyed == 2);
     return 0;
 }

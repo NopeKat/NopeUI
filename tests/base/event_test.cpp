@@ -1,4 +1,4 @@
-#include <cassert>
+#include "../test_check.h"
 #include <cstddef>
 #include <utility>
 
@@ -11,29 +11,29 @@ int main() {
     auto first = event.Subscribe([&sum](int value) {
         sum += value;
     });
-    assert(event.HandlerCount() == std::size_t{1});
+    NOPEUI_CHECK(event.HandlerCount() == std::size_t{1});
 
     {
         auto second = event.Subscribe([&sum](int value) {
             sum += value * 2;
         });
         event.Raise(3);
-        assert(sum == 9);
+        NOPEUI_CHECK(sum == 9);
     }
 
-    assert(event.HandlerCount() == std::size_t{1});
+    NOPEUI_CHECK(event.HandlerCount() == std::size_t{1});
     event.Raise(3);
-    assert(sum == 12);
+    NOPEUI_CHECK(sum == 12);
 
     auto moved = std::move(first);
     first.Reset();
-    assert(event.HandlerCount() == std::size_t{1});
-    assert(static_cast<bool>(moved));
+    NOPEUI_CHECK(event.HandlerCount() == std::size_t{1});
+    NOPEUI_CHECK(static_cast<bool>(moved));
 
     moved.Reset();
-    assert(event.HandlerCount() == std::size_t{0});
+    NOPEUI_CHECK(event.HandlerCount() == std::size_t{0});
     event.Raise(3);
-    assert(sum == 12);
+    NOPEUI_CHECK(sum == 12);
 
     return 0;
 }
