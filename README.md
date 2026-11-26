@@ -66,7 +66,7 @@ NopeUI 是一个仅面向 Windows 的开源 C++ 桌面 UI 框架。外观参考 
 .\.build\x64-release\tools\Release\nopeui_image_diff.exe <baseline.png> <current.png> --diff <diff.png>
 ```
 
-窗口的软件路径已经使用 `graphics/scene`，硬件路径仍是内联绘制，两者合并放到后面做。
+窗口的硬件与软件两条路径现在都通过 `graphics/scene` 的 `ScenePainter` 绘制，占位场景只剩一份实现；`ScenePainter` 缓存画刷与文本布局，按帧只做矩形填充、文字与强调条。
 
 ## 目录
 

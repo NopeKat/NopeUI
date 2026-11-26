@@ -226,14 +226,19 @@ public:
             return;
         }
         auto* surface = software_surface_.get();
+        if (software_painter_ == nullptr) {
+            return;
+        }
         if (!surface->BeginDraw().ok()) {
             return;
         }
-        const auto painted = graphics::PaintPlaceholderScene(
-            surface->Target(),
-            graphics::LightPalette(),
+        const auto painted = software_painter_->Paint(
             static_cast<float>(content_width_),
-            static_cast<float>(content_height_));
+            static_cast<float>(content_height_),
+            background_rect.left,
+            background_rect.top,
+            background_rect.right,
+            background_rect.bottom);
         if (!surface->EndDraw().ok() || !painted.ok()) {
             return;
         }
@@ -277,10 +282,21 @@ public:
         auto created = graphics::OffscreenSurface::Create(width, height, 96.0f);
         if (!created.ok()) {
             software_surface_.reset();
+            software_painter_.reset();
             software_bitmap_.Reset();
             return false;
         }
         software_surface_ = std::move(created.value());
+        auto painter = graphics::ScenePainter::Create(
+            software_surface_->Target(),
+            graphics::LightPalette());
+        if (!painter.ok()) {
+            software_surface_.reset();
+            software_painter_.reset();
+            software_bitmap_.Reset();
+            return false;
+        }
+        software_painter_ = std::move(painter.value());
         software_bitmap_.Reset();
         return true;
     }
@@ -521,155 +537,139 @@ public:
         if (software_render_) {
             DrawSoftwareScene(update_ptr, background_rect);
         } else {
-        if (update_ptr == nullptr) {
-            d2d_context_->FillRectangle(background_rect, background_brush_.Get());
-        } else {
-            d2d_context_->PushAxisAlignedClip(background_rect, D2D1_ANTIALIAS_MODE_ALIASED);
-            d2d_context_->FillRectangle(background_rect, background_brush_.Get());
-        }
-
-        const bool draw_text = update_ptr == nullptr ||
-            (update.right > 24 && update.left < 324 &&
-             update.bottom > 28 && update.top < 88);
-        if (draw_text) {
-            if (text_bitmap_ != nullptr) {
-                d2d_context_->DrawBitmap(
-                    text_bitmap_.Get(),
-                    D2D1::RectF(24.0f, 28.0f, 384.0f, 92.0f),
-                    1.0f,
-                    D2D1_BITMAP_INTERPOLATION_MODE_NEAREST_NEIGHBOR);
-            } else {
-                d2d_context_->DrawTextLayout(
-                    D2D1::Point2F(24.0f, 28.0f),
-                    text_layout_.Get(),
-                    text_brush_.Get());
+            if (update_ptr != nullptr) {
+                d2d_context_->PushAxisAlignedClip(background_rect, D2D1_ANTIALIAS_MODE_ALIASED);
             }
-        }
-
-        d2d_context_->FillRectangle(
-            D2D1::RectF(0.0f, 0.0f, static_cast<float>(content_width_), 4.0f),
-            accent_brush_.Get());
-        if (diagnostic_rectangles_ > 0) {
-            if (diagnostic_virtual_list_) {
-                constexpr std::uint32_t columns = 64;
-                constexpr float row_step = 10.0f;
-                constexpr float first_y = 100.0f;
-                const std::uint32_t total_rows =
-                    (diagnostic_rectangles_ + columns - 1) / columns;
-                const int first_row = std::max(
-                    0,
-                    static_cast<int>(std::floor(
-                        (background_rect.top + diagnostic_scroll_ - first_y) / row_step)));
-                const int last_row = std::min(
-                    static_cast<int>(total_rows) - 1,
-                    static_cast<int>(std::floor(
-                        (background_rect.bottom + diagnostic_scroll_ - first_y) / row_step)));
-                for (int row = first_row; row <= last_row; ++row) {
-                    for (std::uint32_t column = 0; column < columns; ++column) {
-                        const std::uint32_t index =
-                            static_cast<std::uint32_t>(row) * columns + column;
-                        if (index >= diagnostic_rectangles_) {
-                            break;
+            if (scene_painter_ != nullptr) {
+                scene_painter_->Paint(
+                    static_cast<float>(content_width_),
+                    static_cast<float>(content_height_),
+                    background_rect.left,
+                    background_rect.top,
+                    background_rect.right,
+                    background_rect.bottom);
+            }
+            if (diagnostic_rectangles_ > 0) {
+                if (diagnostic_virtual_list_) {
+                    constexpr std::uint32_t columns = 64;
+                    constexpr float row_step = 10.0f;
+                    constexpr float first_y = 100.0f;
+                    const std::uint32_t total_rows =
+                        (diagnostic_rectangles_ + columns - 1) / columns;
+                    const int first_row = std::max(
+                        0,
+                        static_cast<int>(std::floor(
+                            (background_rect.top + diagnostic_scroll_ - first_y) / row_step)));
+                    const int last_row = std::min(
+                        static_cast<int>(total_rows) - 1,
+                        static_cast<int>(std::floor(
+                            (background_rect.bottom + diagnostic_scroll_ - first_y) / row_step)));
+                    for (int row = first_row; row <= last_row; ++row) {
+                        for (std::uint32_t column = 0; column < columns; ++column) {
+                            const std::uint32_t index =
+                                static_cast<std::uint32_t>(row) * columns + column;
+                            if (index >= diagnostic_rectangles_) {
+                                break;
+                            }
+                            const float x = 4.0f + static_cast<float>(column) * 10.0f;
+                            const float y = first_y + static_cast<float>(row) * row_step -
+                                            diagnostic_scroll_;
+                            d2d_context_->FillRectangle(
+                                D2D1::RectF(x, y, x + 6.0f, y + 6.0f),
+                                (index & 1U) != 0 ? accent_brush_.Get() : text_brush_.Get());
                         }
-                        const float x = 4.0f + static_cast<float>(column) * 10.0f;
-                        const float y = first_y + static_cast<float>(row) * row_step -
-                                        diagnostic_scroll_;
+                    }
+                } else {
+                    for (std::uint32_t index = 0; index < diagnostic_rectangles_; ++index) {
+                        const float x = 4.0f + static_cast<float>(index % 64) * 10.0f;
+                        const float y = 100.0f + static_cast<float>((index / 64) % 64) * 10.0f;
                         d2d_context_->FillRectangle(
                             D2D1::RectF(x, y, x + 6.0f, y + 6.0f),
                             (index & 1U) != 0 ? accent_brush_.Get() : text_brush_.Get());
                     }
                 }
-            } else {
-                for (std::uint32_t index = 0; index < diagnostic_rectangles_; ++index) {
-                    const float x = 4.0f + static_cast<float>(index % 64) * 10.0f;
-                    const float y = 100.0f + static_cast<float>((index / 64) % 64) * 10.0f;
-                    d2d_context_->FillRectangle(
-                        D2D1::RectF(x, y, x + 6.0f, y + 6.0f),
-                        (index & 1U) != 0 ? accent_brush_.Get() : text_brush_.Get());
-                }
             }
-        }
-        if (!diagnostic_text_rows_.empty()) {
-            constexpr float first_y = 28.0f;
-            const std::uint32_t total_rows =
-                static_cast<std::uint32_t>(diagnostic_text_rows_.size());
-            const int first_row = std::max(
-                0,
-                static_cast<int>(std::floor(
-                    (background_rect.top + diagnostic_scroll_ - first_y) /
-                    diagnostic_row_height_)));
-            const int last_row = std::min(
-                static_cast<int>(total_rows) - 1,
-                static_cast<int>(std::floor(
-                    (background_rect.bottom + diagnostic_scroll_ - first_y) /
-                    diagnostic_row_height_)));
-            for (int row = first_row; row <= last_row; ++row) {
-                auto layout = DiagnosticLayout(static_cast<std::uint32_t>(row));
-                if (layout == nullptr) {
-                    continue;
-                }
-                d2d_context_->DrawTextLayout(
-                    D2D1::Point2F(
-                        24.0f,
-                        first_y + static_cast<float>(row) * diagnostic_row_height_ -
-                            diagnostic_scroll_),
-                    layout.Get(),
-                    text_brush_.Get());
-            }
-        }
-        if (diagnostic_text_runs_ > 0) {
-            const auto draw_diagnostic_text = [&](float x, float y) {
-                if (text_bitmap_ != nullptr) {
-                    d2d_context_->DrawBitmap(
-                        text_bitmap_.Get(),
-                        D2D1::RectF(x, y, x + 180.0f, y + 32.0f),
-                        1.0f,
-                        D2D1_BITMAP_INTERPOLATION_MODE_NEAREST_NEIGHBOR);
-                } else if (text_layout_ != nullptr) {
-                    d2d_context_->DrawTextLayout(
-                        D2D1::Point2F(x, y),
-                        text_layout_.Get(),
-                        text_brush_.Get());
-                }
-            };
-            if (diagnostic_virtual_list_) {
-                constexpr std::uint32_t columns = 8;
-                constexpr float row_step = 20.0f;
+            if (!diagnostic_text_rows_.empty()) {
                 constexpr float first_y = 28.0f;
                 const std::uint32_t total_rows =
-                    (diagnostic_text_runs_ + columns - 1) / columns;
+                    static_cast<std::uint32_t>(diagnostic_text_rows_.size());
                 const int first_row = std::max(
                     0,
                     static_cast<int>(std::floor(
-                        (background_rect.top + diagnostic_scroll_ - first_y) / row_step)));
+                        (background_rect.top + diagnostic_scroll_ - first_y) /
+                        diagnostic_row_height_)));
                 const int last_row = std::min(
                     static_cast<int>(total_rows) - 1,
                     static_cast<int>(std::floor(
-                        (background_rect.bottom + diagnostic_scroll_ - first_y) / row_step)));
+                        (background_rect.bottom + diagnostic_scroll_ - first_y) /
+                        diagnostic_row_height_)));
                 for (int row = first_row; row <= last_row; ++row) {
-                    for (std::uint32_t column = 0; column < columns; ++column) {
-                        const std::uint32_t index =
-                            static_cast<std::uint32_t>(row) * columns + column;
-                        if (index >= diagnostic_text_runs_) {
-                            break;
-                        }
-                        draw_diagnostic_text(
-                            24.0f + static_cast<float>(column) * 120.0f,
-                            first_y + static_cast<float>(row) * row_step -
-                                diagnostic_scroll_);
+                    auto layout = DiagnosticLayout(static_cast<std::uint32_t>(row));
+                    if (layout == nullptr) {
+                        continue;
                     }
-                }
-            } else {
-                for (std::uint32_t index = 0; index < diagnostic_text_runs_; ++index) {
-                    const float x = 24.0f + static_cast<float>(index % 8) * 12.0f;
-                    const float y = 28.0f + static_cast<float>((index / 8) % 32) * 8.0f;
-                    draw_diagnostic_text(x, y);
+                    d2d_context_->DrawTextLayout(
+                        D2D1::Point2F(
+                            24.0f,
+                            first_y + static_cast<float>(row) * diagnostic_row_height_ -
+                                diagnostic_scroll_),
+                        layout.Get(),
+                        text_brush_.Get());
                 }
             }
-        }
-        }
-        if (update_ptr != nullptr) {
-            d2d_context_->PopAxisAlignedClip();
+            if (diagnostic_text_runs_ > 0) {
+                const auto draw_diagnostic_text = [&](float x, float y) {
+                    if (text_bitmap_ != nullptr) {
+                        d2d_context_->DrawBitmap(
+                            text_bitmap_.Get(),
+                            D2D1::RectF(x, y, x + 180.0f, y + 32.0f),
+                            1.0f,
+                            D2D1_BITMAP_INTERPOLATION_MODE_NEAREST_NEIGHBOR);
+                    } else if (text_layout_ != nullptr) {
+                        d2d_context_->DrawTextLayout(
+                            D2D1::Point2F(x, y),
+                            text_layout_.Get(),
+                            text_brush_.Get());
+                    }
+                };
+                if (diagnostic_virtual_list_) {
+                    constexpr std::uint32_t columns = 8;
+                    constexpr float row_step = 20.0f;
+                    constexpr float first_y = 28.0f;
+                    const std::uint32_t total_rows =
+                        (diagnostic_text_runs_ + columns - 1) / columns;
+                    const int first_row = std::max(
+                        0,
+                        static_cast<int>(std::floor(
+                            (background_rect.top + diagnostic_scroll_ - first_y) / row_step)));
+                    const int last_row = std::min(
+                        static_cast<int>(total_rows) - 1,
+                        static_cast<int>(std::floor(
+                            (background_rect.bottom + diagnostic_scroll_ - first_y) / row_step)));
+                    for (int row = first_row; row <= last_row; ++row) {
+                        for (std::uint32_t column = 0; column < columns; ++column) {
+                            const std::uint32_t index =
+                                static_cast<std::uint32_t>(row) * columns + column;
+                            if (index >= diagnostic_text_runs_) {
+                                break;
+                            }
+                            draw_diagnostic_text(
+                                24.0f + static_cast<float>(column) * 120.0f,
+                                first_y + static_cast<float>(row) * row_step -
+                                    diagnostic_scroll_);
+                        }
+                    }
+                } else {
+                    for (std::uint32_t index = 0; index < diagnostic_text_runs_; ++index) {
+                        const float x = 24.0f + static_cast<float>(index % 8) * 12.0f;
+                        const float y = 28.0f + static_cast<float>((index / 8) % 32) * 8.0f;
+                        draw_diagnostic_text(x, y);
+                    }
+                }
+            }
+            if (update_ptr != nullptr) {
+                d2d_context_->PopAxisAlignedClip();
+            }
         }
         result = d2d_context_->EndDraw();
         if (FAILED(result)) {
@@ -1314,13 +1314,6 @@ private:
         }
 
         result = d2d_context_->CreateSolidColorBrush(
-            D2D1::ColorF(0xF3F3F3), background_brush_.GetAddressOf());
-        if (FAILED(result)) {
-            return Result<void>::Fail(
-                Error{ErrorCode::PlatformFailure, PlatformError("CreateSolidColorBrush", result)});
-        }
-
-        result = d2d_context_->CreateSolidColorBrush(
             D2D1::ColorF(0x0067C0), accent_brush_.GetAddressOf());
         if (FAILED(result)) {
             return Result<void>::Fail(
@@ -1328,6 +1321,14 @@ private:
         }
 
         software_render_ = GetSystemMetrics(SM_REMOTESESSION) != 0;
+
+        auto painter_result = graphics::ScenePainter::Create(
+            d2d_context_.Get(),
+            graphics::LightPalette());
+        if (!painter_result.ok()) {
+            return Result<void>::Fail(painter_result.error());
+        }
+        scene_painter_ = std::move(painter_result.value());
 
         auto surface_result = Resize(width, height);
         if (!surface_result.ok()) {
@@ -1367,7 +1368,9 @@ private:
     ComPtr<ID2D1Factory1> d2d_factory_;
     ComPtr<ID2D1Device> d2d_device_;
     ComPtr<ID2D1DeviceContext> d2d_context_;
+    std::unique_ptr<graphics::ScenePainter> scene_painter_;
     std::unique_ptr<graphics::OffscreenSurface> software_surface_;
+    std::unique_ptr<graphics::ScenePainter> software_painter_;
     ComPtr<ID2D1Bitmap1> software_bitmap_;
     bool software_render_ = false;
     ComPtr<IDWriteFactory> dwrite_factory_;
@@ -1375,7 +1378,6 @@ private:
     ComPtr<IDWriteTextLayout> text_layout_;
     ComPtr<ID2D1SolidColorBrush> text_brush_;
     ComPtr<ID2D1Bitmap> text_bitmap_;
-    ComPtr<ID2D1SolidColorBrush> background_brush_;
     ComPtr<ID2D1SolidColorBrush> accent_brush_;
     std::uint32_t diagnostic_rectangles_ = 0;
     std::uint32_t diagnostic_text_runs_ = 0;
