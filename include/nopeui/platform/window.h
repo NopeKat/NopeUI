@@ -19,6 +19,7 @@
 #include "nopeui/base/geometry.h"
 #include "nopeui/base/ref.h"
 #include "nopeui/base/result.h"
+#include "nopeui/layout/element.h"
 
 namespace nopeui {
 
@@ -109,6 +110,11 @@ public:
     void SetSoftwareRender(bool enabled) noexcept;
     bool IsSoftwareRender() const noexcept;
 
+    // Sets the root element laid out over the client area and routed pointer
+    // input. Passing no content restores the placeholder scene.
+    void SetContent(Ref<Element> content) noexcept;
+    Element* Content() const noexcept;
+
     HWND Handle() const noexcept;
 
 private:
@@ -127,8 +133,18 @@ private:
     void CompactResize() noexcept;
     void ReleaseGraphics() noexcept;
 
+    void LayoutContent(int width, int height) noexcept;
+    void OnMouseMove(Point point) noexcept;
+    void OnMouseDown(Point point) noexcept;
+    void OnMouseUp(Point point) noexcept;
+    void OnMouseLeave() noexcept;
+
     HWND hwnd_ = nullptr;
     std::unique_ptr<WindowGraphics> graphics_;
+    Ref<Element> content_;
+    Element* hovered_ = nullptr;
+    Element* pressed_ = nullptr;
+    bool tracking_mouse_ = false;
     int client_width_ = 0;
     int client_height_ = 0;
     int pending_width_ = 0;

@@ -23,13 +23,20 @@ target_include_directories(nopeui_base PUBLIC
 
 target_compile_features(nopeui_base PUBLIC cxx_std_20)
 
+add_library(nopeui_layout STATIC
+    src/layout/element.cpp
+)
+
+target_link_libraries(nopeui_layout PUBLIC nopeui_base)
+target_compile_features(nopeui_layout PUBLIC cxx_std_20)
+
 add_library(nopeui_platform STATIC
     src/platform/window.cpp
 )
 
 target_link_libraries(nopeui_platform
     PUBLIC nopeui_base
-    PRIVATE user32 d3d11 dxgi d2d1 dcomp dwrite dwmapi nopeui_graphics
+    PRIVATE user32 d3d11 dxgi d2d1 dcomp dwrite dwmapi nopeui_graphics nopeui_layout
 )
 target_compile_features(nopeui_platform PUBLIC cxx_std_20)
 
@@ -38,6 +45,7 @@ add_library(nopeui_graphics STATIC
     src/graphics/image.cpp
     src/graphics/offscreen.cpp
     src/graphics/scene.cpp
+    src/graphics/text.cpp
 )
 
 target_link_libraries(nopeui_graphics
@@ -45,6 +53,19 @@ target_link_libraries(nopeui_graphics
     PRIVATE d2d1 d3d11 dwrite dxgi windowscodecs ole32
 )
 target_compile_features(nopeui_graphics PUBLIC cxx_std_20)
+
+add_library(nopeui_controls STATIC
+    src/controls/border.cpp
+    src/controls/button.cpp
+    src/controls/label.cpp
+    src/controls/stack_panel.cpp
+)
+
+target_link_libraries(nopeui_controls
+    PUBLIC nopeui_base nopeui_layout
+    PRIVATE d2d1 nopeui_graphics
+)
+target_compile_features(nopeui_controls PUBLIC cxx_std_20)
 
 include(CTest)
 

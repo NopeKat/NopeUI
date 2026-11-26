@@ -8,6 +8,7 @@
 #include <dxgi.h>
 #include <dxgi1_2.h>
 #include <wincodec.h>
+#include <windowsx.h>
 #include <wrl/client.h>
 
 #include "nopeui/graphics/offscreen.h"
@@ -221,6 +222,10 @@ public:
         return software_render_;
     }
 
+    void SetContent(Element* content) noexcept {
+        content_ = content;
+    }
+
     void DrawSoftwareScene(const RECT* update_ptr, const D2D1_RECT_F& background_rect) noexcept {
         if (!EnsureSoftwareSurface(content_width_, content_height_)) {
             return;
@@ -239,6 +244,9 @@ public:
             background_rect.top,
             background_rect.right,
             background_rect.bottom);
+        if (content_ != nullptr) {
+            content_->Paint(surface->Target());
+        }
         if (!surface->EndDraw().ok() || !painted.ok()) {
             return;
         }
@@ -548,6 +556,9 @@ public:
                     background_rect.top,
                     background_rect.right,
                     background_rect.bottom);
+            }
+            if (content_ != nullptr) {
+                content_->Paint(d2d_context_.Get());
             }
             if (diagnostic_rectangles_ > 0) {
                 if (diagnostic_virtual_list_) {
@@ -1372,6 +1383,7 @@ private:
     std::unique_ptr<graphics::OffscreenSurface> software_surface_;
     std::unique_ptr<graphics::ScenePainter> software_painter_;
     ComPtr<ID2D1Bitmap1> software_bitmap_;
+    Element* content_ = nullptr;
     bool software_render_ = false;
     ComPtr<IDWriteFactory> dwrite_factory_;
     ComPtr<IDWriteTextFormat> text_format_;
@@ -1679,6 +1691,101 @@ bool Window::IsSoftwareRender() const noexcept {
     return graphics_ != nullptr && graphics_->IsSoftwareRender();
 }
 
+void Window::SetContent(Ref<Element> content) noexcept {
+    content_ = std::move(content);
+    hovered_ = nullptr;
+    pressed_ = nullptr;
+    tracking_mouse_ = false;
+    if (graphics_ != nullptr) {
+        graphics_->SetContent(content_.Get());
+    }
+    LayoutContent(client_width_, client_height_);
+    RenderFrame();
+}
+
+Element* Window::Content() const noexcept {
+    return content_.Get();
+}
+
+void Window::LayoutContent(int width, int height) noexcept {
+    if (!content_ || width <= 0 || height <= 0) {
+        return;
+    }
+    const Size available{
+        static_cast<float>(width),
+        static_cast<float>(height)};
+    content_->Measure(available);
+    content_->Arrange(Rect{
+        0.0f,
+        0.0f,
+        static_cast<float>(width),
+        static_cast<float>(height)});
+}
+
+void Window::OnMouseMove(Point point) noexcept {
+    if (!content_ || graphics_ == nullptr) {
+        return;
+    }
+    if (!tracking_mouse_ && hwnd_ != nullptr) {
+        TRACKMOUSEEVENT track{};
+        track.cbSize = sizeof(track);
+        track.dwFlags = TME_LEAVE;
+        track.hwndTrack = hwnd_;
+        TrackMouseEvent(&track);
+        tracking_mouse_ = true;
+    }
+
+    Element* hit = content_->HitTest(point);
+    bool changed = false;
+    if (hit != hovered_) {
+        if (hovered_ != nullptr) {
+            hovered_->OnPointerLeave();
+        }
+        hovered_ = hit;
+        if (hit != nullptr) {
+            hit->OnPointerEnter();
+        }
+        changed = true;
+    }
+    if (hovered_ != nullptr) {
+        hovered_->OnPointerMove(point);
+    }
+    if (changed) {
+        RenderFrame();
+    }
+}
+
+void Window::OnMouseDown(Point point) noexcept {
+    if (!content_) {
+        return;
+    }
+    pressed_ = content_->HitTest(point);
+    if (pressed_ != nullptr) {
+        pressed_->OnPointerDown(point);
+        RenderFrame();
+    }
+}
+
+void Window::OnMouseUp(Point point) noexcept {
+    Element* pressed = pressed_;
+    pressed_ = nullptr;
+    if (pressed != nullptr) {
+        pressed->OnPointerUp(point);
+        RenderFrame();
+    }
+}
+
+void Window::OnMouseLeave() noexcept {
+    tracking_mouse_ = false;
+    if (hovered_ == nullptr) {
+        return;
+    }
+    hovered_->OnPointerLeave();
+    hovered_ = nullptr;
+    pressed_ = nullptr;
+    RenderFrame();
+}
+
 HWND Window::Handle() const noexcept {
     return hwnd_;
 }
@@ -1789,6 +1896,7 @@ void Window::RenderPendingResize() noexcept {
 
     client_width_ = width;
     client_height_ = height;
+    LayoutContent(width, height);
     graphics_->Render(nullptr, !graphics_->IsAsyncCommitEnabled());
     ScheduleResizeSettle();
 }
@@ -1897,6 +2005,38 @@ LRESULT CALLBACK Window::WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM 
 
         case WM_ERASEBKGND:
             return 1;
+
+        case WM_MOUSEMOVE:
+            if (window != nullptr) {
+                window->OnMouseMove(Point{
+                    static_cast<float>(GET_X_LPARAM(lparam)),
+                    static_cast<float>(GET_Y_LPARAM(lparam))});
+            }
+            return 0;
+
+        case WM_MOUSELEAVE:
+            if (window != nullptr) {
+                window->OnMouseLeave();
+            }
+            return 0;
+
+        case WM_LBUTTONDOWN:
+            if (window != nullptr) {
+                window->OnMouseDown(Point{
+                    static_cast<float>(GET_X_LPARAM(lparam)),
+                    static_cast<float>(GET_Y_LPARAM(lparam))});
+                SetCapture(hwnd);
+            }
+            return 0;
+
+        case WM_LBUTTONUP:
+            if (window != nullptr) {
+                window->OnMouseUp(Point{
+                    static_cast<float>(GET_X_LPARAM(lparam)),
+                    static_cast<float>(GET_Y_LPARAM(lparam))});
+                ReleaseCapture();
+            }
+            return 0;
 
         case WM_TIMER:
             if (window != nullptr && wparam == kCommitTimerId) {
