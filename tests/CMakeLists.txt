@@ -19,3 +19,15 @@ add_test(NAME nopeui_platform.window_test COMMAND nopeui_platform_window_test)
 add_executable(nopeui_platform_window_async_test platform/window_async_test.cpp)
 target_link_libraries(nopeui_platform_window_async_test PRIVATE nopeui_platform)
 add_test(NAME nopeui_platform.window_async_test COMMAND nopeui_platform_window_async_test)
+
+add_executable(nopeui_platform_popup_test platform/popup_test.cpp)
+target_link_libraries(nopeui_platform_popup_test PRIVATE nopeui_platform nopeui_controls)
+add_test(NAME nopeui_platform.popup_test COMMAND nopeui_platform_popup_test)
+
+add_executable(nopeui_layout_property_style_test layout/property_style_test.cpp)
+target_link_libraries(nopeui_layout_property_style_test PRIVATE nopeui_controls nopeui_layout)
+add_test(NAME nopeui_layout.property_style_test COMMAND nopeui_layout_property_style_test)
+
+add_executable(nopeui_markup_xaml_test markup/xaml_test.cpp)
+target_link_libraries(nopeui_markup_xaml_test PRIVATE nopeui_markup nopeui_controls)
+add_test(NAME nopeui_markup.xaml_test COMMAND nopeui_markup_xaml_test)

@@ -6,7 +6,7 @@ NopeUI 是一个仅面向 Windows 的开源 C++ 桌面 UI 框架。外观参考 
 
 ## 当前状态
 
-项目进入 P1 早期，P0 的 `base`、`platform`、`layout`、`controls` 与无障碍闭环已完成：`Result` 与 `Error`、`Ref`、`Event` 与 `Subscription`、几何类型、UTF-8 与 UTF-16 转换，以及 Win32 窗口、消息循环、DirectComposition 虚拟表面、Direct2D 绘制与 DirectWrite 文字。窗口默认显示浅色背景、顶部强调条与一行示例文字的占位场景；`Window::SetContent` 可挂一棵元素树，覆盖客户区并接管鼠标命中。窗口默认启用按面积自适应的 2–3 块表面异步提交：客户区面积不超过 `2560×1600` 时用 3 块，更大的窗口用 2 块以控制显存。`SetAsyncCommit(false)` 可回退同步，`LastPresentedFrame()` 与 `AsyncCommitStats()` 可读取提交延迟、队列和丢帧。缩放时虚拟表面按小窗口约三分之一、较大窗口固定 256 像素的余量分配，停止缩放 300 ms 后回收到实际客户区尺寸，避免拖动过程中反复重建表面。帧提交默认按显示器刷新间隔节流，可用 `Window::Present()` 立即提交、`Window::SetCommitThrottle(false)` 关闭节流。`Window::LastFrameMilliseconds()`、`Window::FrameCount()`、`Window::CommitCount()` 与 `Window::RenderFrame()` 可读取和驱动帧，`nopeui_frame_benchmark` 提供 300 帧基准，`nopeui_resize_benchmark` 提供 resize 基准。软件回退已可用：远程会话自动切到 WIC 软件光栅，`Window::SetSoftwareRender(true)` 可手动切换，软件图与硬件图在黄金图里逐像素一致。黄金图基线与工具：`nopeui_golden` 出图、`nopeui_image_diff` 比对、`eng/golden.ps1` 管理。`layout` 提供 Measure/Arrange/HitTest/Paint 的最小元素树，`controls` 已落地 `Border`、`Label`、`Button`、`StackPanel`、`ScrollViewer`、`CheckBox`、`RadioButton`、`ToggleButton`、`ToggleSwitch`、`TextBox`、`ProgressBar`、`Slider`、`Image`，以及弹出层用的 `ToolTip`、`Flyout`、`ContextMenu`；`nopeui_window_smoke` 的默认界面就是这些控件拼出的卡片。`Theme` 定义浅色与深色两套调色板，窗口默认跟随系统应用深浅色偏好，可用 `SetTheme` 覆盖；元素沿父链继承主题，控件从主题取色，占位场景的调色板也跟随主题。8 个测试在 `x64-debug` 与 `x64-release` 下全部通过。
+项目进入 P1 早期，P0 的 `base`、`platform`、`layout`、`controls` 与无障碍闭环已完成：`Result` 与 `Error`、`Ref`、`Event` 与 `Subscription`、几何类型、UTF-8 与 UTF-16 转换，以及 Win32 窗口、消息循环、DirectComposition 虚拟表面、Direct2D 绘制与 DirectWrite 文字。窗口默认显示浅色背景、顶部强调条与一行示例文字的占位场景；`Window::SetContent` 可挂一棵元素树，覆盖客户区并接管鼠标命中。窗口默认启用按面积自适应的 2–3 块表面异步提交：客户区面积不超过 `2560×1600` 时用 3 块，更大的窗口用 2 块以控制显存。`SetAsyncCommit(false)` 可回退同步，`LastPresentedFrame()` 与 `AsyncCommitStats()` 可读取提交延迟、队列和丢帧。缩放时虚拟表面按小窗口约三分之一、较大窗口固定 256 像素的余量分配，停止缩放 300 ms 后回收到实际客户区尺寸，避免拖动过程中反复重建表面。帧提交默认按显示器刷新间隔节流，可用 `Window::Present()` 立即提交、`Window::SetCommitThrottle(false)` 关闭节流。`Window::LastFrameMilliseconds()`、`Window::FrameCount()`、`Window::CommitCount()` 与 `Window::RenderFrame()` 可读取和驱动帧，`nopeui_frame_benchmark` 提供 300 帧基准，`nopeui_resize_benchmark` 提供 resize 基准。软件回退已可用：远程会话自动切到 WIC 软件光栅，`Window::SetSoftwareRender(true)` 可手动切换，软件图与硬件图在黄金图里逐像素一致。黄金图基线与工具：`nopeui_golden` 出图、`nopeui_image_diff` 比对、`eng/golden.ps1` 管理。`layout` 提供 Measure/Arrange/HitTest/Paint 的最小元素树，`controls` 已落地 `Border`、`Label`、`Button`、`StackPanel`、`ScrollViewer`、`CheckBox`、`RadioButton`、`ToggleButton`、`ToggleSwitch`、`TextBox`、`ProgressBar`、`Slider`、`Image`，以及弹出层用的 `ToolTip`、`Flyout`、`ContextMenu`；`nopeui_window_smoke` 的默认界面就是这些控件拼出的卡片。`Theme` 定义浅色与深色两套调色板，窗口默认跟随系统应用深浅色偏好，可用 `SetTheme` 覆盖；元素沿父链继承主题，控件从主题取色，占位场景的调色板也跟随主题。11 个测试在 `x64-debug` 与 `x64-release` 下全部通过。
 
 属性元数据放在 `property_value.h`：`PropertyValue` 用 `std::variant` 承载布尔、整数、浮点、颜色与字符串，`PropertyMetadata` 记录名字、类型、默认值与 `AffectsMeasure`、`AffectsArrange`、`AffectsRender`、`Inherits` 标志。`Element` 提供 `Properties`、`GetProperty`、`SetProperty` 与 `SubscribePropertyChanged`，基类固定暴露 `IsEnabled` 和可继承的 `Foreground`；`Foreground` 沿父链向上查找，最后回落到主题文字色。各控件通过自己的属性表暴露可枚举属性，`SetProperty` 会校验类型、发出变更事件，再按标志触发重绘或重新布局。
 
@@ -103,6 +103,24 @@ card->SetPadding(nopeui::Thickness{24.0f, 20.0f, 24.0f, 20.0f});
 card->SetChild(panel);
 window->SetContent(card);
 ```
+
+## XAML
+
+`markup` 提供 XAML 的最小解析与加载链路：`xaml::Parse` 把源文本解析成 `Node` 树，支持元素、属性、文本、注释、处理指令和五个预定义实体；`xaml::Load` 按标签创建控件、设置属性、挂接子元素并收集资源，`xaml::LoadFile` 读取 UTF-8 文件。根节点只有一个，命名空间前缀会被剥掉，所以 `local:Button` 与 `Button` 等价。
+
+资源放在任意元素的 `*.Resources` 属性元素里。`ControlTemplate` 用 `Part` 描述命名部件，`Style` 用 `Setter` 写入属性，`Template` setter 通过 `{StaticResource key}` 引用模板。样式按 `TargetType` 与 `Key` 匹配，树建完后统一应用；局部属性和局部模板最后再应用一次，保证它们优先于样式。
+
+`Click`、`Submit`、`CheckedChanged`、`ValueChanged` 通过 `LoadContext::resolve_event` 取回调；`EventArgs` 同时带事件类型、回调名和发送者。`x:Name` 的元素会进入 `LoadResult::names`，便于代码侧查找。`ContextMenu` 可以用 `*.ContextMenu` 属性元素挂到任意元素，`ToolTip` 属性会登记到 `ToolTipService`。
+
+```cpp
+auto loaded = nopeui::xaml::Load(source, context);
+if (loaded.ok()) {
+    window->SetStyleSheet(loaded.value().style_sheet);
+    window->SetContent(loaded.value().root);
+}
+```
+
+`nopeui_xaml_smoke` 用一段内嵌 XAML 建出按钮、样式模板、右键菜单与弹出层，可作为最小示例。
 
 ## 目录
 

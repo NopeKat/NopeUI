@@ -4,6 +4,12 @@ add_executable(nopeui_window_smoke WIN32
 
 target_link_libraries(nopeui_window_smoke PRIVATE nopeui_platform nopeui_controls)
 
+add_executable(nopeui_xaml_smoke WIN32
+    xaml_smoke/main.cpp
+)
+
+target_link_libraries(nopeui_xaml_smoke PRIVATE nopeui_platform nopeui_markup)
+
 add_executable(nopeui_frame_benchmark
     frame_benchmark/main.cpp
 )

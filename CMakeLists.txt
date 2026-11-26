@@ -88,6 +88,16 @@ target_link_libraries(nopeui_controls
 )
 target_compile_features(nopeui_controls PUBLIC cxx_std_20)
 
+add_library(nopeui_markup STATIC
+    src/markup/xaml.cpp
+)
+
+target_link_libraries(nopeui_markup
+    PUBLIC nopeui_base nopeui_layout
+    PRIVATE nopeui_theme nopeui_controls
+)
+target_compile_features(nopeui_markup PUBLIC cxx_std_20)
+
 include(CTest)
 
 if(BUILD_TESTING)
