@@ -6,15 +6,17 @@ param(
 
 $ErrorActionPreference = "Stop"
 $repoRoot = Split-Path -Parent $PSScriptRoot
+. (Join-Path $PSScriptRoot 'toolchain.ps1')
+$cmake = Resolve-NopeUICMake
 
 Push-Location $repoRoot
 try {
-    & cmake --preset $Preset
+    & $cmake --preset $Preset
     if ($LASTEXITCODE -ne 0) {
         throw "CMake configure failed for preset '$Preset'."
     }
 
-    & cmake --build --preset $Preset
+    & $cmake --build --preset $Preset
     if ($LASTEXITCODE -ne 0) {
         throw "CMake build failed for preset '$Preset'."
     }
