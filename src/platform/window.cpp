@@ -24,6 +24,8 @@ namespace {
 
 constexpr const wchar_t* kWindowClassName = L"NopeUI.Window";
 constexpr UINT_PTR kCommitTimerId = 1;
+constexpr UINT_PTR kLiveResizeTimerId = 2;
+constexpr UINT kLiveResizeIntervalMs = 8;
 constexpr std::size_t kMaxQueuedCommits = 1;
 
 double MillisecondsToNextVblank(LONGLONG submit_qpc) noexcept {
@@ -1057,6 +1059,78 @@ void Window::OnSize(int width, int height) noexcept {
     pending_height_ = height;
     resize_pending_ = true;
     InvalidateRect(hwnd_, nullptr, FALSE);
+    if (live_resizing_ || GetCapture() == hwnd_) {
+        RenderPendingResize();
+    }
+}
+
+void Window::OnSizing(const RECT& proposed) noexcept {
+    if (graphics_ == nullptr || hwnd_ == nullptr) {
+        return;
+    }
+
+    RECT window_rect{};
+    RECT client_rect{};
+    if (GetWindowRect(hwnd_, &window_rect) == FALSE ||
+        GetClientRect(hwnd_, &client_rect) == FALSE) {
+        return;
+    }
+    const int border_width = (window_rect.right - window_rect.left) -
+                             (client_rect.right - client_rect.left);
+    const int border_height = (window_rect.bottom - window_rect.top) -
+                              (client_rect.bottom - client_rect.top);
+    const int width = proposed.right - proposed.left - border_width;
+    const int height = proposed.bottom - proposed.top - border_height;
+    if (width <= 0 || height <= 0) {
+        return;
+    }
+    if (width == client_width_ && height == client_height_ && !resize_pending_) {
+        return;
+    }
+
+    pending_width_ = width;
+    pending_height_ = height;
+    resize_pending_ = true;
+    RenderPendingResize();
+}
+
+void Window::BeginLiveResize() noexcept {
+    live_resizing_ = true;
+    if (hwnd_ != nullptr) {
+        SetTimer(hwnd_, kLiveResizeTimerId, kLiveResizeIntervalMs, nullptr);
+    }
+}
+
+void Window::EndLiveResize() noexcept {
+    if (hwnd_ != nullptr) {
+        KillTimer(hwnd_, kLiveResizeTimerId);
+    }
+    RenderLiveResize();
+    live_resizing_ = false;
+}
+
+void Window::RenderLiveResize() noexcept {
+    if ((!live_resizing_ && GetCapture() != hwnd_) || graphics_ == nullptr || hwnd_ == nullptr) {
+        return;
+    }
+
+    RECT client{};
+    if (GetClientRect(hwnd_, &client) == FALSE) {
+        return;
+    }
+    const int width = static_cast<int>(client.right - client.left);
+    const int height = static_cast<int>(client.bottom - client.top);
+    if (width <= 0 || height <= 0) {
+        return;
+    }
+    if (width == client_width_ && height == client_height_ && !resize_pending_) {
+        return;
+    }
+
+    pending_width_ = width;
+    pending_height_ = height;
+    resize_pending_ = true;
+    RenderPendingResize();
 }
 
 void Window::RenderPendingResize() noexcept {
@@ -1081,7 +1155,9 @@ void Window::RenderPendingResize() noexcept {
 void Window::ReleaseGraphics() noexcept {
     if (hwnd_ != nullptr) {
         KillTimer(hwnd_, kCommitTimerId);
+        KillTimer(hwnd_, kLiveResizeTimerId);
     }
+    live_resizing_ = false;
     graphics_.reset();
 }
 
@@ -1098,6 +1174,12 @@ LRESULT CALLBACK Window::WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM 
     }
 
     switch (message) {
+        case WM_CAPTURECHANGED:
+            if (window != nullptr) {
+                window->EndLiveResize();
+            }
+            break;
+
         case WM_CLOSE:
             DestroyWindow(hwnd);
             return 0;
@@ -1108,6 +1190,37 @@ LRESULT CALLBACK Window::WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM 
                 window->hwnd_ = nullptr;
             }
             PostQuitMessage(0);
+            return 0;
+
+        case WM_SIZING:
+            if (window != nullptr && lparam != 0) {
+                window->OnSizing(*reinterpret_cast<const RECT*>(lparam));
+            }
+            return TRUE;
+
+        case WM_NCLBUTTONDOWN:
+            if (window != nullptr && wparam >= HTLEFT && wparam <= HTBOTTOMRIGHT) {
+                window->BeginLiveResize();
+            }
+            break;
+
+        case WM_ENTERSIZEMOVE:
+            if (window != nullptr) {
+                window->BeginLiveResize();
+            }
+            return 0;
+
+        case WM_EXITSIZEMOVE:
+            if (window != nullptr) {
+                window->EndLiveResize();
+            }
+            return 0;
+
+        case WM_WINDOWPOSCHANGED:
+            DefWindowProcW(hwnd, message, wparam, lparam);
+            if (window != nullptr) {
+                window->RenderLiveResize();
+            }
             return 0;
 
         case WM_SIZE:
@@ -1122,6 +1235,10 @@ LRESULT CALLBACK Window::WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM 
         case WM_TIMER:
             if (window != nullptr && wparam == kCommitTimerId) {
                 window->Present();
+                return 0;
+            }
+            if (window != nullptr && wparam == kLiveResizeTimerId) {
+                window->RenderLiveResize();
                 return 0;
             }
             break;

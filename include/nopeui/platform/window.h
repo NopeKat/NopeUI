@@ -88,6 +88,10 @@ private:
     static bool EnsureWindowClass() noexcept;
 
     void OnSize(int width, int height) noexcept;
+    void OnSizing(const RECT& proposed) noexcept;
+    void BeginLiveResize() noexcept;
+    void EndLiveResize() noexcept;
+    void RenderLiveResize() noexcept;
     void RenderPendingResize() noexcept;
     void ReleaseGraphics() noexcept;
 
@@ -98,6 +102,7 @@ private:
     int pending_width_ = 0;
     int pending_height_ = 0;
     bool resize_pending_ = false;
+    bool live_resizing_ = false;
 };
 
 Result<int> RunMessageLoop();
