@@ -30,7 +30,11 @@ $cases = @(
     @{ Name = "hardware-light-1280x800"; Renderer = "hardware"; Theme = "light"; Scene = "placeholder"; Width = 1280; Height = 800 },
     @{ Name = "hardware-dark-1280x800"; Renderer = "hardware"; Theme = "dark"; Scene = "placeholder"; Width = 1280; Height = 800 },
     @{ Name = "controls-light-1280x800"; Renderer = "software"; Theme = "light"; Scene = "controls"; Width = 1280; Height = 800 },
-    @{ Name = "controls-dark-1280x800"; Renderer = "software"; Theme = "dark"; Scene = "controls"; Width = 1280; Height = 800 }
+    @{ Name = "controls-dark-1280x800"; Renderer = "software"; Theme = "dark"; Scene = "controls"; Width = 1280; Height = 800 },
+    @{ Name = "media-light-1280x800"; Renderer = "software"; Theme = "light"; Scene = "media"; Width = 1280; Height = 800 },
+    @{ Name = "media-dark-1280x800"; Renderer = "software"; Theme = "dark"; Scene = "media"; Width = 1280; Height = 800 },
+    @{ Name = "media-hardware-light-1280x800"; Renderer = "hardware"; Theme = "light"; Scene = "media"; Width = 1280; Height = 800 },
+    @{ Name = "media-hardware-dark-1280x800"; Renderer = "hardware"; Theme = "dark"; Scene = "media"; Width = 1280; Height = 800 }
 )
 
 $failed = $false
@@ -67,7 +71,9 @@ foreach ($case in $cases) {
 
 $pathPairs = @(
     @{ Software = "basic-light-1280x800"; Hardware = "hardware-light-1280x800" },
-    @{ Software = "basic-dark-1280x800"; Hardware = "hardware-dark-1280x800" }
+    @{ Software = "basic-dark-1280x800"; Hardware = "hardware-dark-1280x800" },
+    @{ Software = "media-light-1280x800"; Hardware = "media-hardware-light-1280x800" },
+    @{ Software = "media-dark-1280x800"; Hardware = "media-hardware-dark-1280x800" }
 )
 foreach ($pair in $pathPairs) {
     $softwarePath = Join-Path $currentDir "$($pair.Software).png"

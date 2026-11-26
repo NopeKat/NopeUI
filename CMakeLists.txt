@@ -32,6 +32,7 @@ target_compile_features(nopeui_theme PUBLIC cxx_std_20)
 
 add_library(nopeui_layout STATIC
     src/layout/element.cpp
+    src/layout/style.cpp
 )
 
 target_link_libraries(nopeui_layout PUBLIC nopeui_base nopeui_theme)
@@ -44,7 +45,7 @@ add_library(nopeui_platform STATIC
 
 target_link_libraries(nopeui_platform
     PUBLIC nopeui_base nopeui_theme
-    PRIVATE user32 d3d11 dxgi d2d1 dcomp dwrite dwmapi imm32 uiautomationcore oleaut32 nopeui_graphics nopeui_layout
+    PRIVATE user32 d3d11 dxgi d2d1 dcomp dwrite dwmapi imm32 uiautomationcore oleaut32 nopeui_graphics nopeui_layout nopeui_controls
 )
 target_compile_features(nopeui_platform PUBLIC cxx_std_20)
 
@@ -66,6 +67,9 @@ add_library(nopeui_controls STATIC
     src/controls/border.cpp
     src/controls/button.cpp
     src/controls/check_box.cpp
+    src/controls/context_menu.cpp
+    src/controls/flyout.cpp
+    src/controls/image.cpp
     src/controls/label.cpp
     src/controls/progress_bar.cpp
     src/controls/radio_button.cpp
@@ -75,6 +79,7 @@ add_library(nopeui_controls STATIC
     src/controls/text_box.cpp
     src/controls/toggle_button.cpp
     src/controls/toggle_switch.cpp
+    src/controls/tooltip.cpp
 )
 
 target_link_libraries(nopeui_controls

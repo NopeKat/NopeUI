@@ -12,6 +12,9 @@
 #include "nopeui/controls/border.h"
 #include "nopeui/controls/button.h"
 #include "nopeui/controls/check_box.h"
+#include "nopeui/controls/context_menu.h"
+#include "nopeui/controls/flyout.h"
+#include "nopeui/controls/image.h"
 #include "nopeui/controls/label.h"
 #include "nopeui/controls/progress_bar.h"
 #include "nopeui/controls/radio_button.h"
@@ -21,10 +24,43 @@
 #include "nopeui/controls/text_box.h"
 #include "nopeui/controls/toggle_button.h"
 #include "nopeui/controls/toggle_switch.h"
+#include "nopeui/controls/tooltip.h"
+#include "nopeui/layout/style.h"
 #include "nopeui/platform/window.h"
+#include "nopeui/theme/control_template.h"
 #include "nopeui/theme/theme.h"
 
 namespace {
+
+nopeui::graphics::Image MakeSampleImage() {
+    nopeui::graphics::Image image;
+    image.width = 320;
+    image.height = 180;
+    image.pixels.resize(
+        static_cast<std::size_t>(image.width) * static_cast<std::size_t>(image.height));
+    for (int y = 0; y < image.height; ++y) {
+        for (int x = 0; x < image.width; ++x) {
+            const bool checker = ((x / 20) + (y / 20)) % 2 == 0;
+            const std::uint32_t base = checker ? 0x0067C0u : 0x00A7C4u;
+            const std::uint32_t mix = static_cast<std::uint32_t>(
+                (static_cast<float>(x + y) / static_cast<float>(image.width + image.height)) *
+                80.0f);
+            const std::uint32_t red = ((base >> 16) & 0xffu) + mix;
+            const std::uint32_t green = ((base >> 8) & 0xffu);
+            const std::uint32_t blue = (base & 0xffu) + (80u - mix);
+            std::uint32_t pixel = 0xff000000u |
+                                  ((red > 255u ? 255u : red) << 16) |
+                                  (green << 8) |
+                                  (blue > 255u ? 255u : blue);
+            if (x > 246 && y < 74) {
+                pixel = 0xffffffffu;
+            }
+            image.pixels[static_cast<std::size_t>(y) * static_cast<std::size_t>(image.width) +
+                         static_cast<std::size_t>(x)] = pixel;
+        }
+    }
+    return image;
+}
 
 std::wstring FindTracePath(std::wstring_view command_line) {
     const std::wstring_view marker = L"--trace";
@@ -132,6 +168,57 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR command_line_ptr, int) {
     volume->SetAccessibilityName(L"Volume");
     panel->Add(volume);
 
+    auto photo = nopeui::Image::Create();
+    photo->SetImage(MakeSampleImage());
+    photo->SetDisplaySize(nopeui::Size{320.0f, 180.0f});
+    photo->SetStretch(nopeui::ImageStretch::UniformToFill);
+    photo->SetAccessibilityName(L"Sample bitmap");
+    panel->Add(photo);
+
+    auto primary = nopeui::Button::Create(L"Templated action");
+    primary->SetKey(L"primary");
+    panel->Add(primary);
+
+    auto flyout_content = nopeui::StackPanel::Create(10.0f);
+    flyout_content->Add(nopeui::Label::Create(L"Anchored flyout"));
+    flyout_content->Add(nopeui::Label::Create(L"Escape or an outside click closes it."));
+    auto close_flyout = nopeui::Button::Create(L"Close");
+    close_flyout->SetOnClick([window_ptr] {
+        window_ptr->ClosePopup();
+    });
+    flyout_content->Add(close_flyout);
+    auto flyout = nopeui::Flyout::Create();
+    flyout->SetContent(flyout_content);
+
+    auto flyout_button = nopeui::Button::Create(L"Open flyout");
+    auto* flyout_anchor = flyout_button.Get();
+    flyout_button->SetOnClick([window_ptr, flyout, flyout_anchor] {
+        const nopeui::Rect bounds = flyout_anchor->Bounds();
+        window_ptr->ShowPopup(
+            flyout,
+            nopeui::Point{bounds.x, bounds.Bottom() + 6.0f});
+    });
+    nopeui::ToolTipService::SetToolTip(
+        flyout_button.Get(), L"Shows an anchored panel above the content");
+
+    auto popup_row = nopeui::StackPanel::Create(12.0f);
+    popup_row->SetOrientation(nopeui::Orientation::Horizontal);
+    popup_row->Add(flyout_button);
+    panel->Add(popup_row);
+
+    auto menu_target = nopeui::Border::Create();
+    menu_target->UseSurfaceBackground(true);
+    menu_target->SetCornerRadius(4.0f);
+    menu_target->SetPadding(nopeui::Thickness{12.0f, 10.0f, 12.0f, 10.0f});
+    menu_target->SetChild(nopeui::Label::Create(
+        L"Right-click this surface for a context menu with three actions"));
+    auto menu = nopeui::ContextMenu::Create();
+    menu->AddItem(L"Copy", [] {});
+    menu->AddItem(L"Rename", [] {});
+    menu->AddItem(L"Remove", [] {});
+    menu_target->SetContextMenu(menu);
+    panel->Add(menu_target);
+
     auto input = nopeui::TextBox::Create(L"Editable single line");
     input->SetPlaceholder(L"Type here and press Enter");
     panel->Add(input);
@@ -201,6 +288,23 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR command_line_ptr, int) {
     card->SetChild(scroll);
     page->SetChild(card);
     window->SetContent(page);
+
+    auto primary_style = nopeui::Style::Create();
+    primary_style->SetTargetType(L"Button");
+    primary_style->SetTargetKey(L"primary");
+    auto primary_template = nopeui::ControlTemplate::Create();
+    nopeui::TemplatePart primary_background;
+    primary_background.background = 0x0067C0;
+    primary_background.border = 0x005A9E;
+    primary_background.corner_radius = 6.0f;
+    primary_template->SetPart(L"Background", primary_background);
+    nopeui::TemplatePart primary_content;
+    primary_content.foreground = 0xFFFFFF;
+    primary_template->SetPart(L"Content", primary_content);
+    primary_style->SetTemplate(primary_template);
+    auto sheet = nopeui::StyleSheet::Create();
+    sheet->Add(primary_style);
+    window->SetStyleSheet(sheet);
 
     if (command_line.find(L"--light") != std::wstring_view::npos) {
         window->SetTheme(nopeui::LightTheme());

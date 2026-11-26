@@ -12,6 +12,7 @@
 #include <wrl/client.h>
 
 #include <algorithm>
+#include <iterator>
 #include <utility>
 
 #include "nopeui/theme/theme.h"
@@ -26,6 +27,12 @@ constexpr float kTrackHeight = 4.0f;
 constexpr float kThumbRadius = 7.0f;
 constexpr float kPreferredWidth = 280.0f;
 constexpr float kPreferredHeight = 24.0f;
+
+const PropertyMetadata kSliderProperties[] = {
+    {L"Value", PropertyValueType::Double, PropertyFlags::AffectsRender, PropertyValue(0.0)},
+    {L"Minimum", PropertyValueType::Double, PropertyFlags::AffectsMeasure, PropertyValue(0.0)},
+    {L"Maximum", PropertyValueType::Double, PropertyFlags::AffectsMeasure, PropertyValue(1.0)},
+};
 
 }  // namespace
 
@@ -249,6 +256,51 @@ void Slider::SetValueFromPoint(Point point) noexcept {
         0.0f,
         1.0f);
     SetValue(minimum_ + (maximum_ - minimum_) * progress);
+}
+
+const PropertyMetadata* Slider::ControlPropertyTable(std::size_t* count) const noexcept {
+    if (count != nullptr) {
+        *count = std::size(kSliderProperties);
+    }
+    return kSliderProperties;
+}
+
+bool Slider::GetControlProperty(std::wstring_view name, PropertyValue* value) const noexcept {
+    if (name == L"Value") {
+        *value = PropertyValue(value_);
+        return true;
+    }
+    if (name == L"Minimum") {
+        *value = PropertyValue(minimum_);
+        return true;
+    }
+    if (name == L"Maximum") {
+        *value = PropertyValue(maximum_);
+        return true;
+    }
+    return false;
+}
+
+bool Slider::SetControlProperty(
+    std::wstring_view name,
+    const PropertyValue& value) noexcept {
+    double number = 0.0;
+    if (!value.AsDouble(&number)) {
+        return false;
+    }
+    if (name == L"Value") {
+        SetValue(number);
+        return true;
+    }
+    if (name == L"Minimum") {
+        SetRange(number, maximum_);
+        return true;
+    }
+    if (name == L"Maximum") {
+        SetRange(minimum_, number);
+        return true;
+    }
+    return false;
 }
 
 AccessibleRole Slider::AccessibilityRole() const noexcept {

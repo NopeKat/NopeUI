@@ -24,6 +24,8 @@
 
 namespace nopeui {
 
+class OverlayRoot;
+class StyleSheet;
 class WindowGraphics;
 
 struct FrameTimings {
@@ -116,6 +118,17 @@ public:
     void SetContent(Ref<Element> content) noexcept;
     Element* Content() const noexcept;
 
+    // Anchored popup layer above the content. The point is the preferred
+    // top-left in client space; the layer clamps it into the client area.
+    void ShowPopup(Ref<Element> popup, Point anchor) noexcept;
+    void ClosePopup() noexcept;
+    bool HasPopup() const noexcept;
+
+    // Applies selectors to the current content tree and keeps the sheet for
+    // future content. Later styles override earlier ones.
+    void SetStyleSheet(Ref<StyleSheet> style_sheet) noexcept;
+    StyleSheet* GetStyleSheet() const noexcept;
+
     // The window owns the theme and exposes it to the content tree. Changing
     // it repaints the current content.
     void SetTheme(Theme theme) noexcept;
@@ -152,8 +165,12 @@ private:
     void OnMouseMove(Point point) noexcept;
     void OnMouseDown(Point point) noexcept;
     void OnMouseUp(Point point) noexcept;
+    void OnRightMouseDown(Point point) noexcept;
     void OnMouseLeave() noexcept;
     void OnMouseWheel(Point point, int delta) noexcept;
+    void OnToolTipTimer() noexcept;
+    void UpdateToolTipTimer() noexcept;
+    std::wstring ToolTipFor(const Element* element) const;
     void FocusElement(Element* element) noexcept;
     void MoveFocus(bool forward) noexcept;
     void ClearFocus() noexcept;
@@ -164,15 +181,23 @@ private:
     void OnImeComposition(std::wstring_view text) noexcept;
     void OnImeResult(std::wstring_view text) noexcept;
     void OnImeEnd() noexcept;
+    void ApplyStyleSheet() noexcept;
 
     HWND hwnd_ = nullptr;
     std::unique_ptr<WindowGraphics> graphics_;
     Theme theme_;
+    OverlayRoot* root_ = nullptr;
     Ref<Element> content_;
+    StyleSheet* style_sheet_ = nullptr;
     Element* hovered_ = nullptr;
     Element* pressed_ = nullptr;
     Element* focused_ = nullptr;
+    Element* previous_focus_ = nullptr;
+    Point pointer_{};
     bool tracking_mouse_ = false;
+    bool popup_close_pending_ = false;
+    bool popup_is_tooltip_ = false;
+    bool tooltip_timer_active_ = false;
     int client_width_ = 0;
     int client_height_ = 0;
     int pending_width_ = 0;

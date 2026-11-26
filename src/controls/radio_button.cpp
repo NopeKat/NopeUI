@@ -12,6 +12,7 @@
 #include <wrl/client.h>
 
 #include <algorithm>
+#include <iterator>
 #include <utility>
 #include <vector>
 
@@ -28,6 +29,11 @@ namespace {
 constexpr float kCircleSize = 18.0f;
 constexpr float kGap = 8.0f;
 constexpr float kDotSize = 8.0f;
+
+const PropertyMetadata kRadioButtonProperties[] = {
+    {L"Label", PropertyValueType::String, PropertyFlags::None, PropertyValue(std::wstring())},
+    {L"IsChecked", PropertyValueType::Bool, PropertyFlags::AffectsRender, PropertyValue(false)},
+};
 
 }  // namespace
 
@@ -225,6 +231,41 @@ void RadioButton::DeselectRadioGroup(const Element* source) noexcept {
     if (checked_changed_) {
         checked_changed_(false);
     }
+}
+
+const PropertyMetadata* RadioButton::ControlPropertyTable(std::size_t* count) const noexcept {
+    if (count != nullptr) {
+        *count = std::size(kRadioButtonProperties);
+    }
+    return kRadioButtonProperties;
+}
+
+bool RadioButton::GetControlProperty(
+    std::wstring_view name,
+    PropertyValue* value) const noexcept {
+    if (name == L"Label") {
+        *value = PropertyValue(label_);
+        return true;
+    }
+    if (name == L"IsChecked") {
+        *value = PropertyValue(checked_);
+        return true;
+    }
+    return false;
+}
+
+bool RadioButton::SetControlProperty(
+    std::wstring_view name,
+    const PropertyValue& value) noexcept {
+    if (name != L"IsChecked") {
+        return false;
+    }
+    bool checked = false;
+    if (!value.AsBool(&checked)) {
+        return false;
+    }
+    SetChecked(checked);
+    return true;
 }
 
 AccessibleRole RadioButton::AccessibilityRole() const noexcept {

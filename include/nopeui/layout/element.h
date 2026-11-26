@@ -1,6 +1,7 @@
 #ifndef NOPEUI_LAYOUT_ELEMENT_H_
 #define NOPEUI_LAYOUT_ELEMENT_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <string>
@@ -9,7 +10,9 @@
 #include <vector>
 
 #include "nopeui/base/accessibility.h"
+#include "nopeui/base/event.h"
 #include "nopeui/base/geometry.h"
+#include "nopeui/base/property_value.h"
 #include "nopeui/base/ref.h"
 
 struct ID2D1RenderTarget;
@@ -17,13 +20,17 @@ struct ID2D1RenderTarget;
 namespace nopeui {
 
 struct Theme;
+class ControlTemplate;
 
 // Minimal visual tree node: measure with an available size, arrange into final
 // bounds, paint and hit test. Containers override HitTestOverride to route to
 // children; leaf controls rely on the base bounds check.
 class Element : public RefCounted {
 public:
-    ~Element() override = default;
+    using PropertyChangedEvent =
+        Event<const PropertyMetadata&, const PropertyValue&, const PropertyValue&>;
+
+    ~Element() override;
 
     void Measure(Size available) noexcept;
     void Arrange(const Rect& bounds) noexcept;
@@ -53,6 +60,65 @@ public:
         theme_ = theme;
     }
     const Theme& Colors() const noexcept;
+
+    // Stable type name used by style selectors and diagnostics.
+    virtual std::wstring_view TypeName() const noexcept {
+        return L"Element";
+    }
+
+    // Optional key for keyed styles within one type.
+    void SetKey(std::wstring key) noexcept {
+        key_ = std::move(key);
+    }
+    const std::wstring& Key() const noexcept {
+        return key_;
+    }
+
+    // Inherited foreground override. Zero means inherit from the parent, then
+    // fall back to the theme text color at the paint site.
+    void SetForeground(std::uint32_t color) noexcept;
+    std::uint32_t Foreground() const noexcept;
+
+    // Metadata-backed properties. The base element contributes IsEnabled and
+    // Foreground; controls append their own tables.
+    bool GetProperty(std::wstring_view name, PropertyValue* value) const noexcept;
+    bool SetProperty(std::wstring_view name, const PropertyValue& value) noexcept;
+    std::vector<const PropertyMetadata*> Properties() const;
+    Subscription SubscribePropertyChanged(PropertyChangedEvent::Handler handler) {
+        return property_changed_.Subscribe(std::move(handler));
+    }
+
+    // Applies a template to this control. Controls that support named parts
+    // override this and copy the parts they consume.
+    virtual void ApplyControlTemplate(const ControlTemplate&) noexcept {}
+
+    // Right-click menu shown by the window when this element is hit. The menu
+    // stays alive through the element's reference after the popup closes.
+    void SetContextMenu(Ref<Element> menu) noexcept {
+        Element* next = menu.Get();
+        if (next == context_menu_) {
+            return;
+        }
+        if (next != nullptr) {
+            next->AddRef();
+        }
+        if (context_menu_ != nullptr) {
+            context_menu_->Release();
+        }
+        context_menu_ = next;
+    }
+    Element* GetContextMenu() const noexcept {
+        return context_menu_;
+    }
+
+    // Popup controls such as menus can ask the window to dismiss the popup
+    // after the click that activated them has finished.
+    void SetClosePopupOnClick(bool close) noexcept {
+        close_popup_on_click_ = close;
+    }
+    bool ClosePopupOnClick() const noexcept {
+        return close_popup_on_click_;
+    }
 
     // Only meaningful on the root element: lets a control request a repaint
     // without knowing about the window.
@@ -250,6 +316,12 @@ protected:
     virtual void PaintContent(ID2D1RenderTarget* target) = 0;
     virtual Element* HitTestOverride(Point point) noexcept;
 
+    // Controls expose their own property descriptors here. The base element
+    // adds IsEnabled and Foreground on top.
+    virtual const PropertyMetadata* ControlPropertyTable(std::size_t* count) const noexcept;
+    virtual bool GetControlProperty(std::wstring_view, PropertyValue*) const noexcept;
+    virtual bool SetControlProperty(std::wstring_view, const PropertyValue&) noexcept;
+
     // Containers clip their children to their own bounds before painting.
     void PushContentClip(ID2D1RenderTarget* target) noexcept;
     void PopContentClip(ID2D1RenderTarget* target) noexcept;
@@ -265,8 +337,13 @@ private:
     std::function<void()> invalidate_;
     std::function<void()> relayout_;
     std::wstring accessibility_name_;
+    std::wstring key_;
+    Element* context_menu_ = nullptr;
+    PropertyChangedEvent property_changed_;
+    std::uint32_t foreground_ = 0;
     bool focused_ = false;
     bool enabled_ = true;
+    bool close_popup_on_click_ = false;
 };
 
 }  // namespace nopeui

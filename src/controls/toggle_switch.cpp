@@ -12,6 +12,7 @@
 #include <wrl/client.h>
 
 #include <algorithm>
+#include <iterator>
 #include <utility>
 
 #include "nopeui/controls/control_state.h"
@@ -29,6 +30,11 @@ constexpr float kTrackHeight = 20.0f;
 constexpr float kKnobRadius = 7.0f;
 constexpr float kKnobMargin = 3.0f;
 constexpr float kGap = 8.0f;
+
+const PropertyMetadata kToggleSwitchProperties[] = {
+    {L"Label", PropertyValueType::String, PropertyFlags::None, PropertyValue(std::wstring())},
+    {L"IsChecked", PropertyValueType::Bool, PropertyFlags::AffectsRender, PropertyValue(false)},
+};
 
 }  // namespace
 
@@ -228,6 +234,41 @@ void ToggleSwitch::Toggle() noexcept {
     if (checked_changed_) {
         checked_changed_(checked_);
     }
+}
+
+const PropertyMetadata* ToggleSwitch::ControlPropertyTable(std::size_t* count) const noexcept {
+    if (count != nullptr) {
+        *count = std::size(kToggleSwitchProperties);
+    }
+    return kToggleSwitchProperties;
+}
+
+bool ToggleSwitch::GetControlProperty(
+    std::wstring_view name,
+    PropertyValue* value) const noexcept {
+    if (name == L"Label") {
+        *value = PropertyValue(label_);
+        return true;
+    }
+    if (name == L"IsChecked") {
+        *value = PropertyValue(checked_);
+        return true;
+    }
+    return false;
+}
+
+bool ToggleSwitch::SetControlProperty(
+    std::wstring_view name,
+    const PropertyValue& value) noexcept {
+    if (name != L"IsChecked") {
+        return false;
+    }
+    bool checked = false;
+    if (!value.AsBool(&checked)) {
+        return false;
+    }
+    SetChecked(checked);
+    return true;
 }
 
 AccessibleRole ToggleSwitch::AccessibilityRole() const noexcept {

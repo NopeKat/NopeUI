@@ -28,6 +28,10 @@ public:
         checked_changed_ = std::move(handler);
     }
 
+    std::wstring_view TypeName() const noexcept override {
+        return L"ToggleSwitch";
+    }
+
 protected:
     Size MeasureOverride(Size available) noexcept override;
     void PaintContent(ID2D1RenderTarget* target) noexcept override;
@@ -43,6 +47,9 @@ protected:
     bool HasAccessibilityToggle() const noexcept override;
     bool AccessibilityToggleOn() const noexcept override;
     void ToggleAccessibility() noexcept override;
+    const PropertyMetadata* ControlPropertyTable(std::size_t* count) const noexcept override;
+    bool GetControlProperty(std::wstring_view name, PropertyValue* value) const noexcept override;
+    bool SetControlProperty(std::wstring_view name, const PropertyValue& value) noexcept override;
 
 private:
     ToggleSwitch() noexcept = default;

@@ -11,12 +11,22 @@
 
 #include <algorithm>
 #include <cmath>
+#include <iterator>
 #include <utility>
 
 #include "nopeui/theme/theme.h"
 
 namespace nopeui {
 
+namespace {
+
+const PropertyMetadata kLabelProperties[] = {
+    {L"Text", PropertyValueType::String, PropertyFlags::None, PropertyValue(std::wstring())},
+    {L"Color", PropertyValueType::Color, PropertyFlags::AffectsRender,
+     PropertyValue(static_cast<std::uint32_t>(0))},
+};
+
+}  // namespace
 Ref<Label> Label::Create(std::wstring text, graphics::TextStyle style) noexcept {
     Ref<Label> label(new Label());
     label->text_ = std::move(text);
@@ -82,6 +92,39 @@ void Label::PaintContent(ID2D1RenderTarget* target) noexcept {
     }
     const std::uint32_t color = color_.Get() != 0 ? color_.Get() : Colors().text;
     run_->Draw(target, Point{bounds_.x, bounds_.y}, color);
+}
+
+const PropertyMetadata* Label::ControlPropertyTable(std::size_t* count) const noexcept {
+    if (count != nullptr) {
+        *count = std::size(kLabelProperties);
+    }
+    return kLabelProperties;
+}
+
+bool Label::GetControlProperty(std::wstring_view name, PropertyValue* value) const noexcept {
+    if (name == L"Text") {
+        *value = PropertyValue(text_);
+        return true;
+    }
+    if (name == L"Color") {
+        *value = PropertyValue(color_.Get());
+        return true;
+    }
+    return false;
+}
+
+bool Label::SetControlProperty(
+    std::wstring_view name,
+    const PropertyValue& value) noexcept {
+    if (name != L"Color") {
+        return false;
+    }
+    std::uint32_t color = 0;
+    if (!value.AsColor(&color)) {
+        return false;
+    }
+    SetColor(color);
+    return true;
 }
 
 AccessibleRole Label::AccessibilityRole() const noexcept {

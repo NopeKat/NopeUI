@@ -25,11 +25,18 @@ public:
     // Zero means the theme text color.
     void SetColor(std::uint32_t color) noexcept;
 
+    std::wstring_view TypeName() const noexcept override {
+        return L"Label";
+    }
+
 protected:
     Size MeasureOverride(Size available) noexcept override;
     void PaintContent(ID2D1RenderTarget* target) noexcept override;
     AccessibleRole AccessibilityRole() const noexcept override;
     std::wstring AccessibilityName() const override;
+    const PropertyMetadata* ControlPropertyTable(std::size_t* count) const noexcept override;
+    bool GetControlProperty(std::wstring_view name, PropertyValue* value) const noexcept override;
+    bool SetControlProperty(std::wstring_view name, const PropertyValue& value) noexcept override;
 
 private:
     Label() noexcept = default;

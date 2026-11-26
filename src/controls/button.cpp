@@ -12,10 +12,12 @@
 #include <wrl/client.h>
 
 #include <algorithm>
+#include <iterator>
 #include <utility>
 
 #include "nopeui/controls/control_state.h"
 #include "nopeui/graphics/text.h"
+#include "nopeui/theme/control_template.h"
 #include "nopeui/theme/theme.h"
 
 namespace nopeui {
@@ -28,7 +30,11 @@ constexpr float kPaddingX = 16.0f;
 constexpr float kPaddingY = 8.0f;
 constexpr float kMinWidth = 88.0f;
 constexpr float kMinHeight = 32.0f;
-constexpr float kCornerRadius = 4.0f;
+
+const PropertyMetadata kButtonProperties[] = {
+    {L"Text", PropertyValueType::String, PropertyFlags::None, PropertyValue(std::wstring())},
+    {L"CornerRadius", PropertyValueType::Float, PropertyFlags::AffectsRender, PropertyValue(4.0f)},
+};
 
 }  // namespace
 
@@ -68,19 +74,25 @@ void Button::PaintContent(ID2D1RenderTarget* target) noexcept {
             background = colors.button_hover;
             break;
         case ControlState::Normal:
+            if (template_background_ != 0) {
+                background = template_background_;
+            }
             break;
     }
-    const std::uint32_t outline_color = state == ControlState::Disabled
-        ? colors.button_disabled_border
-        : colors.button_border;
+    const std::uint32_t outline_color = template_border_ != 0
+        ? template_border_
+        : (state == ControlState::Disabled
+            ? colors.button_disabled_border
+            : colors.button_border);
     const std::uint32_t text_color = state == ControlState::Disabled
         ? colors.text_disabled
-        : colors.text;
+        : (template_foreground_ != 0 ? template_foreground_ : colors.text);
 
+    const float radius = corner_radius_;
     const D2D1_ROUNDED_RECT rounded = D2D1::RoundedRect(
         D2D1::RectF(bounds_.x, bounds_.y, bounds_.Right(), bounds_.Bottom()),
-        kCornerRadius,
-        kCornerRadius);
+        radius,
+        radius);
 
     ComPtr<ID2D1SolidColorBrush> brush;
     if (FAILED(target->CreateSolidColorBrush(
@@ -98,8 +110,8 @@ void Button::PaintContent(ID2D1RenderTarget* target) noexcept {
                 bounds_.y + 0.5f,
                 bounds_.Right() - 0.5f,
                 bounds_.Bottom() - 0.5f),
-            kCornerRadius,
-            kCornerRadius);
+            radius,
+            radius);
         target->DrawRoundedRectangle(border, outline.Get(), 1.0f);
     }
 
@@ -181,6 +193,54 @@ bool Button::OnKeyUp(unsigned int key) noexcept {
     if (clicked) {
         click_.Raise();
     }
+    return true;
+}
+
+void Button::ApplyControlTemplate(const ControlTemplate& control_template) noexcept {
+    if (const TemplatePart* part = control_template.Find(L"Background")) {
+        template_background_ = part->background;
+        template_border_ = part->border;
+        if (part->corner_radius > 0.0f) {
+            corner_radius_ = part->corner_radius;
+        }
+    }
+    if (const TemplatePart* part = control_template.Find(L"Content")) {
+        template_foreground_ = part->foreground;
+    }
+    Invalidate();
+}
+
+const PropertyMetadata* Button::ControlPropertyTable(std::size_t* count) const noexcept {
+    if (count != nullptr) {
+        *count = std::size(kButtonProperties);
+    }
+    return kButtonProperties;
+}
+
+bool Button::GetControlProperty(std::wstring_view name, PropertyValue* value) const noexcept {
+    if (name == L"Text") {
+        *value = PropertyValue(text_);
+        return true;
+    }
+    if (name == L"CornerRadius") {
+        *value = PropertyValue(corner_radius_);
+        return true;
+    }
+    return false;
+}
+
+bool Button::SetControlProperty(
+    std::wstring_view name,
+    const PropertyValue& value) noexcept {
+    if (name != L"CornerRadius") {
+        return false;
+    }
+    float radius = 0.0f;
+    if (!value.AsFloat(&radius)) {
+        return false;
+    }
+    corner_radius_ = std::max(0.0f, radius);
+    Invalidate();
     return true;
 }
 

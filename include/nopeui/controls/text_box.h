@@ -32,6 +32,10 @@ public:
         submit_ = std::move(handler);
     }
 
+    std::wstring_view TypeName() const noexcept override {
+        return L"TextBox";
+    }
+
 protected:
     Size MeasureOverride(Size available) noexcept override;
     void PaintContent(ID2D1RenderTarget* target) noexcept override;
@@ -58,6 +62,9 @@ protected:
     int AccessibilitySelectionStart() const noexcept override;
     int AccessibilitySelectionEnd() const noexcept override;
     bool SetAccessibilitySelection(int start, int end) override;
+    const PropertyMetadata* ControlPropertyTable(std::size_t* count) const noexcept override;
+    bool GetControlProperty(std::wstring_view name, PropertyValue* value) const noexcept override;
+    bool SetControlProperty(std::wstring_view name, const PropertyValue& value) noexcept override;
 
 private:
     TextBox() noexcept = default;

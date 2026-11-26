@@ -6,6 +6,9 @@
 #include "nopeui/controls/border.h"
 #include "nopeui/controls/button.h"
 #include "nopeui/controls/check_box.h"
+#include "nopeui/controls/context_menu.h"
+#include "nopeui/controls/flyout.h"
+#include "nopeui/controls/image.h"
 #include "nopeui/controls/label.h"
 #include "nopeui/controls/progress_bar.h"
 #include "nopeui/controls/radio_button.h"
@@ -15,10 +18,13 @@
 #include "nopeui/controls/text_box.h"
 #include "nopeui/controls/toggle_button.h"
 #include "nopeui/controls/toggle_switch.h"
+#include "nopeui/controls/tooltip.h"
 #include "nopeui/graphics/hardware.h"
 #include "nopeui/graphics/offscreen.h"
 #include "nopeui/graphics/scene.h"
 #include "nopeui/layout/element.h"
+#include "nopeui/layout/style.h"
+#include "nopeui/theme/control_template.h"
 #include "nopeui/theme/theme.h"
 
 namespace {
@@ -27,7 +33,7 @@ void PrintUsage() {
     std::fprintf(
         stderr,
         "usage: nopeui_golden --out <path> [--renderer software|hardware] "
-        "[--scene placeholder|controls] [--theme light|dark] "
+        "[--scene placeholder|controls|media] [--theme light|dark] "
         "[--width 1280] [--height 800] [--dpi 96]\n");
 }
 
@@ -186,6 +192,133 @@ nopeui::Ref<nopeui::Element> BuildControlsScene(
     return page;
 }
 
+nopeui::graphics::Image MakeSampleImage() {
+    nopeui::graphics::Image image;
+    image.width = 320;
+    image.height = 180;
+    image.pixels.resize(
+        static_cast<std::size_t>(image.width) * static_cast<std::size_t>(image.height));
+    for (int y = 0; y < image.height; ++y) {
+        for (int x = 0; x < image.width; ++x) {
+            const bool checker = ((x / 20) + (y / 20)) % 2 == 0;
+            const std::uint32_t base = checker ? 0x0067C0u : 0x00A7C4u;
+            const std::uint32_t mix = static_cast<std::uint32_t>(
+                (static_cast<float>(x + y) / static_cast<float>(image.width + image.height)) *
+                80.0f);
+            const std::uint32_t red = ((base >> 16) & 0xffu) + mix;
+            const std::uint32_t green = ((base >> 8) & 0xffu);
+            const std::uint32_t blue = (base & 0xffu) + (80u - mix);
+            std::uint32_t pixel = 0xff000000u |
+                                  ((red > 255u ? 255u : red) << 16) |
+                                  (green << 8) |
+                                  (blue > 255u ? 255u : blue);
+            if (x > 246 && y < 74) {
+                pixel = 0xffffffffu;
+            }
+            image.pixels[static_cast<std::size_t>(y) * static_cast<std::size_t>(image.width) +
+                         static_cast<std::size_t>(x)] = pixel;
+        }
+    }
+    return image;
+}
+
+nopeui::Ref<nopeui::Element> BuildMediaScene(
+    const nopeui::Theme& theme,
+    int width,
+    int height) {
+    auto page = nopeui::Border::Create();
+    page->SetBorderVisible(false);
+    page->SetPadding(nopeui::Thickness{24.0f, 24.0f, 24.0f, 24.0f});
+
+    auto card = nopeui::Border::Create();
+    card->UseSurfaceBackground(true);
+    card->SetCornerRadius(8.0f);
+    card->SetPadding(nopeui::Thickness{24.0f, 20.0f, 24.0f, 20.0f});
+
+    auto panel = nopeui::StackPanel::Create(14.0f);
+    panel->Add(nopeui::Label::Create(L"NopeUI media"));
+    panel->Add(nopeui::Label::Create(L"Bitmap stretch modes and popup surfaces"));
+
+    auto modes = nopeui::StackPanel::Create(12.0f);
+    modes->SetOrientation(nopeui::Orientation::Horizontal);
+    const struct {
+        const wchar_t* label;
+        nopeui::ImageStretch stretch;
+    } mode_list[] = {
+        {L"None", nopeui::ImageStretch::None},
+        {L"Fill", nopeui::ImageStretch::Fill},
+        {L"Uniform", nopeui::ImageStretch::Uniform},
+        {L"UniformToFill", nopeui::ImageStretch::UniformToFill},
+    };
+    for (const auto& mode : mode_list) {
+        auto tile = nopeui::Border::Create();
+        tile->UseSurfaceBackground(true);
+        tile->SetBorderVisible(true);
+        tile->SetCornerRadius(6.0f);
+        tile->SetPadding(nopeui::Thickness{10.0f, 8.0f, 10.0f, 8.0f});
+        auto column = nopeui::StackPanel::Create(6.0f);
+        column->Add(nopeui::Label::Create(mode.label));
+        auto photo = nopeui::Image::Create();
+        photo->SetImage(MakeSampleImage());
+        photo->SetDisplaySize(nopeui::Size{200.0f, 150.0f});
+        photo->SetStretch(mode.stretch);
+        column->Add(photo);
+        tile->SetChild(column);
+        modes->Add(tile);
+    }
+    panel->Add(modes);
+
+    auto popup_row = nopeui::StackPanel::Create(12.0f);
+    popup_row->SetOrientation(nopeui::Orientation::Horizontal);
+    popup_row->Add(nopeui::ToolTip::Create(L"ToolTip surface"));
+
+    auto flyout_content = nopeui::StackPanel::Create(8.0f);
+    flyout_content->Add(nopeui::Label::Create(L"Flyout"));
+    flyout_content->Add(nopeui::Button::Create(L"Action"));
+    auto flyout = nopeui::Flyout::Create();
+    flyout->SetContent(flyout_content);
+    popup_row->Add(flyout);
+
+    auto menu = nopeui::ContextMenu::Create();
+    menu->AddItem(L"Copy", [] {});
+    menu->AddItem(L"Rename", [] {});
+    menu->AddItem(L"Remove", [] {});
+    popup_row->Add(menu);
+    panel->Add(popup_row);
+
+    auto primary = nopeui::Button::Create(L"Templated button");
+    primary->SetKey(L"primary");
+    panel->Add(primary);
+
+    auto primary_style = nopeui::Style::Create();
+    primary_style->SetTargetType(L"Button");
+    primary_style->SetTargetKey(L"primary");
+    auto primary_template = nopeui::ControlTemplate::Create();
+    nopeui::TemplatePart primary_background;
+    primary_background.background = 0x0067C0;
+    primary_background.border = 0x005A9E;
+    primary_background.corner_radius = 6.0f;
+    primary_template->SetPart(L"Background", primary_background);
+    nopeui::TemplatePart primary_content;
+    primary_content.foreground = 0xFFFFFF;
+    primary_template->SetPart(L"Content", primary_content);
+    primary_style->SetTemplate(primary_template);
+    auto sheet = nopeui::StyleSheet::Create();
+    sheet->Add(primary_style);
+
+    card->SetChild(panel);
+    page->SetChild(card);
+    page->SetTheme(&theme);
+    sheet->ApplyTo(*page);
+
+    const nopeui::Size available{
+        static_cast<float>(width),
+        static_cast<float>(height)};
+    page->Measure(available);
+    page->Arrange(nopeui::Rect{0.0f, 0.0f, available.width, available.height});
+    return page;
+}
+
 template <typename Surface>
 int RenderAndSave(
     Surface& surface,
@@ -201,6 +334,8 @@ int RenderAndSave(
     nopeui::Ref<nopeui::Element> tree;
     if (scene == "controls") {
         tree = BuildControlsScene(theme, width, height);
+    } else if (scene == "media") {
+        tree = BuildMediaScene(theme, width, height);
     }
 
     auto begin_result = surface.BeginDraw();
@@ -299,7 +434,7 @@ int main(int argc, char** argv) {
         std::fprintf(stderr, "unknown renderer '%s'\n", renderer.c_str());
         return 2;
     }
-    if (scene != "placeholder" && scene != "controls") {
+    if (scene != "placeholder" && scene != "controls" && scene != "media") {
         std::fprintf(stderr, "unknown scene '%s'\n", scene.c_str());
         return 2;
     }

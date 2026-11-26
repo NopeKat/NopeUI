@@ -28,6 +28,10 @@ public:
         value_changed_ = std::move(handler);
     }
 
+    std::wstring_view TypeName() const noexcept override {
+        return L"Slider";
+    }
+
 protected:
     Size MeasureOverride(Size available) noexcept override;
     void PaintContent(ID2D1RenderTarget* target) noexcept override;
@@ -47,6 +51,9 @@ protected:
     double AccessibilityRangeLargeChange() const noexcept override;
     bool IsAccessibilityRangeReadOnly() const noexcept override;
     bool SetAccessibilityRangeValue(double value) override;
+    const PropertyMetadata* ControlPropertyTable(std::size_t* count) const noexcept override;
+    bool GetControlProperty(std::wstring_view name, PropertyValue* value) const noexcept override;
+    bool SetControlProperty(std::wstring_view name, const PropertyValue& value) noexcept override;
 
 private:
     Slider() noexcept = default;

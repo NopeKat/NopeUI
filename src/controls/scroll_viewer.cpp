@@ -12,6 +12,7 @@
 #include <wrl/client.h>
 
 #include <algorithm>
+#include <iterator>
 #include <utility>
 
 #include "nopeui/theme/theme.h"
@@ -30,6 +31,11 @@ constexpr float kScrollbarHitBand = 14.0f;
 constexpr float kScrollbarMargin = 3.0f;
 constexpr float kMinThumbSize = 28.0f;
 constexpr float kLineHeight = 16.0f;
+
+const PropertyMetadata kScrollViewerProperties[] = {
+    {L"VerticalOffset", PropertyValueType::Float, PropertyFlags::AffectsRender, PropertyValue(0.0f)},
+    {L"HorizontalOffset", PropertyValueType::Float, PropertyFlags::AffectsRender, PropertyValue(0.0f)},
+};
 
 bool ContainsPoint(const Rect& rect, Point point) noexcept {
     return point.x >= rect.x && point.x < rect.Right() &&
@@ -468,6 +474,45 @@ void ScrollViewer::BringChildIntoView(const Element* descendant) noexcept {
     offset_x_ = next_x;
     offset_y_ = next_y;
     ArrangeOverride(Size{bounds_.width, bounds_.height});
+}
+
+const PropertyMetadata* ScrollViewer::ControlPropertyTable(std::size_t* count) const noexcept {
+    if (count != nullptr) {
+        *count = std::size(kScrollViewerProperties);
+    }
+    return kScrollViewerProperties;
+}
+
+bool ScrollViewer::GetControlProperty(
+    std::wstring_view name,
+    PropertyValue* value) const noexcept {
+    if (name == L"VerticalOffset") {
+        *value = PropertyValue(offset_y_);
+        return true;
+    }
+    if (name == L"HorizontalOffset") {
+        *value = PropertyValue(offset_x_);
+        return true;
+    }
+    return false;
+}
+
+bool ScrollViewer::SetControlProperty(
+    std::wstring_view name,
+    const PropertyValue& value) noexcept {
+    float offset = 0.0f;
+    if (!value.AsFloat(&offset)) {
+        return false;
+    }
+    if (name == L"VerticalOffset") {
+        SetVerticalOffset(offset);
+        return true;
+    }
+    if (name == L"HorizontalOffset") {
+        SetHorizontalOffset(offset);
+        return true;
+    }
+    return false;
 }
 
 bool ScrollViewer::HasAccessibilityScroll() const noexcept {

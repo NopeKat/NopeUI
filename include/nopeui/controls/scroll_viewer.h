@@ -26,6 +26,10 @@ public:
     }
     void SetHorizontalOffset(float offset) noexcept;
 
+    std::wstring_view TypeName() const noexcept override {
+        return L"ScrollViewer";
+    }
+
 protected:
     Size MeasureOverride(Size available) noexcept override;
     Size ArrangeOverride(Size final_size) noexcept override;
@@ -51,6 +55,9 @@ protected:
     bool SetAccessibilityScrollPercent(double horizontal, double vertical) noexcept override;
     bool ScrollAccessibilityHorizontal(double percent_delta) noexcept override;
     bool ScrollAccessibilityVertical(double percent_delta) noexcept override;
+    const PropertyMetadata* ControlPropertyTable(std::size_t* count) const noexcept override;
+    bool GetControlProperty(std::wstring_view name, PropertyValue* value) const noexcept override;
+    bool SetControlProperty(std::wstring_view name, const PropertyValue& value) noexcept override;
 
 private:
     enum class DragAxis {

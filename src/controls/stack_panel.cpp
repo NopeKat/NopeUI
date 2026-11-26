@@ -2,11 +2,20 @@
 
 #include <algorithm>
 #include <cmath>
+#include <iterator>
 
 #include "nopeui/base/geometry.h"
 
 namespace nopeui {
 
+namespace {
+
+const PropertyMetadata kStackPanelProperties[] = {
+    {L"Spacing", PropertyValueType::Float, PropertyFlags::AffectsMeasure, PropertyValue(12.0f)},
+    {L"Orientation", PropertyValueType::Int, PropertyFlags::AffectsMeasure, PropertyValue(0)},
+};
+
+}  // namespace
 Ref<StackPanel> StackPanel::Create(float spacing) noexcept {
     Ref<StackPanel> panel(new StackPanel());
     panel->spacing_ = std::max(0.0f, spacing);
@@ -27,6 +36,64 @@ void StackPanel::SetOrientation(Orientation orientation) noexcept {
     }
     orientation_ = orientation;
     Invalidate();
+}
+
+void StackPanel::SetSpacing(float spacing) noexcept {
+    const float value = std::max(0.0f, spacing);
+    if (spacing_ == value) {
+        return;
+    }
+    spacing_ = value;
+    InvalidateLayout();
+}
+
+const PropertyMetadata* StackPanel::ControlPropertyTable(std::size_t* count) const noexcept {
+    if (count != nullptr) {
+        *count = std::size(kStackPanelProperties);
+    }
+    return kStackPanelProperties;
+}
+
+bool StackPanel::GetControlProperty(
+    std::wstring_view name,
+    PropertyValue* value) const noexcept {
+    if (name == L"Spacing") {
+        *value = PropertyValue(spacing_);
+        return true;
+    }
+    if (name == L"Orientation") {
+        *value = PropertyValue(orientation_ == Orientation::Vertical ? 0 : 1);
+        return true;
+    }
+    return false;
+}
+
+bool StackPanel::SetControlProperty(
+    std::wstring_view name,
+    const PropertyValue& value) noexcept {
+    if (name == L"Spacing") {
+        float spacing = 0.0f;
+        if (!value.AsFloat(&spacing)) {
+            return false;
+        }
+        SetSpacing(spacing);
+        return true;
+    }
+    if (name == L"Orientation") {
+        int orientation = 0;
+        if (!value.AsInt(&orientation)) {
+            return false;
+        }
+        if (orientation == 0) {
+            SetOrientation(Orientation::Vertical);
+        } else if (orientation == 1) {
+            SetOrientation(Orientation::Horizontal);
+        } else {
+            return false;
+        }
+        return true;
+    }
+    return false;
 }
 
 Size StackPanel::MeasureOverride(Size available) noexcept {

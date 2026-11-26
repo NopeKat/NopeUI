@@ -11,6 +11,7 @@
 #include <wrl/client.h>
 
 #include <algorithm>
+#include <iterator>
 
 #include "nopeui/theme/theme.h"
 
@@ -21,6 +22,12 @@ using Microsoft::WRL::ComPtr;
 namespace {
 
 constexpr float kBarHeight = 6.0f;
+
+const PropertyMetadata kProgressBarProperties[] = {
+    {L"Value", PropertyValueType::Float, PropertyFlags::AffectsRender, PropertyValue(0.0f)},
+    {L"IsIndeterminate", PropertyValueType::Bool, PropertyFlags::AffectsRender,
+     PropertyValue(false)},
+};
 
 }  // namespace
 
@@ -93,6 +100,49 @@ void ProgressBar::PaintContent(ID2D1RenderTarget* target) noexcept {
                 kBarHeight / 2.0f),
             fill_brush.Get());
     }
+}
+
+const PropertyMetadata* ProgressBar::ControlPropertyTable(std::size_t* count) const noexcept {
+    if (count != nullptr) {
+        *count = std::size(kProgressBarProperties);
+    }
+    return kProgressBarProperties;
+}
+
+bool ProgressBar::GetControlProperty(
+    std::wstring_view name,
+    PropertyValue* value) const noexcept {
+    if (name == L"Value") {
+        *value = PropertyValue(value_);
+        return true;
+    }
+    if (name == L"IsIndeterminate") {
+        *value = PropertyValue(indeterminate_);
+        return true;
+    }
+    return false;
+}
+
+bool ProgressBar::SetControlProperty(
+    std::wstring_view name,
+    const PropertyValue& value) noexcept {
+    if (name == L"Value") {
+        float number = 0.0f;
+        if (!value.AsFloat(&number)) {
+            return false;
+        }
+        SetValue(number);
+        return true;
+    }
+    if (name == L"IsIndeterminate") {
+        bool indeterminate = false;
+        if (!value.AsBool(&indeterminate)) {
+            return false;
+        }
+        SetIndeterminate(indeterminate);
+        return true;
+    }
+    return false;
 }
 
 AccessibleRole ProgressBar::AccessibilityRole() const noexcept {

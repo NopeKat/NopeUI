@@ -13,6 +13,7 @@
 
 #include <algorithm>
 #include <cstring>
+#include <iterator>
 #include <utility>
 
 #include "nopeui/graphics/text.h"
@@ -28,6 +29,11 @@ constexpr float kPaddingX = 10.0f;
 constexpr float kPaddingY = 8.0f;
 constexpr float kMinHeight = 32.0f;
 constexpr float kCornerRadius = 4.0f;
+
+const PropertyMetadata kTextBoxProperties[] = {
+    {L"Text", PropertyValueType::String, PropertyFlags::AffectsMeasure, PropertyValue(std::wstring())},
+    {L"Placeholder", PropertyValueType::String, PropertyFlags::AffectsRender, PropertyValue(std::wstring())},
+};
 
 std::wstring ReadClipboardText() {
     if (OpenClipboard(nullptr) == FALSE) {
@@ -555,6 +561,43 @@ Point TextBox::ImeCaretPoint() const noexcept {
         caret_x += display->CaretX(index);
     }
     return Point{caret_x, bounds_.Bottom() - kPaddingY};
+}
+
+const PropertyMetadata* TextBox::ControlPropertyTable(std::size_t* count) const noexcept {
+    if (count != nullptr) {
+        *count = std::size(kTextBoxProperties);
+    }
+    return kTextBoxProperties;
+}
+
+bool TextBox::GetControlProperty(std::wstring_view name, PropertyValue* value) const noexcept {
+    if (name == L"Text") {
+        *value = PropertyValue(text_);
+        return true;
+    }
+    if (name == L"Placeholder") {
+        *value = PropertyValue(placeholder_);
+        return true;
+    }
+    return false;
+}
+
+bool TextBox::SetControlProperty(
+    std::wstring_view name,
+    const PropertyValue& value) noexcept {
+    std::wstring text;
+    if (!value.AsString(&text)) {
+        return false;
+    }
+    if (name == L"Text") {
+        SetText(std::move(text));
+        return true;
+    }
+    if (name == L"Placeholder") {
+        SetPlaceholder(std::move(text));
+        return true;
+    }
+    return false;
 }
 
 AccessibleRole TextBox::AccessibilityRole() const noexcept {

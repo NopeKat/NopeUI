@@ -12,8 +12,10 @@
 #include <windowsx.h>
 #include <wrl/client.h>
 
+#include "nopeui/controls/tooltip.h"
 #include "nopeui/graphics/offscreen.h"
 #include "nopeui/graphics/scene.h"
+#include "nopeui/layout/style.h"
 #include "nopeui/platform/automation.h"
 
 #include <algorithm>
@@ -36,6 +38,9 @@ constexpr const wchar_t* kWindowClassName = L"NopeUI.Window";
 constexpr UINT_PTR kCommitTimerId = 1;
 constexpr UINT_PTR kLiveResizeTimerId = 2;
 constexpr UINT_PTR kResizeSettleTimerId = 3;
+constexpr UINT_PTR kToolTipTimerId = 4;
+constexpr UINT kToolTipDelayMs = 600;
+constexpr UINT kClosePopupMessage = WM_APP + 7;
 constexpr UINT kLiveResizeIntervalMs = 8;
 constexpr UINT kResizeSettleIntervalMs = 300;
 constexpr std::size_t kMaxQueuedCommits = 1;
@@ -1485,6 +1490,146 @@ private:
     std::condition_variable commit_cv_;
 };
 
+class OverlayRoot final : public Element {
+public:
+    static Ref<OverlayRoot> Create() noexcept {
+        return Ref<OverlayRoot>(new OverlayRoot());
+    }
+
+    void SetPrimaryContent(Ref<Element> content) noexcept {
+        if (content_) {
+            content_->SetParent(nullptr);
+        }
+        content_ = std::move(content);
+        if (content_) {
+            content_->SetParent(this);
+        }
+        InvalidateLayout();
+    }
+
+    void SetPopup(Ref<Element> popup, Point anchor) noexcept {
+        if (popup_) {
+            popup_->SetParent(nullptr);
+        }
+        popup_ = std::move(popup);
+        anchor_ = anchor;
+        if (popup_) {
+            popup_->SetParent(this);
+        }
+        InvalidateLayout();
+    }
+
+    void ClearPopup() noexcept {
+        if (popup_) {
+            popup_->SetParent(nullptr);
+        }
+        popup_.Reset();
+        popup_bounds_ = Rect{};
+        InvalidateLayout();
+    }
+
+    Element* Popup() const noexcept {
+        return popup_.Get();
+    }
+
+    bool HasPopup() const noexcept {
+        return static_cast<bool>(popup_);
+    }
+
+    bool PopupContains(Point point) const noexcept {
+        return popup_ && !popup_bounds_.IsEmpty() &&
+               point.x >= popup_bounds_.x && point.x < popup_bounds_.Right() &&
+               point.y >= popup_bounds_.y && point.y < popup_bounds_.Bottom();
+    }
+
+    const Rect& PopupBounds() const noexcept {
+        return popup_bounds_;
+    }
+
+    void GatherFocusables(std::vector<Element*>& elements) noexcept {
+        CollectFocusable(elements);
+    }
+
+protected:
+    Size MeasureOverride(Size available) noexcept override {
+        if (content_) {
+            content_->Measure(available);
+        }
+        if (popup_) {
+            popup_->Measure(Size{available.width, available.height});
+        }
+        return available;
+    }
+
+    Size ArrangeOverride(Size final_size) noexcept override {
+        if (content_) {
+            content_->Arrange(Rect{0.0f, 0.0f, final_size.width, final_size.height});
+        }
+        if (popup_) {
+            const Size desired = popup_->DesiredSize();
+            const float width = std::min(desired.width, final_size.width);
+            const float height = std::min(desired.height, final_size.height);
+            const float max_x = std::max(0.0f, final_size.width - width);
+            const float max_y = std::max(0.0f, final_size.height - height);
+            const float x = std::min(std::max(anchor_.x, 0.0f), max_x);
+            const float y = std::min(std::max(anchor_.y, 0.0f), max_y);
+            popup_bounds_ = Rect{x, y, width, height};
+            popup_->Arrange(popup_bounds_);
+        }
+        return final_size;
+    }
+
+    void PaintContent(ID2D1RenderTarget* target) noexcept override {
+        if (content_) {
+            content_->Paint(target);
+        }
+        if (popup_) {
+            popup_->Paint(target);
+        }
+    }
+
+    Element* HitTestOverride(Point point) noexcept override {
+        if (popup_ && PopupContains(point)) {
+            Element* hit = popup_->HitTest(point);
+            if (hit != nullptr) {
+                return hit;
+            }
+        }
+        if (content_) {
+            return content_->HitTest(point);
+        }
+        return nullptr;
+    }
+
+    void CollectFocusable(std::vector<Element*>& elements) noexcept override {
+        if (!IsEnabled()) {
+            return;
+        }
+        if (popup_) {
+            popup_->CollectFocusable(elements);
+        } else if (content_) {
+            content_->CollectFocusable(elements);
+        }
+    }
+
+    void CollectChildren(std::vector<Element*>& elements) noexcept override {
+        if (content_) {
+            elements.push_back(content_.Get());
+        }
+        if (popup_) {
+            elements.push_back(popup_.Get());
+        }
+    }
+
+private:
+    OverlayRoot() noexcept = default;
+
+    Ref<Element> content_;
+    Ref<Element> popup_;
+    Point anchor_{};
+    Rect popup_bounds_{};
+};
+
 Window::Window() noexcept : theme_(SystemTheme()) {}
 
 bool Window::EnsureWindowClass() noexcept {
@@ -1568,6 +1713,14 @@ Result<Ref<Window>> Window::Create(int width, int height, std::u16string_view ti
 Window::~Window() {
     ReleaseAutomation(this);
     ReleaseGraphics();
+    if (root_ != nullptr) {
+        root_->Release();
+        root_ = nullptr;
+    }
+    if (style_sheet_ != nullptr) {
+        style_sheet_->Release();
+        style_sheet_ = nullptr;
+    }
     if (hwnd_ != nullptr) {
         DestroyWindow(hwnd_);
         hwnd_ = nullptr;
@@ -1742,25 +1895,42 @@ bool Window::IsSoftwareRender() const noexcept {
 }
 
 void Window::SetContent(Ref<Element> content) noexcept {
-    if (content_) {
-        content_->SetInvalidateHandler(nullptr);
-        content_->SetRelayoutHandler(nullptr);
+    if (root_ != nullptr) {
+        root_->ClearPopup();
+        root_->SetPrimaryContent(Ref<Element>());
+    } else if (content_) {
+        content_->SetParent(nullptr);
     }
     content_ = std::move(content);
     hovered_ = nullptr;
     pressed_ = nullptr;
     focused_ = nullptr;
+    previous_focus_ = nullptr;
+    popup_close_pending_ = false;
+    popup_is_tooltip_ = false;
     tracking_mouse_ = false;
+
     if (content_) {
-        content_->SetTheme(&theme_);
-        content_->SetInvalidateHandler([this] { RenderFrame(); });
-        content_->SetRelayoutHandler([this] {
-            LayoutContent(client_width_, client_height_);
-            RenderFrame();
-        });
+        if (root_ == nullptr) {
+            Ref<OverlayRoot> created = OverlayRoot::Create();
+            root_ = created.Get();
+            root_->AddRef();
+            root_->SetTheme(&theme_);
+            root_->SetInvalidateHandler([this] { RenderFrame(); });
+            root_->SetRelayoutHandler([this] {
+                LayoutContent(client_width_, client_height_);
+                RenderFrame();
+            });
+        }
+        root_->SetPrimaryContent(content_);
+    } else if (root_ != nullptr) {
+        root_->Release();
+        root_ = nullptr;
     }
+
+    ApplyStyleSheet();
     if (graphics_ != nullptr) {
-        graphics_->SetContent(content_.Get());
+        graphics_->SetContent(root_);
     }
     LayoutContent(client_width_, client_height_);
     RenderFrame();
@@ -1770,10 +1940,82 @@ Element* Window::Content() const noexcept {
     return content_.Get();
 }
 
+void Window::ShowPopup(Ref<Element> popup, Point anchor) noexcept {
+    if (!popup || !content_) {
+        return;
+    }
+    if (root_ == nullptr) {
+        Ref<OverlayRoot> created = OverlayRoot::Create();
+        root_ = created.Get();
+        root_->AddRef();
+        root_->SetTheme(&theme_);
+        root_->SetInvalidateHandler([this] { RenderFrame(); });
+        root_->SetRelayoutHandler([this] {
+            LayoutContent(client_width_, client_height_);
+            RenderFrame();
+        });
+        root_->SetPrimaryContent(content_);
+        if (graphics_ != nullptr) {
+            graphics_->SetContent(root_);
+        }
+    }
+    if (root_->HasPopup()) {
+        root_->ClearPopup();
+    } else {
+        previous_focus_ = focused_;
+    }
+    popup_close_pending_ = false;
+    popup_is_tooltip_ = false;
+    if (tooltip_timer_active_ && hwnd_ != nullptr) {
+        KillTimer(hwnd_, kToolTipTimerId);
+        tooltip_timer_active_ = false;
+    }
+    root_->SetPopup(std::move(popup), anchor);
+    LayoutContent(client_width_, client_height_);
+    RenderFrame();
+}
+
+void Window::ClosePopup() noexcept {
+    if (!root_ || !root_->HasPopup() || popup_close_pending_) {
+        return;
+    }
+    popup_close_pending_ = true;
+    if (hwnd_ != nullptr) {
+        PostMessageW(hwnd_, kClosePopupMessage, 0, 0);
+    }
+}
+
+bool Window::HasPopup() const noexcept {
+    return root_ && root_->HasPopup();
+}
+
+void Window::SetStyleSheet(Ref<StyleSheet> style_sheet) noexcept {
+    if (style_sheet_ != nullptr) {
+        style_sheet_->Release();
+    }
+    style_sheet_ = style_sheet.Get();
+    if (style_sheet_ != nullptr) {
+        style_sheet_->AddRef();
+    }
+    ApplyStyleSheet();
+    LayoutContent(client_width_, client_height_);
+    RenderFrame();
+}
+
+StyleSheet* Window::GetStyleSheet() const noexcept {
+    return style_sheet_;
+}
+
+void Window::ApplyStyleSheet() noexcept {
+    if (content_ && style_sheet_) {
+        style_sheet_->ApplyTo(*content_);
+    }
+}
+
 void Window::SetTheme(Theme theme) noexcept {
     theme_ = std::move(theme);
-    if (content_) {
-        content_->SetTheme(&theme_);
+    if (root_) {
+        root_->SetTheme(&theme_);
     }
     if (graphics_ != nullptr) {
         graphics_->SetPalette(PaletteFromTheme(theme_));
@@ -1786,12 +2028,24 @@ const Theme& Window::GetTheme() const noexcept {
 }
 
 void Window::LayoutContent(int width, int height) noexcept {
-    if (!content_ || width <= 0 || height <= 0) {
+    if (width <= 0 || height <= 0) {
         return;
     }
     const Size available{
         static_cast<float>(width),
         static_cast<float>(height)};
+    if (root_) {
+        root_->Measure(available);
+        root_->Arrange(Rect{
+            0.0f,
+            0.0f,
+            static_cast<float>(width),
+            static_cast<float>(height)});
+        return;
+    }
+    if (!content_) {
+        return;
+    }
     content_->Measure(available);
     content_->Arrange(Rect{
         0.0f,
@@ -1801,7 +2055,8 @@ void Window::LayoutContent(int width, int height) noexcept {
 }
 
 void Window::OnMouseMove(Point point) noexcept {
-    if (!content_ || graphics_ == nullptr) {
+    pointer_ = point;
+    if (!root_ || graphics_ == nullptr) {
         return;
     }
     if (!tracking_mouse_ && hwnd_ != nullptr) {
@@ -1813,7 +2068,20 @@ void Window::OnMouseMove(Point point) noexcept {
         tracking_mouse_ = true;
     }
 
-    Element* hit = content_->HitTest(point);
+    if (root_->HasPopup() && !root_->PopupContains(point)) {
+        if (popup_is_tooltip_) {
+            ClosePopup();
+        }
+        if (hovered_ != nullptr) {
+            hovered_->OnPointerLeave();
+            hovered_ = nullptr;
+            UpdateToolTipTimer();
+            RenderFrame();
+        }
+        return;
+    }
+
+    Element* hit = root_->HitTest(point);
     if (pressed_ != nullptr) {
         // Pointer capture: while a button or scroll thumb is held, moves go to it.
         pressed_->OnPointerMove(point);
@@ -1829,6 +2097,7 @@ void Window::OnMouseMove(Point point) noexcept {
             hit->OnPointerEnter();
         }
         changed = true;
+        UpdateToolTipTimer();
     }
     if (hovered_ != nullptr) {
         hovered_->OnPointerMove(point);
@@ -1839,15 +2108,27 @@ void Window::OnMouseMove(Point point) noexcept {
 }
 
 void Window::OnMouseDown(Point point) noexcept {
-    if (!content_) {
+    pointer_ = point;
+    if (!root_) {
         return;
     }
-    Element* hit = content_->HitTest(point);
+    if (root_->HasPopup()) {
+        if (popup_is_tooltip_) {
+            root_->ClearPopup();
+            popup_is_tooltip_ = false;
+            popup_close_pending_ = false;
+        } else if (!root_->PopupContains(point)) {
+            ClosePopup();
+            return;
+        }
+    }
+    Element* hit = root_->HitTest(point);
     FocusElement(hit != nullptr && hit->IsFocusable() ? hit : nullptr);
     pressed_ = hit;
     if (hit != nullptr) {
         hit->OnPointerDown(point);
     }
+    UpdateToolTipTimer();
     RenderFrame();
 }
 
@@ -1856,30 +2137,117 @@ void Window::OnMouseUp(Point point) noexcept {
     pressed_ = nullptr;
     if (pressed != nullptr) {
         pressed->OnPointerUp(point);
+        if (pressed->ClosePopupOnClick()) {
+            ClosePopup();
+        }
         RenderFrame();
+    }
+}
+
+void Window::OnRightMouseDown(Point point) noexcept {
+    pointer_ = point;
+    if (!root_) {
+        return;
+    }
+    if (root_->HasPopup()) {
+        if (popup_is_tooltip_) {
+            root_->ClearPopup();
+            popup_is_tooltip_ = false;
+            popup_close_pending_ = false;
+        } else {
+            ClosePopup();
+            return;
+        }
+    }
+    Element* hit = root_->HitTest(point);
+    while (hit != nullptr) {
+        if (hit->GetContextMenu() != nullptr) {
+            Element* menu = hit->GetContextMenu();
+            menu->AddRef();
+            ShowPopup(Ref<Element>(menu), point);
+            popup_is_tooltip_ = false;
+            return;
+        }
+        hit = hit->Parent();
     }
 }
 
 void Window::OnMouseLeave() noexcept {
     tracking_mouse_ = false;
+    if (popup_is_tooltip_) {
+        ClosePopup();
+    }
     if (hovered_ == nullptr) {
         return;
     }
     hovered_->OnPointerLeave();
     hovered_ = nullptr;
     pressed_ = nullptr;
+    UpdateToolTipTimer();
     RenderFrame();
 }
 
 void Window::OnMouseWheel(Point point, int delta) noexcept {
-    if (!content_ || delta == 0) {
+    if (!root_ || delta == 0) {
         return;
     }
-    Element* hit = content_->HitTest(point);
+    if (root_->HasPopup() && !root_->PopupContains(point)) {
+        ClosePopup();
+        return;
+    }
+    Element* hit = root_->HitTest(point);
     if (hit != nullptr) {
         // A handler that consumes the wheel is expected to invalidate itself.
         hit->BubbleWheel(delta);
     }
+}
+
+void Window::OnToolTipTimer() noexcept {
+    tooltip_timer_active_ = false;
+    if (hwnd_ != nullptr) {
+        KillTimer(hwnd_, kToolTipTimerId);
+    }
+    if (root_ == nullptr || root_->HasPopup() || hovered_ == nullptr) {
+        return;
+    }
+    const std::wstring text = ToolTipFor(hovered_);
+    if (text.empty()) {
+        return;
+    }
+    auto tip = ToolTip::Create(text);
+    const Rect bounds = hovered_->Bounds();
+    ShowPopup(std::move(tip), Point{bounds.x + 4.0f, bounds.Bottom() + 6.0f});
+    popup_is_tooltip_ = true;
+}
+
+void Window::UpdateToolTipTimer() noexcept {
+    if (hwnd_ == nullptr) {
+        return;
+    }
+    if (tooltip_timer_active_) {
+        KillTimer(hwnd_, kToolTipTimerId);
+        tooltip_timer_active_ = false;
+    }
+    if (hovered_ == nullptr || root_ == nullptr || root_->HasPopup()) {
+        return;
+    }
+    if (ToolTipFor(hovered_).empty()) {
+        return;
+    }
+    SetTimer(hwnd_, kToolTipTimerId, kToolTipDelayMs, nullptr);
+    tooltip_timer_active_ = true;
+}
+
+std::wstring Window::ToolTipFor(const Element* element) const {
+    const Element* node = element;
+    while (node != nullptr) {
+        const std::wstring text = ToolTipService::GetToolTip(node);
+        if (!text.empty()) {
+            return text;
+        }
+        node = node->Parent();
+    }
+    return {};
 }
 
 void Window::FocusElement(Element* element) noexcept {
@@ -1910,11 +2278,11 @@ void Window::FocusFromAccessibility(Element* element) noexcept {
 }
 
 void Window::MoveFocus(bool forward) noexcept {
-    if (!content_) {
+    if (!root_) {
         return;
     }
     std::vector<Element*> focusables;
-    content_->CollectFocusable(focusables);
+    root_->GatherFocusables(focusables);
     if (focusables.empty()) {
         return;
     }
@@ -1947,6 +2315,10 @@ void Window::ClearFocus() noexcept {
 }
 
 bool Window::OnKeyDown(unsigned int key) noexcept {
+    if (key == VK_ESCAPE && root_ && root_->HasPopup()) {
+        ClosePopup();
+        return true;
+    }
     Element* node = focused_;
     while (node != nullptr) {
         if (node->OnKeyDown(key)) {
@@ -2155,10 +2527,12 @@ void Window::ReleaseGraphics() noexcept {
         KillTimer(hwnd_, kCommitTimerId);
         KillTimer(hwnd_, kLiveResizeTimerId);
         KillTimer(hwnd_, kResizeSettleTimerId);
+        KillTimer(hwnd_, kToolTipTimerId);
     }
-    if (content_) {
-        content_->SetInvalidateHandler(nullptr);
-        content_->SetRelayoutHandler(nullptr);
+    tooltip_timer_active_ = false;
+    if (root_) {
+        root_->SetInvalidateHandler(nullptr);
+        root_->SetRelayoutHandler(nullptr);
     }
     live_resizing_ = false;
     graphics_.reset();
@@ -2177,6 +2551,35 @@ LRESULT CALLBACK Window::WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM 
     }
 
     switch (message) {
+        case kClosePopupMessage:
+            if (window != nullptr && window->root_) {
+                window->popup_close_pending_ = false;
+                const bool was_tooltip = window->popup_is_tooltip_;
+                window->popup_is_tooltip_ = false;
+                Element* focused = window->focused_;
+                bool focus_in_content = false;
+                Element* node = focused;
+                while (node != nullptr) {
+                    if (node == window->content_.Get()) {
+                        focus_in_content = true;
+                        break;
+                    }
+                    node = node->Parent();
+                }
+                if (!focus_in_content) {
+                    window->ClearFocus();
+                }
+                window->root_->ClearPopup();
+                if (!was_tooltip && window->previous_focus_ != nullptr &&
+                    window->previous_focus_ != focused) {
+                    window->FocusElement(window->previous_focus_);
+                }
+                window->previous_focus_ = nullptr;
+                window->LayoutContent(window->client_width_, window->client_height_);
+                window->RenderFrame();
+            }
+            return 0;
+
         case WM_CAPTURECHANGED:
             if (window != nullptr) {
                 window->EndLiveResize();
@@ -2263,6 +2666,17 @@ LRESULT CALLBACK Window::WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM 
             }
             return 0;
         }
+
+        case WM_RBUTTONDOWN:
+            if (window != nullptr) {
+                window->OnRightMouseDown(Point{
+                    static_cast<float>(GET_X_LPARAM(lparam)),
+                    static_cast<float>(GET_Y_LPARAM(lparam))});
+            }
+            return 0;
+
+        case WM_RBUTTONUP:
+            return 0;
 
         case WM_LBUTTONDOWN:
             if (window != nullptr) {
@@ -2363,6 +2777,10 @@ LRESULT CALLBACK Window::WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM 
             }
             if (window != nullptr && wparam == kResizeSettleTimerId) {
                 window->CompactResize();
+                return 0;
+            }
+            if (window != nullptr && wparam == kToolTipTimerId) {
+                window->OnToolTipTimer();
                 return 0;
             }
             break;

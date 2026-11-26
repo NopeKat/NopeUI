@@ -12,10 +12,12 @@
 #include <wrl/client.h>
 
 #include <algorithm>
+#include <iterator>
 #include <utility>
 
 #include "nopeui/controls/control_state.h"
 #include "nopeui/graphics/text.h"
+#include "nopeui/theme/control_template.h"
 #include "nopeui/theme/theme.h"
 
 namespace nopeui {
@@ -27,6 +29,11 @@ namespace {
 constexpr float kBoxSize = 18.0f;
 constexpr float kGap = 8.0f;
 constexpr float kCornerRadius = 3.0f;
+
+const PropertyMetadata kCheckBoxProperties[] = {
+    {L"Label", PropertyValueType::String, PropertyFlags::None, PropertyValue(std::wstring())},
+    {L"IsChecked", PropertyValueType::Bool, PropertyFlags::AffectsRender, PropertyValue(false)},
+};
 
 }  // namespace
 
@@ -68,6 +75,9 @@ void CheckBox::PaintContent(ID2D1RenderTarget* target) noexcept {
     std::uint32_t fill = colors.button;
     if (checked_) {
         fill = state == ControlState::Disabled ? colors.button_disabled : colors.accent;
+        if (template_box_background_ != 0 && state != ControlState::Disabled) {
+            fill = template_box_background_;
+        }
     } else {
         switch (state) {
             case ControlState::Disabled:
@@ -80,12 +90,17 @@ void CheckBox::PaintContent(ID2D1RenderTarget* target) noexcept {
                 fill = colors.button_hover;
                 break;
             case ControlState::Normal:
+                if (template_box_background_ != 0) {
+                    fill = template_box_background_;
+                }
                 break;
         }
     }
-    const std::uint32_t border = state == ControlState::Disabled
-        ? colors.button_disabled_border
-        : (checked_ ? fill : colors.button_border);
+    const std::uint32_t border = template_box_border_ != 0
+        ? template_box_border_
+        : (state == ControlState::Disabled
+            ? colors.button_disabled_border
+            : (checked_ ? fill : colors.button_border));
 
     ComPtr<ID2D1SolidColorBrush> brush;
     if (FAILED(target->CreateSolidColorBrush(D2D1::ColorF(fill), brush.GetAddressOf()))) {
@@ -117,7 +132,7 @@ void CheckBox::PaintContent(ID2D1RenderTarget* target) noexcept {
     if (checked_) {
         const std::uint32_t check_color = state == ControlState::Disabled
             ? colors.text_disabled
-            : colors.background;
+            : (template_check_ != 0 ? template_check_ : colors.background);
         ComPtr<ID2D1SolidColorBrush> check;
         if (SUCCEEDED(target->CreateSolidColorBrush(
                 D2D1::ColorF(check_color), check.GetAddressOf()))) {
@@ -138,7 +153,7 @@ void CheckBox::PaintContent(ID2D1RenderTarget* target) noexcept {
         const Size text = run_->Measure();
         const std::uint32_t color = state == ControlState::Disabled
             ? colors.text_disabled
-            : colors.text;
+            : (template_foreground_ != 0 ? template_foreground_ : colors.text);
         run_->Draw(
             target,
             Point{
@@ -225,6 +240,53 @@ void CheckBox::Toggle() noexcept {
     if (checked_changed_) {
         checked_changed_(checked_);
     }
+}
+
+void CheckBox::ApplyControlTemplate(const ControlTemplate& control_template) noexcept {
+    if (const TemplatePart* part = control_template.Find(L"Box")) {
+        template_box_background_ = part->background;
+        template_box_border_ = part->border;
+    }
+    if (const TemplatePart* part = control_template.Find(L"Check")) {
+        template_check_ = part->foreground;
+    }
+    if (const TemplatePart* part = control_template.Find(L"Content")) {
+        template_foreground_ = part->foreground;
+    }
+    Invalidate();
+}
+
+const PropertyMetadata* CheckBox::ControlPropertyTable(std::size_t* count) const noexcept {
+    if (count != nullptr) {
+        *count = std::size(kCheckBoxProperties);
+    }
+    return kCheckBoxProperties;
+}
+
+bool CheckBox::GetControlProperty(std::wstring_view name, PropertyValue* value) const noexcept {
+    if (name == L"Label") {
+        *value = PropertyValue(label_);
+        return true;
+    }
+    if (name == L"IsChecked") {
+        *value = PropertyValue(checked_);
+        return true;
+    }
+    return false;
+}
+
+bool CheckBox::SetControlProperty(
+    std::wstring_view name,
+    const PropertyValue& value) noexcept {
+    if (name != L"IsChecked") {
+        return false;
+    }
+    bool checked = false;
+    if (!value.AsBool(&checked)) {
+        return false;
+    }
+    SetChecked(checked);
+    return true;
 }
 
 AccessibleRole CheckBox::AccessibilityRole() const noexcept {

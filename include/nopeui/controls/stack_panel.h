@@ -20,8 +20,13 @@ public:
 
     void Add(Ref<Element> child) noexcept;
     void SetOrientation(Orientation orientation) noexcept;
+    void SetSpacing(float spacing) noexcept;
     Orientation GetOrientation() const noexcept {
         return orientation_;
+    }
+
+    std::wstring_view TypeName() const noexcept override {
+        return L"StackPanel";
     }
 
     const std::vector<Ref<Element>>& Children() const noexcept {
@@ -35,6 +40,9 @@ protected:
     Element* HitTestOverride(Point point) noexcept override;
     void CollectFocusable(std::vector<Element*>& elements) noexcept override;
     void CollectChildren(std::vector<Element*>& elements) noexcept override;
+    const PropertyMetadata* ControlPropertyTable(std::size_t* count) const noexcept override;
+    bool GetControlProperty(std::wstring_view name, PropertyValue* value) const noexcept override;
+    bool SetControlProperty(std::wstring_view name, const PropertyValue& value) noexcept override;
 
 private:
     StackPanel() noexcept = default;

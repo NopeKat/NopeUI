@@ -12,6 +12,7 @@
 #include <wrl/client.h>
 
 #include <algorithm>
+#include <iterator>
 
 #include "nopeui/theme/theme.h"
 
@@ -22,6 +23,13 @@ using Microsoft::WRL::ComPtr;
 namespace {
 
 constexpr float kOutlineWidth = 1.0f;
+
+const PropertyMetadata kBorderProperties[] = {
+    {L"CornerRadius", PropertyValueType::Float, PropertyFlags::AffectsRender, PropertyValue(0.0f)},
+    {L"BorderVisible", PropertyValueType::Bool, PropertyFlags::AffectsRender, PropertyValue(true)},
+    {L"SurfaceBackground", PropertyValueType::Bool, PropertyFlags::AffectsRender,
+     PropertyValue(false)},
+};
 
 float InsetWidth(const Thickness& padding) noexcept {
     return padding.Horizontal() + kOutlineWidth * 2.0f;
@@ -78,6 +86,59 @@ void Border::SetBorderVisible(bool visible) noexcept {
     }
     border_visible_ = visible;
     Invalidate();
+}
+
+const PropertyMetadata* Border::ControlPropertyTable(std::size_t* count) const noexcept {
+    if (count != nullptr) {
+        *count = std::size(kBorderProperties);
+    }
+    return kBorderProperties;
+}
+
+bool Border::GetControlProperty(std::wstring_view name, PropertyValue* value) const noexcept {
+    if (name == L"CornerRadius") {
+        *value = PropertyValue(corner_radius_.Get());
+        return true;
+    }
+    if (name == L"BorderVisible") {
+        *value = PropertyValue(border_visible_);
+        return true;
+    }
+    if (name == L"SurfaceBackground") {
+        *value = PropertyValue(surface_);
+        return true;
+    }
+    return false;
+}
+
+bool Border::SetControlProperty(
+    std::wstring_view name,
+    const PropertyValue& value) noexcept {
+    if (name == L"CornerRadius") {
+        float radius = 0.0f;
+        if (!value.AsFloat(&radius)) {
+            return false;
+        }
+        SetCornerRadius(radius);
+        return true;
+    }
+    if (name == L"BorderVisible") {
+        bool visible = false;
+        if (!value.AsBool(&visible)) {
+            return false;
+        }
+        SetBorderVisible(visible);
+        return true;
+    }
+    if (name == L"SurfaceBackground") {
+        bool surface = false;
+        if (!value.AsBool(&surface)) {
+            return false;
+        }
+        UseSurfaceBackground(surface);
+        return true;
+    }
+    return false;
 }
 
 Size Border::MeasureOverride(Size available) noexcept {

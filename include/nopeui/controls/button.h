@@ -30,6 +30,10 @@ public:
         click_subscription_ = click_.Subscribe(std::move(handler));
     }
 
+    std::wstring_view TypeName() const noexcept override {
+        return L"Button";
+    }
+
 protected:
     Size MeasureOverride(Size available) noexcept override;
     void PaintContent(ID2D1RenderTarget* target) noexcept override;
@@ -44,6 +48,10 @@ protected:
     std::wstring AccessibilityName() const override;
     bool HasAccessibilityInvoke() const noexcept override;
     void InvokeAccessibility() noexcept override;
+    void ApplyControlTemplate(const ControlTemplate& control_template) noexcept override;
+    const PropertyMetadata* ControlPropertyTable(std::size_t* count) const noexcept override;
+    bool GetControlProperty(std::wstring_view name, PropertyValue* value) const noexcept override;
+    bool SetControlProperty(std::wstring_view name, const PropertyValue& value) noexcept override;
 
 private:
     Button() noexcept = default;
@@ -52,6 +60,10 @@ private:
     std::unique_ptr<graphics::TextRun> run_;
     Event<> click_;
     Subscription click_subscription_;
+    std::uint32_t template_background_ = 0;
+    std::uint32_t template_border_ = 0;
+    std::uint32_t template_foreground_ = 0;
+    float corner_radius_ = 4.0f;
     bool hovered_ = false;
     bool pressed_ = false;
 };

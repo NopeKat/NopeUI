@@ -26,6 +26,10 @@ public:
     void SetBorderColor(std::uint32_t color) noexcept;
     void SetBorderVisible(bool visible) noexcept;
 
+    std::wstring_view TypeName() const noexcept override {
+        return L"Border";
+    }
+
 protected:
     Size MeasureOverride(Size available) noexcept override;
     Size ArrangeOverride(Size final_size) noexcept override;
@@ -33,6 +37,9 @@ protected:
     Element* HitTestOverride(Point point) noexcept override;
     void CollectFocusable(std::vector<Element*>& elements) noexcept override;
     void CollectChildren(std::vector<Element*>& elements) noexcept override;
+    const PropertyMetadata* ControlPropertyTable(std::size_t* count) const noexcept override;
+    bool GetControlProperty(std::wstring_view name, PropertyValue* value) const noexcept override;
+    bool SetControlProperty(std::wstring_view name, const PropertyValue& value) noexcept override;
 
 private:
     Border() noexcept = default;

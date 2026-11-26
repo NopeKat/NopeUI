@@ -12,6 +12,7 @@
 #include <wrl/client.h>
 
 #include <algorithm>
+#include <iterator>
 #include <utility>
 
 #include "nopeui/controls/control_state.h"
@@ -23,6 +24,11 @@ namespace nopeui {
 using Microsoft::WRL::ComPtr;
 
 namespace {
+
+const PropertyMetadata kToggleButtonProperties[] = {
+    {L"Text", PropertyValueType::String, PropertyFlags::None, PropertyValue(std::wstring())},
+    {L"IsChecked", PropertyValueType::Bool, PropertyFlags::AffectsRender, PropertyValue(false)},
+};
 
 constexpr float kPaddingX = 16.0f;
 constexpr float kPaddingY = 8.0f;
@@ -209,6 +215,39 @@ void ToggleButton::Toggle() noexcept {
     if (checked_changed_) {
         checked_changed_(checked_);
     }
+}
+
+const PropertyMetadata* ToggleButton::ControlPropertyTable(std::size_t* count) const noexcept {
+    if (count != nullptr) {
+        *count = std::size(kToggleButtonProperties);
+    }
+    return kToggleButtonProperties;
+}
+
+bool ToggleButton::GetControlProperty(std::wstring_view name, PropertyValue* value) const noexcept {
+    if (name == L"Text") {
+        *value = PropertyValue(text_);
+        return true;
+    }
+    if (name == L"IsChecked") {
+        *value = PropertyValue(checked_);
+        return true;
+    }
+    return false;
+}
+
+bool ToggleButton::SetControlProperty(
+    std::wstring_view name,
+    const PropertyValue& value) noexcept {
+    if (name != L"IsChecked") {
+        return false;
+    }
+    bool checked = false;
+    if (!value.AsBool(&checked)) {
+        return false;
+    }
+    SetChecked(checked);
+    return true;
 }
 
 AccessibleRole ToggleButton::AccessibilityRole() const noexcept {
