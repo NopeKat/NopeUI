@@ -74,6 +74,18 @@ void Element::Invalidate() noexcept {
     }
 }
 
+void Element::InvalidateLayout() noexcept {
+    Element* root = this;
+    while (root->parent_ != nullptr) {
+        root = root->parent_;
+    }
+    if (root->relayout_) {
+        root->relayout_();
+    } else if (root->invalidate_) {
+        root->invalidate_();
+    }
+}
+
 void Element::CollectFocusable(std::vector<Element*>& elements) noexcept {
     if (IsFocusable()) {
         elements.push_back(this);

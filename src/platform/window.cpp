@@ -1722,6 +1722,7 @@ bool Window::IsSoftwareRender() const noexcept {
 void Window::SetContent(Ref<Element> content) noexcept {
     if (content_) {
         content_->SetInvalidateHandler(nullptr);
+        content_->SetRelayoutHandler(nullptr);
     }
     content_ = std::move(content);
     hovered_ = nullptr;
@@ -1731,6 +1732,10 @@ void Window::SetContent(Ref<Element> content) noexcept {
     if (content_) {
         content_->SetTheme(&theme_);
         content_->SetInvalidateHandler([this] { RenderFrame(); });
+        content_->SetRelayoutHandler([this] {
+            LayoutContent(client_width_, client_height_);
+            RenderFrame();
+        });
     }
     if (graphics_ != nullptr) {
         graphics_->SetContent(content_.Get());
@@ -2061,6 +2066,7 @@ void Window::ReleaseGraphics() noexcept {
     }
     if (content_) {
         content_->SetInvalidateHandler(nullptr);
+        content_->SetRelayoutHandler(nullptr);
     }
     live_resizing_ = false;
     graphics_.reset();

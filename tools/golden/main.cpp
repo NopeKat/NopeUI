@@ -67,6 +67,24 @@ nopeui::Ref<nopeui::Element> BuildControlsScene(
 
     panel->Add(nopeui::Label::Create(L"Spacing, borders and text share one theme"));
 
+    nopeui::graphics::TextStyle body;
+    body.wrap = true;
+    panel->Add(nopeui::Label::Create(
+        L"Wrapped text is measured against the card width, so this paragraph "
+        L"occupies more than one line and still stays inside the layout. "
+        L"Resize the window and the line breaks follow the available width "
+        L"without rebuilding the whole tree.",
+        body));
+
+    nopeui::graphics::TextStyle single;
+    single.ellipsis = true;
+    panel->Add(nopeui::Label::Create(
+        L"Single line text that is deliberately long enough to run past the "
+        L"card width and get trimmed with an ellipsis at the edge of the "
+        L"available space instead of being clipped in the middle of a word. "
+        L"The trimmed tail ends with a visible ellipsis when space runs out.",
+        single));
+
     card->SetChild(panel);
     page->SetChild(card);
     page->SetTheme(&theme);

@@ -33,7 +33,9 @@ constexpr float kMinHeight = 32.0f;
 Ref<Button> Button::Create(std::wstring text) noexcept {
     Ref<Button> button(new Button());
     button->text_ = std::move(text);
-    auto run = graphics::TextRun::Create(button->text_, 14.0f, false);
+    graphics::TextStyle style;
+    style.size = 14.0f;
+    auto run = graphics::TextRun::Create(button->text_, style, 8192.0f);
     if (run.ok()) {
         button->run_ = std::move(run.value());
     }

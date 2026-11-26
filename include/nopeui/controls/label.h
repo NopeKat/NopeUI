@@ -7,17 +7,20 @@
 
 #include "nopeui/base/property.h"
 #include "nopeui/base/ref.h"
+#include "nopeui/graphics/text.h"
 #include "nopeui/layout/element.h"
 
 namespace nopeui {
-namespace graphics {
-class TextRun;
-}
 
-// Single line of text.
+// Text block. With wrapping enabled it measures against the available width
+// and grows in height; ellipsis trims a single line to the available width.
 class Label : public Element {
 public:
-    static Ref<Label> Create(std::wstring text) noexcept;
+    static Ref<Label> Create(
+        std::wstring text,
+        graphics::TextStyle style = {}) noexcept;
+
+    void SetTextStyle(graphics::TextStyle style) noexcept;
 
     // Zero means the theme text color.
     void SetColor(std::uint32_t color) noexcept;
@@ -29,9 +32,14 @@ protected:
 private:
     Label() noexcept = default;
 
+    void RebuildRun(float width) noexcept;
+
     std::wstring text_;
     std::unique_ptr<graphics::TextRun> run_;
+    graphics::TextStyle style_;
     Property<std::uint32_t> color_{0};
+    float run_width_ = 0.0f;
+    bool run_dirty_ = true;
 };
 
 }  // namespace nopeui

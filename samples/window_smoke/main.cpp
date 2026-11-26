@@ -89,6 +89,23 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR command_line_ptr, int) {
     panel->Add(theme_row);
     panel->Add(nopeui::Label::Create(L"Wheel over the card scrolls the list."));
 
+    nopeui::graphics::TextStyle body;
+    body.wrap = true;
+    panel->Add(nopeui::Label::Create(
+        L"This label wraps against the card width instead of a fixed line, so "
+        L"long explanatory text grows downwards and stays inside the layout. "
+        L"Resize the window and the line breaks follow the available width "
+        L"without rebuilding the whole tree.",
+        body));
+
+    nopeui::graphics::TextStyle single;
+    single.ellipsis = true;
+    panel->Add(nopeui::Label::Create(
+        L"This single line is long enough to be trimmed with an ellipsis "
+        L"instead of clipping in the middle of a word when the card is narrow. "
+        L"The trimmed tail ends with a visible ellipsis when space runs out.",
+        single));
+
     for (int index = 0; index < 40; ++index) {
         wchar_t row[64]{};
         std::swprintf(row, std::size(row), L"Scrollable row %02d", index);

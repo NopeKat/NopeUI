@@ -10,21 +10,29 @@
 #include <Windows.h>
 
 #include <algorithm>
+#include <cmath>
 #include <utility>
 
-#include "nopeui/graphics/text.h"
 #include "nopeui/theme/theme.h"
 
 namespace nopeui {
 
-Ref<Label> Label::Create(std::wstring text) noexcept {
+Ref<Label> Label::Create(std::wstring text, graphics::TextStyle style) noexcept {
     Ref<Label> label(new Label());
     label->text_ = std::move(text);
-    auto run = graphics::TextRun::Create(label->text_, 14.0f, false);
-    if (run.ok()) {
-        label->run_ = std::move(run.value());
-    }
+    label->style_ = style;
+    label->RebuildRun(8192.0f);
     return label;
+}
+
+void Label::SetTextStyle(graphics::TextStyle style) noexcept {
+    if (style_.size == style.size && style_.bold == style.bold &&
+        style_.wrap == style.wrap && style_.ellipsis == style.ellipsis) {
+        return;
+    }
+    style_ = style;
+    run_dirty_ = true;
+    InvalidateLayout();
 }
 
 void Label::SetColor(std::uint32_t color) noexcept {
@@ -33,10 +41,31 @@ void Label::SetColor(std::uint32_t color) noexcept {
     }
 }
 
-Size Label::MeasureOverride(Size available) noexcept {    if (run_ != nullptr) {
+void Label::RebuildRun(float width) noexcept {
+    run_width_ = width;
+    run_dirty_ = false;
+    auto created = graphics::TextRun::Create(text_, style_, width);
+    if (created.ok()) {
+        run_ = std::move(created.value());
+    } else {
+        run_.reset();
+    }
+}
+
+Size Label::MeasureOverride(Size available) noexcept {
+    const float width = available.width > 1.0f ? available.width : 1.0f;
+    const bool width_matters = style_.wrap || style_.ellipsis;
+    if (run_dirty_ || (width_matters && std::abs(width - run_width_) > 1.0f)) {
+        RebuildRun(width);
+    }
+
+    if (run_ != nullptr) {
         const Size measured = run_->Measure();
+        const float desired_width = style_.wrap
+            ? available.width
+            : std::min(measured.width, available.width);
         return Size{
-            std::min(measured.width, available.width),
+            desired_width,
             std::min(measured.height, available.height)};
     }
     return Size{

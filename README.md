@@ -72,6 +72,8 @@ NopeUI 是一个仅面向 Windows 的开源 C++ 桌面 UI 框架。外观参考 
 
 元素树只做四件事：`Measure` 用可用尺寸算期望尺寸，`Arrange` 落最终矩形，`HitTest` 找最上层命中的元素，`Paint` 由窗口在硬件与软件两条路径里统一调用。`StackPanel` 支持纵向与横向排列，`Border` 负责背景、1 像素描边与内边距，`ScrollViewer` 提供单子元素的纵向滚动，`Label` 和 `Button` 复用 `graphics::TextRun` 缓存的文字布局；`Button` 带悬停、按下底色、焦点矩形和点击回调，鼠标点击或 Enter/Space 都会触发。
 
+`TextStyle` 控制字号、粗细、换行与省略。`Label` 换行时按可用宽度重建文本布局并在高度上增长，省略时用 DirectWrite 的尾部裁剪；布局变化通过 `InvalidateLayout` 回到窗口重新测量与排列，单纯改颜色只触发重绘。
+
 容器在绘制子元素前按自身 bounds 压裁剪区，`Border`、`StackPanel`、`ScrollViewer` 都这么做。`ScrollViewer` 目前只有滚轮滚动，没有滚动条；偏移在测出内容高度后夹紧，滚轮从命中元素向上冒泡到最近的滚动容器。
 
 焦点按视觉顺序排序：`IsFocusable()` 标记可聚焦元素，`CollectFocusable()` 递归收集，窗口维护 Tab 与 Shift+Tab，失去窗口焦点时清空。`Button` 的 `SetOnClick` 保存单个回调，`SubscribeClick` 返回可管理的订阅。

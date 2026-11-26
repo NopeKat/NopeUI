@@ -58,6 +58,12 @@ public:
     }
     void Invalidate() noexcept;
 
+    // Requests measure and arrange again, then a repaint.
+    void SetRelayoutHandler(std::function<void()> handler) noexcept {
+        relayout_ = std::move(handler);
+    }
+    void InvalidateLayout() noexcept;
+
     // Focus and keyboard. IsFocusable() marks participation in the Tab order;
     // CollectFocusable() walks the tree in visual order.
     virtual bool IsFocusable() const noexcept {
@@ -114,6 +120,7 @@ private:
     Element* parent_ = nullptr;
     const Theme* theme_ = nullptr;
     std::function<void()> invalidate_;
+    std::function<void()> relayout_;
     bool focused_ = false;
 };
 

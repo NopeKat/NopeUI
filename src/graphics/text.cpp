@@ -62,13 +62,13 @@ TextRun::~TextRun() = default;
 
 Result<std::unique_ptr<TextRun>> TextRun::Create(
     std::wstring_view text,
-    float size,
-    bool bold) noexcept {
+    const TextStyle& style,
+    float max_width) noexcept {
     if (text.empty()) {
         return Result<std::unique_ptr<TextRun>>::Fail(
             Error{ErrorCode::InvalidArgument, "text is empty"});
     }
-    if (size <= 0.0f) {
+    if (style.size <= 0.0f) {
         return Result<std::unique_ptr<TextRun>>::Fail(
             Error{ErrorCode::InvalidArgument, "text size must be positive"});
     }
@@ -84,10 +84,10 @@ Result<std::unique_ptr<TextRun>> TextRun::Create(
     HRESULT result = impl->factory->CreateTextFormat(
         L"Segoe UI",
         nullptr,
-        bold ? DWRITE_FONT_WEIGHT_SEMI_BOLD : DWRITE_FONT_WEIGHT_NORMAL,
+        style.bold ? DWRITE_FONT_WEIGHT_SEMI_BOLD : DWRITE_FONT_WEIGHT_NORMAL,
         DWRITE_FONT_STYLE_NORMAL,
         DWRITE_FONT_STRETCH_NORMAL,
-        size,
+        style.size,
         L"en-US",
         impl->format.GetAddressOf());
     if (FAILED(result)) {
@@ -95,16 +95,29 @@ Result<std::unique_ptr<TextRun>> TextRun::Create(
             Error{ErrorCode::PlatformFailure, HResultMessage("CreateTextFormat", result)});
     }
 
+    const float layout_width = max_width > 1.0f ? max_width : 1.0f;
     result = impl->factory->CreateTextLayout(
         text.data(),
         static_cast<UINT32>(text.size()),
         impl->format.Get(),
-        8192.0f,
+        layout_width,
         8192.0f,
         impl->layout.GetAddressOf());
     if (FAILED(result)) {
         return Result<std::unique_ptr<TextRun>>::Fail(
             Error{ErrorCode::PlatformFailure, HResultMessage("CreateTextLayout", result)});
+    }
+
+    impl->layout->SetWordWrapping(
+        style.wrap ? DWRITE_WORD_WRAPPING_WRAP : DWRITE_WORD_WRAPPING_NO_WRAP);
+    if (style.ellipsis) {
+        ComPtr<IDWriteInlineObject> ellipsis;
+        if (SUCCEEDED(impl->factory->CreateEllipsisTrimmingSign(
+                impl->format.Get(), ellipsis.GetAddressOf()))) {
+            DWRITE_TRIMMING trimming{};
+            trimming.granularity = DWRITE_TRIMMING_GRANULARITY_CHARACTER;
+            impl->layout->SetTrimming(&trimming, ellipsis.Get());
+        }
     }
 
     DWRITE_TEXT_METRICS metrics{};
