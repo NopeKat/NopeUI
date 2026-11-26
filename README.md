@@ -6,7 +6,7 @@ NopeUI 是一个仅面向 Windows 的开源 C++ 桌面 UI 框架。外观参考 
 
 ## 当前状态
 
-项目处于 P0 初期，`base` 最小内核与 `platform` 窗口层已建立：`Result` 与 `Error`、`Ref`、`Event` 与 `Subscription`、几何类型、UTF-8 与 UTF-16 转换，以及 Win32 窗口、消息循环、DirectComposition 虚拟表面与 Direct2D 首帧。窗口当前显示浅色背景和顶部强调条，可通过 `Window::LastFrameMilliseconds()`、`Window::FrameCount()` 与 `Window::RenderFrame()` 读取和驱动帧；`nopeui_frame_benchmark` 提供 300 帧基准。软件回退尚未实现。7 个测试在 `x64-debug` 与 `x64-release` 下全部通过。
+项目处于 P0 初期，`base` 最小内核与 `platform` 窗口层已建立：`Result` 与 `Error`、`Ref`、`Event` 与 `Subscription`、几何类型、UTF-8 与 UTF-16 转换，以及 Win32 窗口、消息循环、DirectComposition 虚拟表面与 Direct2D 首帧。窗口当前显示浅色背景和顶部强调条，支持全帧与 dirty 矩形重绘；`Window::LastFrameMilliseconds()`、`Window::FrameCount()` 与 `Window::RenderFrame()` 可读取和驱动帧，`nopeui_frame_benchmark` 提供 300 帧基准。软件回退尚未实现。7 个测试在 `x64-debug` 与 `x64-release` 下全部通过。
 
 ## 构建
 
@@ -18,6 +18,13 @@ NopeUI 是一个仅面向 Windows 的开源 C++ 桌面 UI 框架。外观参考 
 ```
 
 `-Preset` 可选 `x64-debug` 或 `x64-release`。脚本优先使用 PATH 中的 CMake；找不到时会自动定位 winget 安装的 CMake 4.4.4。也可以用 `NOPEUI_CMAKE` 指向指定的 `cmake.exe`。
+
+帧基准默认重绘顶部 dirty 区域；加 `--full` 改跑全帧，加 `--paced` 用 DWM 刷新节拍：
+
+```powershell
+.\.build\x64-release\samples\Release\nopeui_frame_benchmark.exe
+.\.build\x64-release\samples\Release\nopeui_frame_benchmark.exe --full
+```
 
 ## 目录
 

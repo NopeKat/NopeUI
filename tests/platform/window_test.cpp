@@ -29,6 +29,8 @@ int main() {
             320,
             SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE) != FALSE);
     NOPEUI_CHECK(window->FrameCount() >= 2);
+    window->RenderFrame(nopeui::Rect{0.0f, 0.0f, 200.0f, 4.0f});
+    NOPEUI_CHECK(window->FrameCount() >= 3);
 
     window->Close();
     NOPEUI_CHECK(window->Handle() == nullptr);

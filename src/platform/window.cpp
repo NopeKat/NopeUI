@@ -6,6 +6,7 @@
 #include <dxgi.h>
 #include <wrl/client.h>
 
+#include <algorithm>
 #include <chrono>
 #include <cstdio>
 #include <mutex>
@@ -108,17 +109,38 @@ public:
         return Result<void>::Ok();
     }
 
-    void Render() noexcept {
+    void Render(const RECT* dirty_rect = nullptr) noexcept {
         if (virtual_surface_ == nullptr || d2d_context_ == nullptr) {
             return;
         }
 
         const auto start = std::chrono::steady_clock::now();
 
+        RECT update{};
+        const RECT* update_ptr = nullptr;
+        if (dirty_rect != nullptr) {
+            update.left = std::max(0L, dirty_rect->left);
+            update.top = std::max(0L, dirty_rect->top);
+            update.right = std::min(static_cast<LONG>(surface_width_), dirty_rect->right);
+            update.bottom = std::min(static_cast<LONG>(surface_height_), dirty_rect->bottom);
+            if (update.right <= update.left || update.bottom <= update.top) {
+                return;
+            }
+            update_ptr = &update;
+        }
+
+        const D2D1_RECT_F background_rect = update_ptr == nullptr
+            ? D2D1::RectF(0.0f, 0.0f, static_cast<float>(surface_width_), static_cast<float>(surface_height_))
+            : D2D1::RectF(
+                  static_cast<float>(update.left),
+                  static_cast<float>(update.top),
+                  static_cast<float>(update.right),
+                  static_cast<float>(update.bottom));
+
         ComPtr<IDXGISurface> dxgi_surface;
         POINT offset{};
         HRESULT result = virtual_surface_->BeginDraw(
-            nullptr,
+            update_ptr,
             __uuidof(IDXGISurface),
             reinterpret_cast<void**>(dxgi_surface.GetAddressOf()),
             &offset);
@@ -143,10 +165,18 @@ public:
             static_cast<float>(offset.x),
             static_cast<float>(offset.y)));
         d2d_context_->BeginDraw();
-        d2d_context_->Clear(D2D1::ColorF(0xF3F3F3));
+        if (update_ptr == nullptr) {
+            d2d_context_->Clear(D2D1::ColorF(0xF3F3F3));
+        } else {
+            d2d_context_->PushAxisAlignedClip(background_rect, D2D1_ANTIALIAS_MODE_ALIASED);
+            d2d_context_->FillRectangle(background_rect, background_brush_.Get());
+        }
         d2d_context_->FillRectangle(
             D2D1::RectF(0.0f, 0.0f, static_cast<float>(surface_width_), 4.0f),
             accent_brush_.Get());
+        if (update_ptr != nullptr) {
+            d2d_context_->PopAxisAlignedClip();
+        }
         result = d2d_context_->EndDraw();
         d2d_context_->SetTarget(nullptr);
 
@@ -270,6 +300,13 @@ private:
         }
 
         result = d2d_context_->CreateSolidColorBrush(
+            D2D1::ColorF(0xF3F3F3), background_brush_.GetAddressOf());
+        if (FAILED(result)) {
+            return Result<void>::Fail(
+                Error{ErrorCode::PlatformFailure, PlatformError("CreateSolidColorBrush", result)});
+        }
+
+        result = d2d_context_->CreateSolidColorBrush(
             D2D1::ColorF(0x0067C0), accent_brush_.GetAddressOf());
         if (FAILED(result)) {
             return Result<void>::Fail(
@@ -302,6 +339,7 @@ private:
     ComPtr<ID2D1Device> d2d_device_;
     ComPtr<ID2D1DeviceContext> d2d_context_;
     ComPtr<ID2D1Bitmap1> target_bitmap_;
+    ComPtr<ID2D1SolidColorBrush> background_brush_;
     ComPtr<ID2D1SolidColorBrush> accent_brush_;
     int surface_width_ = 0;
     int surface_height_ = 0;
@@ -433,6 +471,19 @@ void Window::RenderFrame() noexcept {
     if (graphics_ != nullptr) {
         graphics_->Render();
     }
+}
+
+void Window::RenderFrame(const Rect& dirty_rect) noexcept {
+    if (graphics_ == nullptr || dirty_rect.IsEmpty()) {
+        return;
+    }
+
+    RECT native_rect{};
+    native_rect.left = static_cast<LONG>(dirty_rect.x);
+    native_rect.top = static_cast<LONG>(dirty_rect.y);
+    native_rect.right = static_cast<LONG>(dirty_rect.Right());
+    native_rect.bottom = static_cast<LONG>(dirty_rect.Bottom());
+    graphics_->Render(&native_rect);
 }
 
 HWND Window::Handle() const noexcept {

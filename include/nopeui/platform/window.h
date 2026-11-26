@@ -14,6 +14,7 @@
 #include <memory>
 #include <string_view>
 
+#include "nopeui/base/geometry.h"
 #include "nopeui/base/ref.h"
 #include "nopeui/base/result.h"
 
@@ -35,6 +36,7 @@ public:
     double LastFrameMilliseconds() const noexcept;
     std::uint64_t FrameCount() const noexcept;
     void RenderFrame() noexcept;
+    void RenderFrame(const Rect& dirty_rect) noexcept;
 
     HWND Handle() const noexcept;
 
