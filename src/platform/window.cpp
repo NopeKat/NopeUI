@@ -1698,6 +1698,7 @@ void Window::SetContent(Ref<Element> content) noexcept {
     content_ = std::move(content);
     hovered_ = nullptr;
     pressed_ = nullptr;
+    focused_ = nullptr;
     tracking_mouse_ = false;
     if (content_) {
         content_->SetTheme(&theme_);
@@ -1778,11 +1779,13 @@ void Window::OnMouseDown(Point point) noexcept {
     if (!content_) {
         return;
     }
-    pressed_ = content_->HitTest(point);
-    if (pressed_ != nullptr) {
-        pressed_->OnPointerDown(point);
-        RenderFrame();
+    Element* hit = content_->HitTest(point);
+    FocusElement(hit != nullptr && hit->IsFocusable() ? hit : nullptr);
+    pressed_ = hit;
+    if (hit != nullptr) {
+        hit->OnPointerDown(point);
     }
+    RenderFrame();
 }
 
 void Window::OnMouseUp(Point point) noexcept {
@@ -1803,6 +1806,70 @@ void Window::OnMouseLeave() noexcept {
     hovered_ = nullptr;
     pressed_ = nullptr;
     RenderFrame();
+}
+
+void Window::FocusElement(Element* element) noexcept {
+    if (focused_ == element) {
+        return;
+    }
+    if (focused_ != nullptr) {
+        focused_->SetFocused(false);
+    }
+    focused_ = element;
+    if (focused_ != nullptr) {
+        focused_->SetFocused(true);
+    }
+}
+
+void Window::MoveFocus(bool forward) noexcept {
+    if (!content_) {
+        return;
+    }
+    std::vector<Element*> focusables;
+    content_->CollectFocusable(focusables);
+    if (focusables.empty()) {
+        return;
+    }
+
+    std::size_t index = focusables.size();
+    for (std::size_t i = 0; i < focusables.size(); ++i) {
+        if (focusables[i] == focused_) {
+            index = i;
+            break;
+        }
+    }
+    std::size_t next = 0;
+    if (forward) {
+        next = index < focusables.size() ? (index + 1) % focusables.size() : 0;
+    } else {
+        next = index == 0 ? focusables.size() - 1
+                          : (index < focusables.size() ? index - 1 : focusables.size() - 1);
+    }
+    FocusElement(focusables[next]);
+    RenderFrame();
+}
+
+void Window::ClearFocus() noexcept {
+    if (focused_ == nullptr) {
+        return;
+    }
+    focused_->SetFocused(false);
+    focused_ = nullptr;
+    RenderFrame();
+}
+
+bool Window::OnKeyDown(unsigned int key) noexcept {
+    if (focused_ == nullptr) {
+        return false;
+    }
+    return focused_->OnKeyDown(key);
+}
+
+bool Window::OnKeyUp(unsigned int key) noexcept {
+    if (focused_ == nullptr) {
+        return false;
+    }
+    return focused_->OnKeyUp(key);
 }
 
 HWND Window::Handle() const noexcept {
@@ -2059,6 +2126,34 @@ LRESULT CALLBACK Window::WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM 
                 ReleaseCapture();
             }
             return 0;
+
+        case WM_KEYDOWN: {
+            if (window != nullptr) {
+                const unsigned int key = static_cast<unsigned int>(wparam);
+                if (key == VK_TAB) {
+                    const bool shift = (GetKeyState(VK_SHIFT) & 0x8000) != 0;
+                    window->MoveFocus(!shift);
+                    return 0;
+                }
+                if (window->OnKeyDown(key)) {
+                    return 0;
+                }
+            }
+            break;
+        }
+
+        case WM_KEYUP:
+            if (window != nullptr &&
+                window->OnKeyUp(static_cast<unsigned int>(wparam))) {
+                return 0;
+            }
+            break;
+
+        case WM_KILLFOCUS:
+            if (window != nullptr) {
+                window->ClearFocus();
+            }
+            break;
 
         case WM_TIMER:
             if (window != nullptr && wparam == kCommitTimerId) {

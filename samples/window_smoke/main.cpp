@@ -69,7 +69,19 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR command_line_ptr, int) {
     auto panel = nopeui::StackPanel::Create(14.0f);
     panel->Add(nopeui::Label::Create(L"NopeUI"));
     panel->Add(nopeui::Label::Create(L"P0 - layout and controls"));
-    panel->Add(nopeui::Button::Create(L"Continue"));
+    panel->Add(nopeui::Label::Create(L"Tab moves focus; Enter or Space activates."));
+
+    auto light_button = nopeui::Button::Create(L"Light theme");
+    auto dark_button = nopeui::Button::Create(L"Dark theme");
+    auto* window_ptr = window.Get();
+    light_button->SetOnClick([window_ptr] {
+        window_ptr->SetTheme(nopeui::LightTheme());
+    });
+    dark_button->SetOnClick([window_ptr] {
+        window_ptr->SetTheme(nopeui::DarkTheme());
+    });
+    panel->Add(light_button);
+    panel->Add(dark_button);
 
     card->SetChild(panel);
     page->SetChild(card);

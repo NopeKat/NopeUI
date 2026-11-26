@@ -65,4 +65,10 @@ Element* StackPanel::HitTestOverride(Point point) noexcept {
     return nullptr;
 }
 
+void StackPanel::CollectFocusable(std::vector<Element*>& elements) noexcept {
+    for (const auto& child : children_) {
+        child->CollectFocusable(elements);
+    }
+}
+
 }  // namespace nopeui

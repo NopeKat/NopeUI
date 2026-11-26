@@ -144,6 +144,11 @@ private:
     void OnMouseDown(Point point) noexcept;
     void OnMouseUp(Point point) noexcept;
     void OnMouseLeave() noexcept;
+    void FocusElement(Element* element) noexcept;
+    void MoveFocus(bool forward) noexcept;
+    void ClearFocus() noexcept;
+    bool OnKeyDown(unsigned int key) noexcept;
+    bool OnKeyUp(unsigned int key) noexcept;
 
     HWND hwnd_ = nullptr;
     std::unique_ptr<WindowGraphics> graphics_;
@@ -151,6 +156,7 @@ private:
     Ref<Element> content_;
     Element* hovered_ = nullptr;
     Element* pressed_ = nullptr;
+    Element* focused_ = nullptr;
     bool tracking_mouse_ = false;
     int client_width_ = 0;
     int client_height_ = 0;

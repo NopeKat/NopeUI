@@ -141,4 +141,10 @@ Element* Border::HitTestOverride(Point point) noexcept {
     return nullptr;
 }
 
+void Border::CollectFocusable(std::vector<Element*>& elements) noexcept {
+    if (child_) {
+        child_->CollectFocusable(elements);
+    }
+}
+
 }  // namespace nopeui

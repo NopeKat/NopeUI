@@ -24,6 +24,7 @@ protected:
     Size ArrangeOverride(Size final_size) noexcept override;
     void PaintContent(ID2D1RenderTarget* target) noexcept override;
     Element* HitTestOverride(Point point) noexcept override;
+    void CollectFocusable(std::vector<Element*>& elements) noexcept override;
 
 private:
     StackPanel() noexcept = default;

@@ -70,7 +70,9 @@ NopeUI 是一个仅面向 Windows 的开源 C++ 桌面 UI 框架。外观参考 
 
 ## 布局与控件
 
-元素树只做四件事：`Measure` 用可用尺寸算期望尺寸，`Arrange` 落最终矩形，`HitTest` 找最上层命中的元素，`Paint` 由窗口在硬件与软件两条路径里统一调用。`StackPanel` 目前只做纵向堆叠，`Border` 负责背景、1 像素描边与内边距，`Label` 和 `Button` 复用 `graphics::TextRun` 缓存的文字布局；`Button` 已带悬停与按下底色，点击事件尚未接出。
+元素树只做四件事：`Measure` 用可用尺寸算期望尺寸，`Arrange` 落最终矩形，`HitTest` 找最上层命中的元素，`Paint` 由窗口在硬件与软件两条路径里统一调用。`StackPanel` 目前只做纵向堆叠，`Border` 负责背景、1 像素描边与内边距，`Label` 和 `Button` 复用 `graphics::TextRun` 缓存的文字布局；`Button` 带悬停、按下底色、焦点矩形和点击回调，鼠标点击或 Enter/Space 都会触发。
+
+焦点按视觉顺序排序：`IsFocusable()` 标记可聚焦元素，`CollectFocusable()` 递归收集，窗口维护 Tab 与 Shift+Tab，失去窗口焦点时清空。`Button` 的 `SetOnClick` 保存单个回调，`SubscribeClick` 返回可管理的订阅。
 
 颜色不再写死在控件里：`Theme` 有浅色与深色两套值，`Window::SetTheme` 把主题指针交给内容树，子元素沿父链找到它；`Property<T>` 是带变更检测的最小属性槽，`Set` 返回是否真的变化，控件据此调用 `Invalidate` 触发重绘。`nopeui_window_smoke --dark` 用深色主题启动，默认仍是浅色。
 

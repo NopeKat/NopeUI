@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <functional>
 #include <utility>
+#include <vector>
 
 #include "nopeui/base/geometry.h"
 #include "nopeui/base/ref.h"
@@ -57,6 +58,27 @@ public:
     }
     void Invalidate() noexcept;
 
+    // Focus and keyboard. IsFocusable() marks participation in the Tab order;
+    // CollectFocusable() walks the tree in visual order.
+    virtual bool IsFocusable() const noexcept {
+        return false;
+    }
+    virtual void CollectFocusable(std::vector<Element*>& elements) noexcept;
+
+    bool IsFocused() const noexcept {
+        return focused_;
+    }
+    void SetFocused(bool focused) noexcept {
+        focused_ = focused;
+    }
+
+    virtual bool OnKeyDown(unsigned int) noexcept {
+        return false;
+    }
+    virtual bool OnKeyUp(unsigned int) noexcept {
+        return false;
+    }
+
     // Pointer dispatch, driven by the host on the element returned by HitTest.
     virtual void OnPointerEnter() noexcept {}
     virtual void OnPointerLeave() noexcept {}
@@ -81,6 +103,7 @@ private:
     Element* parent_ = nullptr;
     const Theme* theme_ = nullptr;
     std::function<void()> invalidate_;
+    bool focused_ = false;
 };
 
 }  // namespace nopeui

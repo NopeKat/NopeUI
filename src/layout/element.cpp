@@ -64,4 +64,10 @@ void Element::Invalidate() noexcept {
     }
 }
 
+void Element::CollectFocusable(std::vector<Element*>& elements) noexcept {
+    if (IsFocusable()) {
+        elements.push_back(this);
+    }
+}
+
 }  // namespace nopeui

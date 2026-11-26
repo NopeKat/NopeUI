@@ -86,6 +86,21 @@ void Button::PaintContent(ID2D1RenderTarget* target) noexcept {
             bounds_.x + (bounds_.width - text.width) / 2.0f,
             bounds_.y + (bounds_.height - text.height) / 2.0f},
         colors.text);
+
+    if (IsFocused()) {
+        ComPtr<ID2D1SolidColorBrush> focus;
+        if (SUCCEEDED(target->CreateSolidColorBrush(
+                D2D1::ColorF(colors.accent), focus.GetAddressOf()))) {
+            target->DrawRectangle(
+                D2D1::RectF(
+                    bounds_.x + 2.5f,
+                    bounds_.y + 2.5f,
+                    bounds_.Right() - 2.5f,
+                    bounds_.Bottom() - 2.5f),
+                focus.Get(),
+                1.0f);
+        }
+    }
 }
 
 void Button::OnPointerEnter() noexcept {
@@ -101,11 +116,45 @@ void Button::OnPointerDown(Point point) noexcept {
     if (Contains(point)) {
         pressed_ = true;
         hovered_ = true;
+        Invalidate();
     }
 }
 
-void Button::OnPointerUp(Point) noexcept {
+void Button::OnPointerUp(Point point) noexcept {
+    const bool clicked = pressed_ && Contains(point);
     pressed_ = false;
+    Invalidate();
+    if (clicked) {
+        click_.Raise();
+    }
+}
+
+bool Button::IsFocusable() const noexcept {
+    return true;
+}
+
+bool Button::OnKeyDown(unsigned int key) noexcept {
+    if (key != VK_SPACE && key != VK_RETURN) {
+        return false;
+    }
+    if (!pressed_) {
+        pressed_ = true;
+        Invalidate();
+    }
+    return true;
+}
+
+bool Button::OnKeyUp(unsigned int key) noexcept {
+    if (key != VK_SPACE && key != VK_RETURN) {
+        return false;
+    }
+    const bool clicked = pressed_;
+    pressed_ = false;
+    Invalidate();
+    if (clicked) {
+        click_.Raise();
+    }
+    return true;
 }
 
 }  // namespace nopeui
