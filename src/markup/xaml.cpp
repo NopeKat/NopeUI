@@ -18,6 +18,7 @@
 #include "nopeui/controls/border.h"
 #include "nopeui/controls/button.h"
 #include "nopeui/controls/check_box.h"
+#include "nopeui/controls/content_presenter.h"
 #include "nopeui/controls/context_menu.h"
 #include "nopeui/controls/flyout.h"
 #include "nopeui/controls/image.h"
@@ -674,6 +675,22 @@ std::wstring ResourceKey(std::wstring_view raw) {
     return value;
 }
 
+bool TemplateBindingKey(std::wstring_view raw, std::wstring* property) {
+    std::wstring value = Trim(raw);
+    if (value.size() < 3 || value.front() != L'{' || value.back() != L'}') {
+        return false;
+    }
+    std::wstring body = Trim(std::wstring_view(value).substr(1, value.size() - 2));
+    const std::wstring_view prefix = L"TemplateBinding";
+    if (body.size() <= prefix.size() ||
+        body.compare(0, prefix.size(), prefix) != 0 ||
+        !IsSpace(body[prefix.size()])) {
+        return false;
+    }
+    *property = Trim(std::wstring_view(body).substr(prefix.size()));
+    return !property->empty();
+}
+
 struct LocalAttributes {
     Element* element = nullptr;
     const Node* node = nullptr;
@@ -829,14 +846,54 @@ private:
         if (scope->templates.find(key) != scope->templates.end()) {
             return Fail(node, "duplicate ControlTemplate Key");
         }
-        Ref<ControlTemplate> control_template = ControlTemplate::Create();
+        const std::wstring target_type =
+            LocalName(AttributeValue(node, L"TargetType"));
+        bool has_parts = false;
+        bool has_visual = false;
         for (const Node& child : node.children) {
-            if (LocalName(child.name) != L"Part") {
-                return Fail(child, "ControlTemplate expects Part elements");
+            if (LocalName(child.name) == L"Part") {
+                has_parts = true;
+            } else {
+                has_visual = true;
             }
-            if (!AddPart(child, control_template.Get())) {
+        }
+        if (has_parts && has_visual) {
+            return Fail(node, "ControlTemplate cannot mix Part and visual content");
+        }
+        if (!has_parts && !has_visual) {
+            return Fail(node, "ControlTemplate requires Part or visual content");
+        }
+        if (has_visual && target_type.empty()) {
+            return Fail(node, "visual ControlTemplate requires TargetType");
+        }
+        if (has_visual && node.children.size() != 1) {
+            return Fail(node, "visual ControlTemplate requires one root element");
+        }
+
+        Ref<ControlTemplate> control_template = ControlTemplate::Create();
+        control_template->SetTargetType(target_type);
+        if (has_parts) {
+            for (const Node& child : node.children) {
+                if (!AddPart(child, control_template.Get())) {
+                    return false;
+                }
+            }
+        } else {
+            Ref<Element> source_probe = ProbeFor(target_type);
+            if (!source_probe) {
+                return Fail(node, "unknown ControlTemplate TargetType");
+            }
+            std::shared_ptr<Node> root_node =
+                std::make_shared<Node>(node.children.front());
+            TemplateInstance prototype =
+                BuildTemplateInstance(*root_node, source_probe.Get());
+            if (!prototype.root) {
                 return false;
             }
+            control_template->SetFactory(
+                [this, root_node, source_probe] {
+                    return BuildTemplateInstance(*root_node, source_probe.Get());
+                });
         }
         scope->templates.emplace(key, std::move(control_template));
         return true;
@@ -879,6 +936,147 @@ private:
         }
         control_template->SetPart(name, part);
         return true;
+    }
+
+    TemplateInstance BuildTemplateInstance(const Node& node, Element* source_probe) {
+        TemplateInstance instance;
+        instance.root = BuildTemplateElement(node, &instance.bindings, source_probe);
+        return instance;
+    }
+
+    Ref<Element> BuildTemplateElement(
+        const Node& node,
+        std::vector<TemplateBinding>* bindings,
+        Element* source_probe) {
+        const std::wstring local = LocalName(node.name);
+        if (local.find(L'.') != std::wstring::npos) {
+            Fail(node, "unsupported property element in ControlTemplate");
+            return {};
+        }
+        Ref<Element> element = CreateControl(node);
+        if (!element) {
+            return {};
+        }
+        if (auto* presenter = dynamic_cast<ContentPresenter*>(element.Get())) {
+            const std::wstring text = DefaultText(node);
+            if (!text.empty()) {
+                presenter->SetText(text);
+            }
+        }
+        if (!ApplyTemplateProperties(element, node, bindings, source_probe)) {
+            return {};
+        }
+        if (!AttachTemplateChildren(node, *element, bindings, source_probe)) {
+            return {};
+        }
+        const std::wstring trimmed = Trim(node.text);
+        if (!trimmed.empty() && !ConsumesText(local)) {
+            Fail(node, "element does not accept text content");
+            return {};
+        }
+        return element;
+    }
+
+    bool ApplyTemplateProperties(
+        Ref<Element>& element,
+        const Node& node,
+        std::vector<TemplateBinding>* bindings,
+        Element* source_probe) {
+        const std::wstring tag = LocalName(node.name);
+        for (const Attribute& attribute : node.attributes) {
+            const std::wstring local = LocalName(attribute.name);
+            if (attribute.name == L"xmlns" || StartsWith(attribute.name, L"xmlns:")) {
+                continue;
+            }
+            if (IsStructuralAttribute(local)) {
+                continue;
+            }
+            if (local == L"Style" || local == L"Template" || local == L"ToolTip" ||
+                local == L"Click" || local == L"Submit" ||
+                local == L"CheckedChanged" || local == L"ValueChanged") {
+                return Fail(node, "attribute is not supported in ControlTemplate");
+            }
+
+            std::wstring source_property;
+            if (TemplateBindingKey(attribute.value, &source_property)) {
+                PropertyValueType target_type = PropertyValueType::String;
+                if (!PropertyTypeFor(*element, local, &target_type)) {
+                    return Fail(node, "TemplateBinding target property is unknown");
+                }
+                if (source_probe != nullptr) {
+                    PropertyValueType source_type = PropertyValueType::String;
+                    if (!PropertyTypeFor(*source_probe, source_property, &source_type)) {
+                        return Fail(node, "TemplateBinding source property is unknown");
+                    }
+                    if (source_type != target_type) {
+                        return Fail(node, "TemplateBinding property types differ");
+                    }
+                }
+                TemplateBinding binding;
+                binding.target = element;
+                binding.target_property = local;
+                binding.source_property = std::move(source_property);
+                bindings->push_back(std::move(binding));
+                continue;
+            }
+
+            if (!ApplyAttribute(*element, node, tag, local, attribute.value, false)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    bool AttachTemplateChildren(
+        const Node& node,
+        Element& element,
+        std::vector<TemplateBinding>* bindings,
+        Element* source_probe) {
+        const std::wstring tag = LocalName(node.name);
+        if (tag == L"ContentPresenter" && !node.children.empty()) {
+            return Fail(node, "ContentPresenter does not accept child elements");
+        }
+
+        std::vector<Ref<Element>> children;
+        for (const Node& child : node.children) {
+            const std::wstring local = LocalName(child.name);
+            if (local.find(L'.') != std::wstring::npos) {
+                return Fail(child, "property elements are not supported in ControlTemplate");
+            }
+            Ref<Element> child_element =
+                BuildTemplateElement(child, bindings, source_probe);
+            if (!child_element) {
+                return false;
+            }
+            children.push_back(std::move(child_element));
+        }
+        if (children.empty()) {
+            return true;
+        }
+        if (tag == L"StackPanel") {
+            auto* panel = dynamic_cast<StackPanel*>(&element);
+            if (panel == nullptr) {
+                return Fail(node, "internal StackPanel mismatch");
+            }
+            for (Ref<Element>& child : children) {
+                panel->Add(std::move(child));
+            }
+            return true;
+        }
+        if (tag == L"Border" || tag == L"ScrollViewer" || tag == L"Flyout") {
+            if (children.size() != 1) {
+                return Fail(node, "template container accepts one child");
+            }
+            if (tag == L"Border") {
+                static_cast<Border*>(&element)->SetChild(std::move(children.front()));
+            } else if (tag == L"ScrollViewer") {
+                static_cast<ScrollViewer*>(&element)->SetChild(std::move(children.front()));
+            } else {
+                static_cast<Flyout*>(&element)->SetContent(std::move(children.front()));
+            }
+            return true;
+        }
+        return Fail(node, "element does not accept child elements in ControlTemplate");
     }
 
     bool BuildResourceObjects() {
@@ -1078,7 +1276,8 @@ private:
     bool ConsumesText(std::wstring_view tag) const noexcept {
         return tag == L"Label" || tag == L"Button" || tag == L"CheckBox" ||
                tag == L"RadioButton" || tag == L"ToggleButton" ||
-               tag == L"ToggleSwitch" || tag == L"TextBox" || tag == L"ToolTip";
+               tag == L"ToggleSwitch" || tag == L"TextBox" || tag == L"ToolTip" ||
+               tag == L"ContentPresenter";
     }
 
     bool AttachChildren(const Node& node, Element& element) {
@@ -1235,6 +1434,9 @@ private:
         }
         if (tag == L"ContextMenu") {
             return ContextMenu::Create();
+        }
+        if (tag == L"ContentPresenter") {
+            return ContentPresenter::Create();
         }
         if (tag == L"Image") {
             return Image::Create();

@@ -15,6 +15,7 @@
 #include <iterator>
 #include <utility>
 
+#include "nopeui/controls/content_presenter.h"
 #include "nopeui/controls/control_state.h"
 #include "nopeui/graphics/text.h"
 #include "nopeui/theme/control_template.h"
@@ -36,6 +37,21 @@ const PropertyMetadata kButtonProperties[] = {
     {L"CornerRadius", PropertyValueType::Float, PropertyFlags::AffectsRender, PropertyValue(4.0f)},
 };
 
+void FillContentPresenters(Element& element, std::wstring_view text) {
+    if (auto* presenter = dynamic_cast<ContentPresenter*>(&element)) {
+        if (presenter->Text().empty()) {
+            presenter->SetText(std::wstring(text));
+        }
+    }
+    std::vector<Element*> children;
+    element.CollectChildren(children);
+    for (Element* child : children) {
+        if (child != nullptr) {
+            FillContentPresenters(*child, text);
+        }
+    }
+}
+
 }  // namespace
 
 Ref<Button> Button::Create(std::wstring text) noexcept {
@@ -51,6 +67,13 @@ Ref<Button> Button::Create(std::wstring text) noexcept {
 }
 
 Size Button::MeasureOverride(Size available) noexcept {
+    if (template_root_) {
+        template_root_->Measure(available);
+        const Size desired = template_root_->DesiredSize();
+        return Size{
+            std::min(std::max(desired.width, kMinWidth), available.width),
+            std::min(std::max(desired.height, kMinHeight), available.height)};
+    }
     const Size text = run_ != nullptr
         ? run_->Measure()
         : Size{static_cast<float>(text_.size()) * 8.0f, 20.0f};
@@ -59,8 +82,34 @@ Size Button::MeasureOverride(Size available) noexcept {
         std::min(std::max(text.height + kPaddingY * 2.0f, kMinHeight), available.height)};
 }
 
+Size Button::ArrangeOverride(Size final_size) noexcept {
+    if (template_root_) {
+        template_root_->Arrange(
+            Rect{bounds_.x, bounds_.y, final_size.width, final_size.height});
+    }
+    return final_size;
+}
+
 void Button::PaintContent(ID2D1RenderTarget* target) noexcept {
     const Theme& colors = Colors();
+    if (template_root_) {
+        template_root_->Paint(target);
+        if (IsFocused() && IsEnabled()) {
+            ComPtr<ID2D1SolidColorBrush> focus;
+            if (SUCCEEDED(target->CreateSolidColorBrush(
+                    D2D1::ColorF(colors.accent), focus.GetAddressOf()))) {
+                target->DrawRectangle(
+                    D2D1::RectF(
+                        bounds_.x + 2.5f,
+                        bounds_.y + 2.5f,
+                        bounds_.Right() - 2.5f,
+                        bounds_.Bottom() - 2.5f),
+                    focus.Get(),
+                    1.0f);
+            }
+        }
+        return;
+    }
     const ControlState state = ResolveControlState(IsEnabled(), hovered_, pressed_);
     std::uint32_t background = colors.button;
     switch (state) {
@@ -197,6 +246,44 @@ bool Button::OnKeyUp(unsigned int key) noexcept {
 }
 
 void Button::ApplyControlTemplate(const ControlTemplate& control_template) noexcept {
+    template_bindings_.clear();
+    template_root_.Reset();
+    template_background_ = 0;
+    template_border_ = 0;
+    template_foreground_ = 0;
+
+    if (control_template.HasFactory()) {
+        TemplateInstance instance = control_template.Instantiate();
+        if (instance.root) {
+            template_root_ = std::move(instance.root);
+            template_root_->SetParent(this);
+            for (const TemplateBinding& binding : instance.bindings) {
+                if (!binding.target) {
+                    continue;
+                }
+                PropertyValue value;
+                if (GetProperty(binding.source_property, &value)) {
+                    binding.target->SetProperty(binding.target_property, value);
+                }
+                Element* target = binding.target.Get();
+                const std::wstring source_property = binding.source_property;
+                const std::wstring target_property = binding.target_property;
+                template_bindings_.push_back(SubscribePropertyChanged(
+                    [target, source_property, target_property](
+                        const PropertyMetadata& metadata,
+                        const PropertyValue&,
+                        const PropertyValue& next) {
+                        if (std::wstring_view(metadata.name) == source_property) {
+                            target->SetProperty(target_property, next);
+                        }
+                    }));
+            }
+            FillContentPresenters(*template_root_, text_);
+            InvalidateLayout();
+            return;
+        }
+    }
+
     if (const TemplatePart* part = control_template.Find(L"Background")) {
         template_background_ = part->background;
         template_border_ = part->border;
@@ -207,7 +294,7 @@ void Button::ApplyControlTemplate(const ControlTemplate& control_template) noexc
     if (const TemplatePart* part = control_template.Find(L"Content")) {
         template_foreground_ = part->foreground;
     }
-    Invalidate();
+    InvalidateLayout();
 }
 
 const PropertyMetadata* Button::ControlPropertyTable(std::size_t* count) const noexcept {

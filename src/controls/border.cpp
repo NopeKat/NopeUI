@@ -26,6 +26,10 @@ constexpr float kOutlineWidth = 1.0f;
 
 const PropertyMetadata kBorderProperties[] = {
     {L"CornerRadius", PropertyValueType::Float, PropertyFlags::AffectsRender, PropertyValue(0.0f)},
+    {L"Background", PropertyValueType::Color, PropertyFlags::AffectsRender,
+     PropertyValue(static_cast<std::uint32_t>(0))},
+    {L"BorderColor", PropertyValueType::Color, PropertyFlags::AffectsRender,
+     PropertyValue(static_cast<std::uint32_t>(0))},
     {L"BorderVisible", PropertyValueType::Bool, PropertyFlags::AffectsRender, PropertyValue(true)},
     {L"SurfaceBackground", PropertyValueType::Bool, PropertyFlags::AffectsRender,
      PropertyValue(false)},
@@ -100,6 +104,14 @@ bool Border::GetControlProperty(std::wstring_view name, PropertyValue* value) co
         *value = PropertyValue(corner_radius_.Get());
         return true;
     }
+    if (name == L"Background") {
+        *value = PropertyValue(background_.Get());
+        return true;
+    }
+    if (name == L"BorderColor") {
+        *value = PropertyValue(border_color_.Get());
+        return true;
+    }
     if (name == L"BorderVisible") {
         *value = PropertyValue(border_visible_);
         return true;
@@ -120,6 +132,22 @@ bool Border::SetControlProperty(
             return false;
         }
         SetCornerRadius(radius);
+        return true;
+    }
+    if (name == L"Background") {
+        std::uint32_t color = 0;
+        if (!value.AsColor(&color)) {
+            return false;
+        }
+        SetBackground(color);
+        return true;
+    }
+    if (name == L"BorderColor") {
+        std::uint32_t color = 0;
+        if (!value.AsColor(&color)) {
+            return false;
+        }
+        SetBorderColor(color);
         return true;
     }
     if (name == L"BorderVisible") {

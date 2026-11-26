@@ -8,10 +8,18 @@
     <StackPanel Orientation="Horizontal" Spacing="10">
       <StackPanel.Resources>
         <ControlTemplate x:Key="accentTemplate" TargetType="Button">
-          <Part Name="Background" Background="#0067C0" Border="#005A9E" CornerRadius="8" />
-          <Part Name="Content" Foreground="#FFFFFF" />
+          <Border Background="#0067C0" BorderColor="#005A9E" Padding="16,8"
+                  CornerRadius="{TemplateBinding CornerRadius}">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <Label Text="*" Foreground="{TemplateBinding Foreground}" />
+              <ContentPresenter Text="{TemplateBinding Text}"
+                                Foreground="{TemplateBinding Foreground}" />
+            </StackPanel>
+          </Border>
         </ControlTemplate>
         <Style x:Key="accent" TargetType="Button">
+          <Setter Property="CornerRadius" Value="8" />
+          <Setter Property="Foreground" Value="#FFFFFF" />
           <Setter Property="Template" Value="{StaticResource accentTemplate}" />
         </Style>
       </StackPanel.Resources>
@@ -29,10 +37,18 @@
     <StackPanel Orientation="Horizontal" Spacing="10">
       <StackPanel.Resources>
         <ControlTemplate x:Key="accentTemplate" TargetType="Button">
-          <Part Name="Background" Background="#107C10" Border="#0B5A0B" CornerRadius="14" />
-          <Part Name="Content" Foreground="#FFFFFF" />
+          <Border Background="#107C10" BorderColor="#0B5A0B" Padding="16,8"
+                  CornerRadius="{TemplateBinding CornerRadius}">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <Label Text="*" Foreground="{TemplateBinding Foreground}" />
+              <ContentPresenter Text="{TemplateBinding Text}"
+                                Foreground="{TemplateBinding Foreground}" />
+            </StackPanel>
+          </Border>
         </ControlTemplate>
         <Style x:Key="accent" TargetType="Button">
+          <Setter Property="CornerRadius" Value="14" />
+          <Setter Property="Foreground" Value="#FFFFFF" />
           <Setter Property="Template" Value="{StaticResource accentTemplate}" />
         </Style>
       </StackPanel.Resources>

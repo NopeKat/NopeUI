@@ -5,6 +5,7 @@
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "nopeui/base/event.h"
 #include "nopeui/base/ref.h"
@@ -34,8 +35,15 @@ public:
         return L"Button";
     }
 
+    // Root of the instantiated visual tree template, or null when the button
+    // still uses the default theme chrome or legacy named parts.
+    Element* TemplateRoot() const noexcept {
+        return template_root_.Get();
+    }
+
 protected:
     Size MeasureOverride(Size available) noexcept override;
+    Size ArrangeOverride(Size final_size) noexcept override;
     void PaintContent(ID2D1RenderTarget* target) noexcept override;
     void OnPointerEnter() noexcept override;
     void OnPointerLeave() noexcept override;
@@ -60,6 +68,8 @@ private:
     std::unique_ptr<graphics::TextRun> run_;
     Event<> click_;
     Subscription click_subscription_;
+    Ref<Element> template_root_;
+    std::vector<Subscription> template_bindings_;
     std::uint32_t template_background_ = 0;
     std::uint32_t template_border_ = 0;
     std::uint32_t template_foreground_ = 0;

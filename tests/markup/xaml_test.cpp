@@ -10,6 +10,7 @@
 #include "nopeui/controls/border.h"
 #include "nopeui/controls/button.h"
 #include "nopeui/controls/check_box.h"
+#include "nopeui/controls/content_presenter.h"
 #include "nopeui/controls/context_menu.h"
 #include "nopeui/controls/label.h"
 #include "nopeui/controls/stack_panel.h"
@@ -68,11 +69,7 @@ nopeui::xaml::LoadResult LoadPage(std::vector<std::wstring>* events) {
     return std::move(result).value();
 }
 
-bool CheckCornerRadius(
-    const nopeui::xaml::LoadResult& page,
-    std::wstring_view name,
-    float expected) {
-    nopeui::Element* element = page.Find(name);
+bool CheckElementCornerRadius(nopeui::Element* element, float expected) {
     if (element == nullptr) {
         std::cerr << "missing element\n";
         return false;
@@ -88,6 +85,13 @@ bool CheckCornerRadius(
         return false;
     }
     return true;
+}
+
+bool CheckCornerRadius(
+    const nopeui::xaml::LoadResult& page,
+    std::wstring_view name,
+    float expected) {
+    return CheckElementCornerRadius(page.Find(name), expected);
 }
 
 }  // namespace
@@ -236,6 +240,100 @@ int main() {
     std::wstring file_string;
     NOPEUI_CHECK(file_text.AsString(&file_string));
     NOPEUI_CHECK(file_string == L"From file");
+
+    auto visual = nopeui::xaml::Load(LR"XAML(
+<StackPanel Spacing="8">
+  <StackPanel.Resources>
+    <ControlTemplate x:Key="visual" TargetType="Button">
+      <Border Background="#0067C0" Padding="12,6"
+              CornerRadius="{TemplateBinding CornerRadius}">
+        <StackPanel Orientation="Horizontal" Spacing="6">
+          <Label Text="*" Foreground="{TemplateBinding Foreground}"/>
+          <ContentPresenter Text="{TemplateBinding Text}"
+                            Foreground="{TemplateBinding Foreground}"/>
+        </StackPanel>
+      </Border>
+    </ControlTemplate>
+    <Style x:Key="visualStyle" TargetType="Button">
+      <Setter Property="CornerRadius" Value="9"/>
+      <Setter Property="Foreground" Value="#FFFFFF"/>
+      <Setter Property="Template" Value="{StaticResource visual}"/>
+    </Style>
+    <ControlTemplate x:Key="plainVisual" TargetType="Button">
+      <Border Background="#333333" Padding="8">
+        <ContentPresenter/>
+      </Border>
+    </ControlTemplate>
+    <Style x:Key="plainVisualStyle" TargetType="Button">
+      <Setter Property="Template" Value="{StaticResource plainVisual}"/>
+    </Style>
+  </StackPanel.Resources>
+  <Button x:Name="templated" x:Key="visualStyle" Text="Templated"/>
+  <Button x:Name="autofill" x:Key="plainVisualStyle" Text="Auto"/>
+</StackPanel>
+)XAML");
+    if (!visual.ok()) {
+        std::cerr << visual.error().message << "\n";
+        return 1;
+    }
+    auto visual_page = std::move(visual).value();
+    auto* templated = dynamic_cast<nopeui::Button*>(visual_page.Find(L"templated"));
+    NOPEUI_CHECK(templated != nullptr);
+    NOPEUI_CHECK(templated->TemplateRoot() != nullptr);
+    auto* visual_root = dynamic_cast<nopeui::Border*>(templated->TemplateRoot());
+    NOPEUI_CHECK(visual_root != nullptr);
+    NOPEUI_CHECK(CheckElementCornerRadius(visual_root, 9.0f));
+
+    nopeui::PropertyValue background;
+    NOPEUI_CHECK(visual_root->GetProperty(L"Background", &background));
+    std::uint32_t background_color = 0;
+    NOPEUI_CHECK(background.AsColor(&background_color));
+    NOPEUI_CHECK(background_color == 0x0067C0u);
+
+    std::vector<nopeui::Element*> row;
+    nopeui::Element* root_element = visual_root;
+    root_element->CollectChildren(row);
+    NOPEUI_CHECK(row.size() == 1);
+    auto* row_panel = dynamic_cast<nopeui::StackPanel*>(row[0]);
+    NOPEUI_CHECK(row_panel != nullptr);
+
+    std::vector<nopeui::Element*> items;
+    nopeui::Element* row_element = row_panel;
+    row_element->CollectChildren(items);
+    NOPEUI_CHECK(items.size() == 2);
+    auto* presenter = dynamic_cast<nopeui::ContentPresenter*>(items[1]);
+    NOPEUI_CHECK(presenter != nullptr);
+    NOPEUI_CHECK(presenter->Text() == L"Templated");
+
+    nopeui::PropertyValue foreground;
+    NOPEUI_CHECK(presenter->GetProperty(L"Foreground", &foreground));
+    std::uint32_t foreground_color = 0;
+    NOPEUI_CHECK(foreground.AsColor(&foreground_color));
+    NOPEUI_CHECK(foreground_color == 0xFFFFFFu);
+
+    NOPEUI_CHECK(templated->SetProperty(
+        L"CornerRadius",
+        nopeui::PropertyValue(3.0f)));
+    NOPEUI_CHECK(CheckElementCornerRadius(visual_root, 3.0f));
+    NOPEUI_CHECK(templated->SetProperty(
+        L"Foreground",
+        nopeui::PropertyValue(static_cast<std::uint32_t>(0x00FF00))));
+    NOPEUI_CHECK(presenter->GetProperty(L"Foreground", &foreground));
+    NOPEUI_CHECK(foreground.AsColor(&foreground_color));
+    NOPEUI_CHECK(foreground_color == 0x00FF00u);
+
+    auto* autofill = dynamic_cast<nopeui::Button*>(visual_page.Find(L"autofill"));
+    NOPEUI_CHECK(autofill != nullptr);
+    auto* autofill_root = dynamic_cast<nopeui::Border*>(autofill->TemplateRoot());
+    NOPEUI_CHECK(autofill_root != nullptr);
+    std::vector<nopeui::Element*> autofill_children;
+    nopeui::Element* autofill_element = autofill_root;
+    autofill_element->CollectChildren(autofill_children);
+    NOPEUI_CHECK(autofill_children.size() == 1);
+    auto* autofill_presenter =
+        dynamic_cast<nopeui::ContentPresenter*>(autofill_children[0]);
+    NOPEUI_CHECK(autofill_presenter != nullptr);
+    NOPEUI_CHECK(autofill_presenter->Text() == L"Auto");
 
     NOPEUI_CHECK(!nopeui::xaml::Load(L"<Label Unknown=\"value\"/>").ok());
     NOPEUI_CHECK(!nopeui::xaml::Load(L"<Button Text=\"x\" Click=\"Missing\"/>").ok());

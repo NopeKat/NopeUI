@@ -10,7 +10,7 @@ NopeUI 是一个仅面向 Windows 的开源 C++ 桌面 UI 框架。外观参考 
 
 属性元数据放在 `property_value.h`：`PropertyValue` 用 `std::variant` 承载布尔、整数、浮点、颜色与字符串，`PropertyMetadata` 记录名字、类型、默认值与 `AffectsMeasure`、`AffectsArrange`、`AffectsRender`、`Inherits` 标志。`Element` 提供 `Properties`、`GetProperty`、`SetProperty` 与 `SubscribePropertyChanged`，基类固定暴露 `IsEnabled` 和可继承的 `Foreground`；`Foreground` 沿父链向上查找，最后回落到主题文字色。各控件通过自己的属性表暴露可枚举属性，`SetProperty` 会校验类型、发出变更事件，再按标志触发重绘或重新布局。
 
-样式与模板走最小闭环：`Style` 按目标类型与可选键匹配，保存 `PropertyValue` setter 和可选模板；`StyleSheet::ApplyTo` 递归下发，先应用属性再套模板。`ControlTemplate` 按名字保存部件，`TemplatePart` 带背景、前景、描边、圆角与内边距。`Button` 已消费 `Background` 与 `Content` 部件，`CheckBox` 已消费 `Box`、`Check` 与 `Content`，说明模板不是只存不用。
+样式与模板走最小闭环：`Style` 按目标类型与可选键匹配，保存 `PropertyValue` setter 和可选模板；`StyleSheet::ApplyTo` 递归下发，先应用属性再套模板。`ControlTemplate` 既可保存按名字索引的部件，也可保存一棵视觉树；`TemplatePart` 带背景、前景、描边、圆角与内边距。`Button` 同时消费旧部件模板与视觉树模板，`CheckBox` 已消费 `Box`、`Check` 与 `Content`，说明模板不是只存不用。
 
 弹出层由窗口内置的覆盖根承载，不塞进内容树：`ShowPopup`、`ClosePopup`、`HasPopup` 管理锚定面板，测量、排列、绘制、命中与焦点都优先覆盖层；Esc、外部点击和外部滚轮关闭。右键沿命中元素的父链找到 `ContextMenu` 并打开；`ToolTipService` 以元素为键登记文本，悬停 600 ms 后弹出；`Flyout` 是单内容圆角面板。关闭走延迟消息，避免在控件的 `OnPointerUp` 回调里直接释放自身。
 
@@ -109,7 +109,7 @@ window->SetContent(card);
 
 `markup` 提供 XAML 的最小解析与加载链路：`xaml::Parse` 把源文本解析成 `Node` 树，支持元素、属性、文本、注释、处理指令和五个预定义实体；`xaml::Load` 按标签创建控件、设置属性、挂接子元素并应用资源，`xaml::LoadFile` 读取 UTF-8 文件。根节点只有一个，命名空间前缀会被剥掉，所以 `local:Button` 与 `Button` 等价。
 
-资源放在任意元素的 `*.Resources` 属性元素里，只对拥有它的元素及其后代可见。查找按父链进行，最近的同名资源先命中，因此不同分支可以各自定义同名样式与模板。`ControlTemplate` 用 `Part` 描述命名部件，`Style` 用 `Setter` 写入属性，`Template` setter 通过 `{StaticResource key}` 引用同一作用域或祖先作用域的模板。样式按 `TargetType` 与 `Key` 匹配；加载器在树建完后沿父链由外向内应用样式，最后重新应用局部属性，保证局部值优先于样式，内层样式优先于外层。
+资源放在任意元素的 `*.Resources` 属性元素里，只对拥有它的元素及其后代可见。查找按父链进行，最近的同名资源先命中，因此不同分支可以各自定义同名样式与模板。`ControlTemplate` 有两种形态：`Part` 子元素继续描述命名部件；非 `Part` 内容视为视觉树，要求恰好一个根元素和非空 `TargetType`，可嵌套 `Border`、`StackPanel`、`ScrollViewer`、`Flyout`，叶子可用普通控件和 `ContentPresenter`。视觉树按控件实例化，`{TemplateBinding Property}` 在加载时写入目标属性，并随源控件属性变化自动同步。模板里的 `ContentPresenter` 未显式设置 `Text` 时，`Button` 会把自身文本填进去。视觉模板暂不支持模板内属性元素、`Resources`、事件、视觉状态和 `x:Class`。`Style` 用 `Setter` 写入属性，`Template` setter 通过 `{StaticResource key}` 引用同一作用域或祖先作用域的模板。样式按 `TargetType` 与 `Key` 匹配；加载器在树建完后沿父链由外向内应用样式，最后重新应用局部属性，保证局部值优先于样式，内层样式优先于外层。
 
 `Click`、`Submit`、`CheckedChanged`、`ValueChanged` 通过 `LoadContext::resolve_event` 取回调；`EventArgs` 同时带事件类型、回调名和发送者。`x:Name` 的元素会进入 `LoadResult::names`，便于代码侧查找。`ContextMenu` 可以用 `*.ContextMenu` 属性元素挂到任意元素，`ToolTip` 属性会登记到 `ToolTipService`。
 
@@ -120,7 +120,7 @@ if (loaded.ok()) {
 }
 ```
 
-样式与模板在加载时已经应用，`LoadResult` 不再返回全局 `StyleSheet`。`nopeui_xaml_smoke` 读取同目录的 `page.xaml`，其中两段资源各自定义同名模板，演示作用域隔离、右键菜单与弹出层。
+样式与模板在加载时已经应用，`LoadResult` 不再返回全局 `StyleSheet`。`nopeui_xaml_smoke` 读取同目录的 `page.xaml`，其中两段资源各自定义同名多元素视觉模板，演示作用域隔离、模板绑定与弹出层。
 
 ## 目录
 

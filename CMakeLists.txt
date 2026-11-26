@@ -67,6 +67,7 @@ add_library(nopeui_controls STATIC
     src/controls/border.cpp
     src/controls/button.cpp
     src/controls/check_box.cpp
+    src/controls/content_presenter.cpp
     src/controls/context_menu.cpp
     src/controls/flyout.cpp
     src/controls/image.cpp
