@@ -33,6 +33,18 @@ target_link_libraries(nopeui_platform
 )
 target_compile_features(nopeui_platform PUBLIC cxx_std_20)
 
+add_library(nopeui_graphics STATIC
+    src/graphics/image.cpp
+    src/graphics/offscreen.cpp
+    src/graphics/scene.cpp
+)
+
+target_link_libraries(nopeui_graphics
+    PUBLIC nopeui_base
+    PRIVATE d2d1 dwrite windowscodecs ole32
+)
+target_compile_features(nopeui_graphics PUBLIC cxx_std_20)
+
 include(CTest)
 
 if(BUILD_TESTING)
@@ -40,3 +52,4 @@ if(BUILD_TESTING)
 endif()
 
 add_subdirectory(samples)
+add_subdirectory(tools)
