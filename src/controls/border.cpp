@@ -13,6 +13,8 @@
 
 #include <algorithm>
 
+#include "nopeui/theme/theme.h"
+
 namespace nopeui {
 
 using Microsoft::WRL::ComPtr;
@@ -42,12 +44,34 @@ void Border::SetPadding(Thickness padding) noexcept {
     padding_ = padding;
 }
 
+void Border::UseSurfaceBackground(bool surface) noexcept {
+    if (surface_ == surface && use_theme_background_) {
+        return;
+    }
+    surface_ = surface;
+    use_theme_background_ = true;
+    Invalidate();
+}
+
 void Border::SetBackground(std::uint32_t color) noexcept {
-    background_ = color;
+    use_theme_background_ = false;
+    if (background_.Set(color)) {
+        Invalidate();
+    }
 }
 
 void Border::SetBorderColor(std::uint32_t color) noexcept {
-    border_color_ = color;
+    if (border_color_.Set(color)) {
+        Invalidate();
+    }
+}
+
+void Border::SetBorderVisible(bool visible) noexcept {
+    if (border_visible_ == visible) {
+        return;
+    }
+    border_visible_ = visible;
+    Invalidate();
 }
 
 Size Border::MeasureOverride(Size available) noexcept {
@@ -78,17 +102,23 @@ Size Border::ArrangeOverride(Size final_size) noexcept {
 }
 
 void Border::PaintContent(ID2D1RenderTarget* target) noexcept {
-    ComPtr<ID2D1SolidColorBrush> background;
+    const Theme& colors = Colors();
+    const std::uint32_t background = use_theme_background_
+        ? (surface_ ? colors.surface : colors.background)
+        : background_.Get();
+    ComPtr<ID2D1SolidColorBrush> background_brush;
     if (SUCCEEDED(target->CreateSolidColorBrush(
-            D2D1::ColorF(background_), background.GetAddressOf()))) {
+            D2D1::ColorF(background), background_brush.GetAddressOf()))) {
         target->FillRectangle(
             D2D1::RectF(bounds_.x, bounds_.y, bounds_.Right(), bounds_.Bottom()),
-            background.Get());
+            background_brush.Get());
     }
-    if (border_color_ != 0) {
+    if (border_visible_) {
+        const std::uint32_t color =
+            border_color_.Get() != 0 ? border_color_.Get() : colors.surface_border;
         ComPtr<ID2D1SolidColorBrush> outline;
         if (SUCCEEDED(target->CreateSolidColorBrush(
-                D2D1::ColorF(border_color_), outline.GetAddressOf()))) {
+                D2D1::ColorF(color), outline.GetAddressOf()))) {
             target->DrawRectangle(
                 D2D1::RectF(
                     bounds_.x + 0.5f,

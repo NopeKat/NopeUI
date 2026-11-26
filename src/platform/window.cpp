@@ -1437,7 +1437,7 @@ private:
     std::condition_variable commit_cv_;
 };
 
-Window::Window() noexcept = default;
+Window::Window() noexcept : theme_(LightTheme()) {}
 
 bool Window::EnsureWindowClass() noexcept {
     static std::once_flag once;
@@ -1692,10 +1692,17 @@ bool Window::IsSoftwareRender() const noexcept {
 }
 
 void Window::SetContent(Ref<Element> content) noexcept {
+    if (content_) {
+        content_->SetInvalidateHandler(nullptr);
+    }
     content_ = std::move(content);
     hovered_ = nullptr;
     pressed_ = nullptr;
     tracking_mouse_ = false;
+    if (content_) {
+        content_->SetTheme(&theme_);
+        content_->SetInvalidateHandler([this] { RenderFrame(); });
+    }
     if (graphics_ != nullptr) {
         graphics_->SetContent(content_.Get());
     }
@@ -1705,6 +1712,18 @@ void Window::SetContent(Ref<Element> content) noexcept {
 
 Element* Window::Content() const noexcept {
     return content_.Get();
+}
+
+void Window::SetTheme(Theme theme) noexcept {
+    theme_ = std::move(theme);
+    if (content_) {
+        content_->SetTheme(&theme_);
+    }
+    RenderFrame();
+}
+
+const Theme& Window::GetTheme() const noexcept {
+    return theme_;
 }
 
 void Window::LayoutContent(int width, int height) noexcept {
@@ -1930,6 +1949,9 @@ void Window::ReleaseGraphics() noexcept {
         KillTimer(hwnd_, kCommitTimerId);
         KillTimer(hwnd_, kLiveResizeTimerId);
         KillTimer(hwnd_, kResizeSettleTimerId);
+    }
+    if (content_) {
+        content_->SetInvalidateHandler(nullptr);
     }
     live_resizing_ = false;
     graphics_.reset();

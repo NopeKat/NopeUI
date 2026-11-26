@@ -1,5 +1,7 @@
 #include "nopeui/layout/element.h"
 
+#include "nopeui/theme/theme.h"
+
 namespace nopeui {
 
 void Element::Measure(Size available) noexcept {
@@ -38,6 +40,27 @@ Element* Element::HitTestOverride(Point) noexcept {
 void Element::Paint(ID2D1RenderTarget* target) noexcept {
     if (target != nullptr) {
         PaintContent(target);
+    }
+}
+
+const Theme& Element::Colors() const noexcept {
+    const Element* node = this;
+    while (node->theme_ == nullptr && node->parent_ != nullptr) {
+        node = node->parent_;
+    }
+    if (node->theme_ != nullptr) {
+        return *node->theme_;
+    }
+    return LightTheme();
+}
+
+void Element::Invalidate() noexcept {
+    Element* root = this;
+    while (root->parent_ != nullptr) {
+        root = root->parent_;
+    }
+    if (root->invalidate_) {
+        root->invalidate_();
     }
 }
 

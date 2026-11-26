@@ -20,6 +20,7 @@
 #include "nopeui/base/ref.h"
 #include "nopeui/base/result.h"
 #include "nopeui/layout/element.h"
+#include "nopeui/theme/theme.h"
 
 namespace nopeui {
 
@@ -115,6 +116,11 @@ public:
     void SetContent(Ref<Element> content) noexcept;
     Element* Content() const noexcept;
 
+    // The window owns the theme and exposes it to the content tree. Changing
+    // it repaints the current content.
+    void SetTheme(Theme theme) noexcept;
+    const Theme& GetTheme() const noexcept;
+
     HWND Handle() const noexcept;
 
 private:
@@ -141,6 +147,7 @@ private:
 
     HWND hwnd_ = nullptr;
     std::unique_ptr<WindowGraphics> graphics_;
+    Theme theme_;
     Ref<Element> content_;
     Element* hovered_ = nullptr;
     Element* pressed_ = nullptr;

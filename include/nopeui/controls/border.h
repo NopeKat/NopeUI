@@ -4,6 +4,7 @@
 #include <cstdint>
 
 #include "nopeui/base/geometry.h"
+#include "nopeui/base/property.h"
 #include "nopeui/base/ref.h"
 #include "nopeui/layout/element.h"
 
@@ -16,8 +17,13 @@ public:
 
     void SetChild(Ref<Element> child) noexcept;
     void SetPadding(Thickness padding) noexcept;
+
+    // By default the background follows the theme. UseSurfaceBackground(true)
+    // picks the card surface instead of the window background.
+    void UseSurfaceBackground(bool surface) noexcept;
     void SetBackground(std::uint32_t color) noexcept;
     void SetBorderColor(std::uint32_t color) noexcept;
+    void SetBorderVisible(bool visible) noexcept;
 
 protected:
     Size MeasureOverride(Size available) noexcept override;
@@ -30,8 +36,11 @@ private:
 
     Ref<Element> child_;
     Thickness padding_;
-    std::uint32_t background_ = 0xFFFFFF;
-    std::uint32_t border_color_ = 0xE1E1E1;
+    Property<std::uint32_t> background_{0};
+    Property<std::uint32_t> border_color_{0};
+    bool use_theme_background_ = true;
+    bool surface_ = false;
+    bool border_visible_ = true;
 };
 
 }  // namespace nopeui

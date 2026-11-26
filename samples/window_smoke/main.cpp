@@ -14,6 +14,7 @@
 #include "nopeui/controls/label.h"
 #include "nopeui/controls/stack_panel.h"
 #include "nopeui/platform/window.h"
+#include "nopeui/theme/theme.h"
 
 namespace {
 
@@ -58,13 +59,11 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR command_line_ptr, int) {
     auto window = std::move(result).value();
 
     auto page = nopeui::Border::Create();
-    page->SetBackground(0xF3F3F3);
-    page->SetBorderColor(0);
+    page->SetBorderVisible(false);
     page->SetPadding(nopeui::Thickness{32.0f, 32.0f, 32.0f, 32.0f});
 
     auto card = nopeui::Border::Create();
-    card->SetBackground(0xFFFFFF);
-    card->SetBorderColor(0xE1E1E1);
+    card->UseSurfaceBackground(true);
     card->SetPadding(nopeui::Thickness{28.0f, 24.0f, 28.0f, 24.0f});
 
     auto panel = nopeui::StackPanel::Create(14.0f);
@@ -75,6 +74,10 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR command_line_ptr, int) {
     card->SetChild(panel);
     page->SetChild(card);
     window->SetContent(page);
+
+    if (command_line.find(L"--dark") != std::wstring_view::npos) {
+        window->SetTheme(nopeui::DarkTheme());
+    }
 
     window->Show();
     if (command_line.find(L"--sync") != std::wstring_view::npos) {

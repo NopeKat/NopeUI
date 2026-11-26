@@ -2,6 +2,8 @@
 #define NOPEUI_LAYOUT_ELEMENT_H_
 
 #include <cstdint>
+#include <functional>
+#include <utility>
 
 #include "nopeui/base/geometry.h"
 #include "nopeui/base/ref.h"
@@ -9,6 +11,8 @@
 struct ID2D1RenderTarget;
 
 namespace nopeui {
+
+struct Theme;
 
 // Minimal visual tree node: measure with an available size, arrange into final
 // bounds, paint and hit test. Containers override HitTestOverride to route to
@@ -39,6 +43,20 @@ public:
         parent_ = parent;
     }
 
+    // The root element receives the theme pointer from Window; children inherit
+    // it by walking up the parent chain.
+    void SetTheme(const Theme* theme) noexcept {
+        theme_ = theme;
+    }
+    const Theme& Colors() const noexcept;
+
+    // Only meaningful on the root element: lets a control request a repaint
+    // without knowing about the window.
+    void SetInvalidateHandler(std::function<void()> handler) noexcept {
+        invalidate_ = std::move(handler);
+    }
+    void Invalidate() noexcept;
+
     // Pointer dispatch, driven by the host on the element returned by HitTest.
     virtual void OnPointerEnter() noexcept {}
     virtual void OnPointerLeave() noexcept {}
@@ -61,6 +79,8 @@ protected:
 
 private:
     Element* parent_ = nullptr;
+    const Theme* theme_ = nullptr;
+    std::function<void()> invalidate_;
 };
 
 }  // namespace nopeui

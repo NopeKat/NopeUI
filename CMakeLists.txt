@@ -23,11 +23,18 @@ target_include_directories(nopeui_base PUBLIC
 
 target_compile_features(nopeui_base PUBLIC cxx_std_20)
 
+add_library(nopeui_theme STATIC
+    src/theme/theme.cpp
+)
+
+target_link_libraries(nopeui_theme PUBLIC nopeui_base)
+target_compile_features(nopeui_theme PUBLIC cxx_std_20)
+
 add_library(nopeui_layout STATIC
     src/layout/element.cpp
 )
 
-target_link_libraries(nopeui_layout PUBLIC nopeui_base)
+target_link_libraries(nopeui_layout PUBLIC nopeui_base nopeui_theme)
 target_compile_features(nopeui_layout PUBLIC cxx_std_20)
 
 add_library(nopeui_platform STATIC
@@ -35,7 +42,7 @@ add_library(nopeui_platform STATIC
 )
 
 target_link_libraries(nopeui_platform
-    PUBLIC nopeui_base
+    PUBLIC nopeui_base nopeui_theme
     PRIVATE user32 d3d11 dxgi d2d1 dcomp dwrite dwmapi nopeui_graphics nopeui_layout
 )
 target_compile_features(nopeui_platform PUBLIC cxx_std_20)

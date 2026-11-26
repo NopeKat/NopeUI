@@ -13,6 +13,7 @@
 #include <utility>
 
 #include "nopeui/graphics/text.h"
+#include "nopeui/theme/theme.h"
 
 namespace nopeui {
 
@@ -26,8 +27,13 @@ Ref<Label> Label::Create(std::wstring text) noexcept {
     return label;
 }
 
-Size Label::MeasureOverride(Size available) noexcept {
-    if (run_ != nullptr) {
+void Label::SetColor(std::uint32_t color) noexcept {
+    if (color_.Set(color)) {
+        Invalidate();
+    }
+}
+
+Size Label::MeasureOverride(Size available) noexcept {    if (run_ != nullptr) {
         const Size measured = run_->Measure();
         return Size{
             std::min(measured.width, available.width),
@@ -42,7 +48,8 @@ void Label::PaintContent(ID2D1RenderTarget* target) noexcept {
     if (run_ == nullptr) {
         return;
     }
-    run_->Draw(target, Point{bounds_.x, bounds_.y}, 0x1B1B1B);
+    const std::uint32_t color = color_.Get() != 0 ? color_.Get() : Colors().text;
+    run_->Draw(target, Point{bounds_.x, bounds_.y}, color);
 }
 
 }  // namespace nopeui

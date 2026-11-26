@@ -15,6 +15,7 @@
 #include <utility>
 
 #include "nopeui/graphics/text.h"
+#include "nopeui/theme/theme.h"
 
 namespace nopeui {
 
@@ -49,7 +50,10 @@ Size Button::MeasureOverride(Size available) noexcept {
 }
 
 void Button::PaintContent(ID2D1RenderTarget* target) noexcept {
-    const std::uint32_t background = pressed_ ? 0xD4D4D4 : (hovered_ ? 0xE2E2E2 : 0xEBEBEB);
+    const Theme& colors = Colors();
+    const std::uint32_t background = pressed_
+        ? colors.button_pressed
+        : (hovered_ ? colors.button_hover : colors.button);
     ComPtr<ID2D1SolidColorBrush> brush;
     if (FAILED(target->CreateSolidColorBrush(
             D2D1::ColorF(background), brush.GetAddressOf()))) {
@@ -61,7 +65,7 @@ void Button::PaintContent(ID2D1RenderTarget* target) noexcept {
 
     ComPtr<ID2D1SolidColorBrush> outline;
     if (SUCCEEDED(target->CreateSolidColorBrush(
-            D2D1::ColorF(0xCFCFCF), outline.GetAddressOf()))) {
+            D2D1::ColorF(colors.button_border), outline.GetAddressOf()))) {
         target->DrawRectangle(
             D2D1::RectF(
                 bounds_.x + 0.5f,
@@ -81,7 +85,7 @@ void Button::PaintContent(ID2D1RenderTarget* target) noexcept {
         Point{
             bounds_.x + (bounds_.width - text.width) / 2.0f,
             bounds_.y + (bounds_.height - text.height) / 2.0f},
-        0x1B1B1B);
+        colors.text);
 }
 
 void Button::OnPointerEnter() noexcept {
