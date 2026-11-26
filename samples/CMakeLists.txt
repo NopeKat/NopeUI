@@ -21,3 +21,9 @@ add_executable(nopeui_resize_benchmark
 )
 
 target_link_libraries(nopeui_resize_benchmark PRIVATE nopeui_platform)
+
+add_executable(nopeui_text_list_benchmark
+    text_list_benchmark/main.cpp
+)
+
+target_link_libraries(nopeui_text_list_benchmark PRIVATE nopeui_platform)

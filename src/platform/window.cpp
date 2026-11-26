@@ -18,7 +18,9 @@
 #include <mutex>
 #include <string>
 #include <thread>
+#include <unordered_map>
 #include <utility>
+#include <vector>
 
 namespace {
 
@@ -348,6 +350,34 @@ public:
                 }
             }
         }
+        if (!diagnostic_text_rows_.empty()) {
+            constexpr float first_y = 28.0f;
+            const std::uint32_t total_rows =
+                static_cast<std::uint32_t>(diagnostic_text_rows_.size());
+            const int first_row = std::max(
+                0,
+                static_cast<int>(std::floor(
+                    (background_rect.top + diagnostic_scroll_ - first_y) /
+                    diagnostic_row_height_)));
+            const int last_row = std::min(
+                static_cast<int>(total_rows) - 1,
+                static_cast<int>(std::floor(
+                    (background_rect.bottom + diagnostic_scroll_ - first_y) /
+                    diagnostic_row_height_)));
+            for (int row = first_row; row <= last_row; ++row) {
+                auto layout = DiagnosticLayout(static_cast<std::uint32_t>(row));
+                if (layout == nullptr) {
+                    continue;
+                }
+                d2d_context_->DrawTextLayout(
+                    D2D1::Point2F(
+                        24.0f,
+                        first_y + static_cast<float>(row) * diagnostic_row_height_ -
+                            diagnostic_scroll_),
+                    layout.Get(),
+                    text_brush_.Get());
+            }
+        }
         if (diagnostic_text_runs_ > 0) {
             const auto draw_diagnostic_text = [&](float x, float y) {
                 if (text_bitmap_ != nullptr) {
@@ -504,6 +534,52 @@ public:
     void SetDiagnosticScroll(float offset) noexcept {
         diagnostic_scroll_ = offset;
         full_redraw_required_ = true;
+    }
+
+    void SetDiagnosticTextList(
+        std::span<const std::wstring> rows,
+        float row_height,
+        bool cache_layouts) noexcept {
+        diagnostic_text_rows_.assign(rows.begin(), rows.end());
+        diagnostic_row_height_ = row_height;
+        diagnostic_cache_layouts_ = cache_layouts;
+        diagnostic_layout_cache_.clear();
+        diagnostic_rectangles_ = 0;
+        diagnostic_text_runs_ = 0;
+        diagnostic_virtual_list_ = true;
+        full_redraw_required_ = true;
+    }
+
+    ComPtr<IDWriteTextLayout> DiagnosticLayout(std::uint32_t row) noexcept {
+        if (row >= diagnostic_text_rows_.size()) {
+            return nullptr;
+        }
+        if (diagnostic_cache_layouts_) {
+            const auto found = diagnostic_layout_cache_.find(row);
+            if (found != diagnostic_layout_cache_.end()) {
+                return found->second;
+            }
+        }
+
+        ComPtr<IDWriteTextLayout> layout;
+        const auto& text = diagnostic_text_rows_[row];
+        HRESULT result = dwrite_factory_->CreateTextLayout(
+            text.c_str(),
+            static_cast<UINT32>(text.size()),
+            text_format_.Get(),
+            800.0f,
+            diagnostic_row_height_,
+            layout.GetAddressOf());
+        if (FAILED(result)) {
+            return nullptr;
+        }
+        if (diagnostic_cache_layouts_) {
+            if (diagnostic_layout_cache_.size() >= 512) {
+                diagnostic_layout_cache_.erase(diagnostic_layout_cache_.begin());
+            }
+            diagnostic_layout_cache_.emplace(row, layout);
+        }
+        return layout;
     }
 
     void SetCommitThrottle(bool enabled) noexcept {
@@ -981,6 +1057,10 @@ private:
     std::uint32_t diagnostic_text_runs_ = 0;
     bool diagnostic_virtual_list_ = false;
     float diagnostic_scroll_ = 0.0f;
+    std::vector<std::wstring> diagnostic_text_rows_;
+    float diagnostic_row_height_ = 32.0f;
+    bool diagnostic_cache_layouts_ = false;
+    std::unordered_map<std::uint32_t, ComPtr<IDWriteTextLayout>> diagnostic_layout_cache_;
     HWND hwnd_ = nullptr;
     int surface_width_ = 0;
     int surface_height_ = 0;
@@ -1193,6 +1273,15 @@ void Window::SetDiagnosticLoad(
 void Window::SetDiagnosticScroll(float offset) noexcept {
     if (graphics_ != nullptr) {
         graphics_->SetDiagnosticScroll(offset);
+    }
+}
+
+void Window::SetDiagnosticTextList(
+    std::span<const std::wstring> rows,
+    float row_height,
+    bool cache_layouts) noexcept {
+    if (graphics_ != nullptr) {
+        graphics_->SetDiagnosticTextList(rows, row_height, cache_layouts);
     }
 }
 

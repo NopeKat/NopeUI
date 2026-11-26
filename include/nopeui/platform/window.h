@@ -12,6 +12,8 @@
 
 #include <cstdint>
 #include <memory>
+#include <span>
+#include <string>
 #include <string_view>
 
 #include "nopeui/base/geometry.h"
@@ -76,6 +78,10 @@ public:
         std::uint32_t text_runs,
         bool virtual_list = false) noexcept;
     void SetDiagnosticScroll(float offset) noexcept;
+    void SetDiagnosticTextList(
+        std::span<const std::wstring> rows,
+        float row_height,
+        bool cache_layouts) noexcept;
 
     // Presents the latest rendered surface immediately.
     void Present() noexcept;
