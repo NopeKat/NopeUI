@@ -6,7 +6,7 @@ NopeUI 是一个仅面向 Windows 的开源 C++ 桌面 UI 框架。外观参考 
 
 ## 当前状态
 
-项目处于 P0 第 2 天，`base` 最小内核已建立：`Result` 与 `Error`、`Ref`、`Event` 与 `Subscription`、几何类型、UTF-8 与 UTF-16 转换。6 个测试通过；窗口与呈现尚未开始。
+项目处于 P0 第 3 天，`base` 最小内核与 `platform` 窗口层已建立：`Result` 与 `Error`、`Ref`、`Event` 与 `Subscription`、几何类型、UTF-8 与 UTF-16 转换，以及 Win32 空白窗口和消息循环。7 个测试在 `x64-debug` 与 `x64-release` 下全部通过；窗口目前只有创建、显示、隐藏、关闭和消息循环，尚未接入 DirectComposition 与绘制。
 
 ## 构建
 
@@ -17,7 +17,7 @@ NopeUI 是一个仅面向 Windows 的开源 C++ 桌面 UI 框架。外观参考 
 .\eng\test.ps1 -Preset x64-debug
 ```
 
-`-Preset` 可选 `x64-debug` 或 `x64-release`。
+`-Preset` 可选 `x64-debug` 或 `x64-release`。脚本优先使用 PATH 中的 CMake；找不到时会自动定位 winget 安装的 CMake 4.4.4。也可以用 `NOPEUI_CMAKE` 指向指定的 `cmake.exe`。
 
 ## 目录
 

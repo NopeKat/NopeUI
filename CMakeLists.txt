@@ -23,8 +23,17 @@ target_include_directories(nopeui_base PUBLIC
 
 target_compile_features(nopeui_base PUBLIC cxx_std_20)
 
+add_library(nopeui_platform STATIC
+    src/platform/window.cpp
+)
+
+target_link_libraries(nopeui_platform PUBLIC nopeui_base PRIVATE user32)
+target_compile_features(nopeui_platform PUBLIC cxx_std_20)
+
 include(CTest)
 
 if(BUILD_TESTING)
     add_subdirectory(tests)
 endif()
+
+add_subdirectory(samples)

@@ -11,3 +11,7 @@ add_nopeui_base_test(ref_test base/ref_test.cpp)
 add_nopeui_base_test(result_test base/result_test.cpp)
 add_nopeui_base_test(strings_test base/strings_test.cpp)
 add_nopeui_base_test(version_test base/version_test.cpp)
+
+add_executable(nopeui_platform_window_test platform/window_test.cpp)
+target_link_libraries(nopeui_platform_window_test PRIVATE nopeui_platform)
+add_test(NAME nopeui_platform.window_test COMMAND nopeui_platform_window_test)
