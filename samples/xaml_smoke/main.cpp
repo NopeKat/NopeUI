@@ -1,5 +1,6 @@
 #include <Windows.h>
 
+#include <filesystem>
 #include <string>
 #include <string_view>
 
@@ -12,36 +13,7 @@
 
 namespace {
 
-constexpr std::wstring_view kPage = LR"XAML(
-<Border Padding="24" SurfaceBackground="True" CornerRadius="10">
-  <StackPanel Spacing="12">
-    <StackPanel.Resources>
-      <ControlTemplate x:Key="primaryTemplate" TargetType="Button">
-        <Part Name="Background" Background="#0067C0" Border="#005A9E" CornerRadius="6"/>
-        <Part Name="Content" Foreground="#FFFFFF"/>
-      </ControlTemplate>
-      <Style x:Key="primary" TargetType="Button">
-        <Setter Property="CornerRadius" Value="6"/>
-        <Setter Property="Template" Value="{StaticResource primaryTemplate}"/>
-      </Style>
-    </StackPanel.Resources>
-    <Label Text="XAML smoke page"/>
-    <Label Text="This tree was built from XAML, including style and event bindings."/>
-    <Button x:Name="show" x:Key="primary" Text="Show flyout"
-            ToolTip="Loaded from an attribute" Click="ShowFlyout">
-      <Button.ContextMenu>
-        <ContextMenu>
-          <Item Text="Copy" Click="Copy"/>
-          <Item Text="Remove" Click="Remove"/>
-        </ContextMenu>
-      </Button.ContextMenu>
-    </Button>
-    <CheckBox x:Name="remember" Label="Remember this page"
-              IsChecked="True" CheckedChanged="RememberChanged"/>
-    <TextBox x:Name="input" Text="Type here" Placeholder="Enter text"/>
-  </StackPanel>
-</Border>
-)XAML";
+constexpr std::string_view kPagePath = "page.xaml";
 
 std::wstring ErrorText(const nopeui::Error& error) {
     auto converted = nopeui::Utf8ToUtf16(error.message);
@@ -78,7 +50,19 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
         };
     };
 
-    auto loaded = nopeui::xaml::Load(kPage, context);
+    auto loaded = [&] {
+        wchar_t module_path[MAX_PATH]{};
+        if (GetModuleFileNameW(nullptr, module_path, MAX_PATH) == 0) {
+            return nopeui::Result<nopeui::xaml::LoadResult>::Fail(
+                nopeui::Error{nopeui::ErrorCode::NotFound, "module path unavailable"});
+        }
+        const std::filesystem::path page_path =
+            std::filesystem::path(module_path).parent_path() /
+            std::string(kPagePath);
+        const auto utf8 = page_path.u8string();
+        return nopeui::xaml::LoadFile(
+            std::string(utf8.begin(), utf8.end()), context);
+    }();
     if (!loaded.ok()) {
         MessageBoxW(
             nullptr,
@@ -89,7 +73,6 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     }
 
     auto page = std::move(loaded).value();
-    window->SetStyleSheet(page.style_sheet);
     window->SetContent(page.root);
     window->Show();
     auto loop = nopeui::RunMessageLoop();

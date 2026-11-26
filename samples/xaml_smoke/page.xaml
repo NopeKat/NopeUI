@@ -1,0 +1,48 @@
+<Border xmlns="https://nopeui.local/xaml"
+        xmlns:x="https://nopeui.local/xaml"
+        Padding="28" SurfaceBackground="True" CornerRadius="12">
+  <StackPanel Spacing="12">
+    <Label Text="XAML page" />
+    <Label Text="This tree and both accent buttons come from page.xaml." />
+
+    <StackPanel Orientation="Horizontal" Spacing="10">
+      <StackPanel.Resources>
+        <ControlTemplate x:Key="accentTemplate" TargetType="Button">
+          <Part Name="Background" Background="#0067C0" Border="#005A9E" CornerRadius="8" />
+          <Part Name="Content" Foreground="#FFFFFF" />
+        </ControlTemplate>
+        <Style x:Key="accent" TargetType="Button">
+          <Setter Property="Template" Value="{StaticResource accentTemplate}" />
+        </Style>
+      </StackPanel.Resources>
+      <Button x:Name="show" x:Key="accent" Text="Show flyout"
+              ToolTip="Loaded from page.xaml" Click="ShowFlyout">
+        <Button.ContextMenu>
+          <ContextMenu>
+            <Item Text="Copy" Click="Copy" />
+            <Item Text="Remove" Click="Remove" />
+          </ContextMenu>
+        </Button.ContextMenu>
+      </Button>
+    </StackPanel>
+
+    <StackPanel Orientation="Horizontal" Spacing="10">
+      <StackPanel.Resources>
+        <ControlTemplate x:Key="accentTemplate" TargetType="Button">
+          <Part Name="Background" Background="#107C10" Border="#0B5A0B" CornerRadius="14" />
+          <Part Name="Content" Foreground="#FFFFFF" />
+        </ControlTemplate>
+        <Style x:Key="accent" TargetType="Button">
+          <Setter Property="Template" Value="{StaticResource accentTemplate}" />
+        </Style>
+      </StackPanel.Resources>
+      <Button x:Key="accent" Text="Local accent" />
+      <Button Text="Plain button" />
+    </StackPanel>
+
+    <CheckBox x:Name="remember" Label="Remember this page" IsChecked="True" />
+    <TextBox x:Name="input" Text="Type here" Placeholder="Enter text" />
+    <ProgressBar Value="0.55" />
+    <Slider Value="35" Minimum="0" Maximum="100" />
+  </StackPanel>
+</Border>

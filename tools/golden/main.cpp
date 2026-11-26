@@ -24,6 +24,7 @@
 #include "nopeui/graphics/scene.h"
 #include "nopeui/layout/element.h"
 #include "nopeui/layout/style.h"
+#include "nopeui/markup/xaml.h"
 #include "nopeui/theme/control_template.h"
 #include "nopeui/theme/theme.h"
 
@@ -33,8 +34,8 @@ void PrintUsage() {
     std::fprintf(
         stderr,
         "usage: nopeui_golden --out <path> [--renderer software|hardware] "
-        "[--scene placeholder|controls|media] [--theme light|dark] "
-        "[--width 1280] [--height 800] [--dpi 96]\n");
+        "[--scene placeholder|controls|media|xaml] [--theme light|dark] "
+        "[--xaml <path>] [--width 1280] [--height 800] [--dpi 96]\n");
 }
 
 bool ParseInt(const char* text, int* value) {
@@ -319,6 +320,35 @@ nopeui::Ref<nopeui::Element> BuildMediaScene(
     return page;
 }
 
+nopeui::Ref<nopeui::Element> BuildXamlScene(
+    const nopeui::Theme& theme,
+    int width,
+    int height,
+    const std::string& xaml_path) {
+    if (xaml_path.empty()) {
+        std::fprintf(stderr, "xaml scene requires --xaml <path>\n");
+        return {};
+    }
+    nopeui::xaml::LoadContext context;
+    context.resolve_event = [](std::wstring_view) {
+        return nopeui::xaml::EventHandler(
+            [](const nopeui::xaml::EventArgs&) {});
+    };
+    auto loaded = nopeui::xaml::LoadFile(xaml_path, context);
+    if (!loaded.ok()) {
+        std::fprintf(stderr, "xaml load failed: %s\n", loaded.error().message.c_str());
+        return {};
+    }
+    auto page = std::move(loaded).value();
+    page.root->SetTheme(&theme);
+    const nopeui::Size available{
+        static_cast<float>(width),
+        static_cast<float>(height)};
+    page.root->Measure(available);
+    page.root->Arrange(nopeui::Rect{0.0f, 0.0f, available.width, available.height});
+    return page.root;
+}
+
 template <typename Surface>
 int RenderAndSave(
     Surface& surface,
@@ -330,12 +360,19 @@ int RenderAndSave(
     int width,
     int height,
     float dpi,
+    const std::string& xaml_path,
     const std::string& out) {
     nopeui::Ref<nopeui::Element> tree;
     if (scene == "controls") {
         tree = BuildControlsScene(theme, width, height);
     } else if (scene == "media") {
         tree = BuildMediaScene(theme, width, height);
+    } else if (scene == "xaml") {
+        tree = BuildXamlScene(theme, width, height, xaml_path);
+    }
+
+    if (scene == "xaml" && !tree) {
+        return 4;
     }
 
     auto begin_result = surface.BeginDraw();
@@ -387,6 +424,7 @@ int main(int argc, char** argv) {
     std::string theme = "light";
     std::string renderer = "software";
     std::string scene = "placeholder";
+    std::string xaml_path;
     int width = 1280;
     int height = 800;
     float dpi = 96.0f;
@@ -401,6 +439,8 @@ int main(int argc, char** argv) {
             renderer = argv[++index];
         } else if (argument == "--scene" && index + 1 < argc) {
             scene = argv[++index];
+        } else if (argument == "--xaml" && index + 1 < argc) {
+            xaml_path = argv[++index];
         } else if (argument == "--width" && index + 1 < argc) {
             if (!ParseInt(argv[++index], &width)) {
                 PrintUsage();
@@ -434,7 +474,8 @@ int main(int argc, char** argv) {
         std::fprintf(stderr, "unknown renderer '%s'\n", renderer.c_str());
         return 2;
     }
-    if (scene != "placeholder" && scene != "controls" && scene != "media") {
+    if (scene != "placeholder" && scene != "controls" && scene != "media" &&
+        scene != "xaml") {
         std::fprintf(stderr, "unknown scene '%s'\n", scene.c_str());
         return 2;
     }
@@ -454,7 +495,8 @@ int main(int argc, char** argv) {
         }
         auto& surface = surface_result.value();
         return RenderAndSave(
-            *surface, scene, palette, theme_value, "software", theme, width, height, dpi, out);
+            *surface, scene, palette, theme_value, "software", theme, width, height, dpi,
+            xaml_path, out);
     }
 
     auto surface_result = nopeui::graphics::HardwareSurface::Create(width, height, dpi, true);
@@ -464,5 +506,6 @@ int main(int argc, char** argv) {
     }
     auto& surface = surface_result.value();
     return RenderAndSave(
-        *surface, scene, palette, theme_value, "hardware", theme, width, height, dpi, out);
+        *surface, scene, palette, theme_value, "hardware", theme, width, height, dpi,
+        xaml_path, out);
 }

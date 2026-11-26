@@ -10,6 +10,14 @@ add_executable(nopeui_xaml_smoke WIN32
 
 target_link_libraries(nopeui_xaml_smoke PRIVATE nopeui_platform nopeui_markup)
 
+add_custom_command(
+    TARGET nopeui_xaml_smoke POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_CURRENT_SOURCE_DIR}/xaml_smoke/page.xaml"
+        "$<TARGET_FILE_DIR:nopeui_xaml_smoke>/page.xaml"
+    VERBATIM
+)
+
 add_executable(nopeui_frame_benchmark
     frame_benchmark/main.cpp
 )

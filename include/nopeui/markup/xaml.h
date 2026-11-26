@@ -55,7 +55,6 @@ struct LoadContext {
 
 struct LoadResult {
     Ref<Element> root;
-    Ref<StyleSheet> style_sheet;
     std::unordered_map<std::wstring, Ref<Element>> names;
 
     Element* Find(std::wstring_view name) const noexcept {
@@ -64,10 +63,10 @@ struct LoadResult {
     }
 };
 
-// Builds a control tree from XAML source. Resources are collected from
-// *.Resources property elements anywhere in the document and applied to the
-// whole tree after construction; local attributes are re-applied afterwards
-// so they win over style setters.
+// Builds a control tree from XAML source. Each Resources block belongs to the
+// element that owns it and is visible to that element and its descendants.
+// Styles are resolved along the parent chain and applied while loading; local
+// attributes are re-applied last so they win over style setters.
 Result<LoadResult> Load(std::wstring_view source, const LoadContext& context = {});
 
 // Reads a UTF-8 XAML file and loads it.

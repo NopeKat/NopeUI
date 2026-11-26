@@ -66,12 +66,13 @@ NopeUI 是一个仅面向 Windows 的开源 C++ 桌面 UI 框架。外观参考 
 .\eng\golden.ps1 -Preset x64-debug -SkipBuild  # 只跑比对
 ```
 
-基线在 `tests/golden/baseline`，当前图与差异图在 `.build/golden`。占位场景有软件与硬件各两张基线，控件树与媒体场景各有浅色、深色两张软件基线，媒体场景另有浅色、深色两张硬件基线；脚本会把占位与媒体场景的软件图、硬件图分别互相比对。`nopeui_image_diff` 按单像素 2 级色差、总体 0.5% 判定，有差异时写出的图把变化像素标红。两个工具也可单独调用：
+基线在 `tests/golden/baseline`，当前图与差异图在 `.build/golden`。占位场景有软件与硬件各两张基线，控件树与媒体场景各有浅色、深色两张软件基线，媒体场景另有浅色、深色两张硬件基线；XAML 场景同样有浅色、深色两张软件基线与两张硬件基线。脚本会把占位、媒体与 XAML 场景的软件图、硬件图分别互相比对。`nopeui_image_diff` 按单像素 2 级色差、总体 0.5% 判定，有差异时写出的图把变化像素标红。两个工具也可单独调用：
 
 ```powershell
 .\.build\x64-release\tools\Release\nopeui_golden.exe --out .\.build\golden\basic.png --theme light --renderer software
 .\.build\x64-release\tools\Release\nopeui_golden.exe --out .\.build\golden\controls.png --scene controls --theme dark --renderer software
 .\.build\x64-release\tools\Release\nopeui_golden.exe --out .\.build\golden\media.png --scene media --theme light --renderer hardware
+.\.build\x64-release\tools\Release\nopeui_golden.exe --out .\.build\golden\xaml.png --scene xaml --xaml samples\xaml_smoke\page.xaml --theme dark --renderer software
 .\.build\x64-release\tools\Release\nopeui_image_diff.exe <baseline.png> <current.png> --diff <diff.png>
 ```
 
@@ -106,21 +107,20 @@ window->SetContent(card);
 
 ## XAML
 
-`markup` 提供 XAML 的最小解析与加载链路：`xaml::Parse` 把源文本解析成 `Node` 树，支持元素、属性、文本、注释、处理指令和五个预定义实体；`xaml::Load` 按标签创建控件、设置属性、挂接子元素并收集资源，`xaml::LoadFile` 读取 UTF-8 文件。根节点只有一个，命名空间前缀会被剥掉，所以 `local:Button` 与 `Button` 等价。
+`markup` 提供 XAML 的最小解析与加载链路：`xaml::Parse` 把源文本解析成 `Node` 树，支持元素、属性、文本、注释、处理指令和五个预定义实体；`xaml::Load` 按标签创建控件、设置属性、挂接子元素并应用资源，`xaml::LoadFile` 读取 UTF-8 文件。根节点只有一个，命名空间前缀会被剥掉，所以 `local:Button` 与 `Button` 等价。
 
-资源放在任意元素的 `*.Resources` 属性元素里。`ControlTemplate` 用 `Part` 描述命名部件，`Style` 用 `Setter` 写入属性，`Template` setter 通过 `{StaticResource key}` 引用模板。样式按 `TargetType` 与 `Key` 匹配，树建完后统一应用；局部属性和局部模板最后再应用一次，保证它们优先于样式。
+资源放在任意元素的 `*.Resources` 属性元素里，只对拥有它的元素及其后代可见。查找按父链进行，最近的同名资源先命中，因此不同分支可以各自定义同名样式与模板。`ControlTemplate` 用 `Part` 描述命名部件，`Style` 用 `Setter` 写入属性，`Template` setter 通过 `{StaticResource key}` 引用同一作用域或祖先作用域的模板。样式按 `TargetType` 与 `Key` 匹配；加载器在树建完后沿父链由外向内应用样式，最后重新应用局部属性，保证局部值优先于样式，内层样式优先于外层。
 
 `Click`、`Submit`、`CheckedChanged`、`ValueChanged` 通过 `LoadContext::resolve_event` 取回调；`EventArgs` 同时带事件类型、回调名和发送者。`x:Name` 的元素会进入 `LoadResult::names`，便于代码侧查找。`ContextMenu` 可以用 `*.ContextMenu` 属性元素挂到任意元素，`ToolTip` 属性会登记到 `ToolTipService`。
 
 ```cpp
-auto loaded = nopeui::xaml::Load(source, context);
+auto loaded = nopeui::xaml::LoadFile("page.xaml", context);
 if (loaded.ok()) {
-    window->SetStyleSheet(loaded.value().style_sheet);
     window->SetContent(loaded.value().root);
 }
 ```
 
-`nopeui_xaml_smoke` 用一段内嵌 XAML 建出按钮、样式模板、右键菜单与弹出层，可作为最小示例。
+样式与模板在加载时已经应用，`LoadResult` 不再返回全局 `StyleSheet`。`nopeui_xaml_smoke` 读取同目录的 `page.xaml`，其中两段资源各自定义同名模板，演示作用域隔离、右键菜单与弹出层。
 
 ## 目录
 

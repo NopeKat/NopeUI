@@ -15,6 +15,7 @@ $diffExe = Join-Path $toolDir "nopeui_image_diff.exe"
 $currentDir = Join-Path $repoRoot ".build\golden"
 $diffDir = Join-Path $repoRoot ".build\golden\diff"
 $baselineDir = Join-Path $repoRoot "tests\golden\baseline"
+$xamlPath = Join-Path $repoRoot "samples\xaml_smoke\page.xaml"
 
 if (-not $SkipBuild) {
     & (Join-Path $PSScriptRoot "build.ps1") -Preset $Preset
@@ -34,14 +35,18 @@ $cases = @(
     @{ Name = "media-light-1280x800"; Renderer = "software"; Theme = "light"; Scene = "media"; Width = 1280; Height = 800 },
     @{ Name = "media-dark-1280x800"; Renderer = "software"; Theme = "dark"; Scene = "media"; Width = 1280; Height = 800 },
     @{ Name = "media-hardware-light-1280x800"; Renderer = "hardware"; Theme = "light"; Scene = "media"; Width = 1280; Height = 800 },
-    @{ Name = "media-hardware-dark-1280x800"; Renderer = "hardware"; Theme = "dark"; Scene = "media"; Width = 1280; Height = 800 }
+    @{ Name = "media-hardware-dark-1280x800"; Renderer = "hardware"; Theme = "dark"; Scene = "media"; Width = 1280; Height = 800 },
+    @{ Name = "xaml-light-1280x800"; Renderer = "software"; Theme = "light"; Scene = "xaml"; Width = 1280; Height = 800 },
+    @{ Name = "xaml-dark-1280x800"; Renderer = "software"; Theme = "dark"; Scene = "xaml"; Width = 1280; Height = 800 },
+    @{ Name = "xaml-hardware-light-1280x800"; Renderer = "hardware"; Theme = "light"; Scene = "xaml"; Width = 1280; Height = 800 },
+    @{ Name = "xaml-hardware-dark-1280x800"; Renderer = "hardware"; Theme = "dark"; Scene = "xaml"; Width = 1280; Height = 800 }
 )
 
 $failed = $false
 foreach ($case in $cases) {
     $currentPath = Join-Path $currentDir "$($case.Name).png"
     & $goldenExe --out $currentPath --renderer $case.Renderer --theme $case.Theme `
-        --scene $case.Scene --width $case.Width --height $case.Height
+        --scene $case.Scene --xaml $xamlPath --width $case.Width --height $case.Height
     if ($LASTEXITCODE -ne 0) {
         throw "golden render failed: $($case.Name)"
     }
@@ -73,7 +78,9 @@ $pathPairs = @(
     @{ Software = "basic-light-1280x800"; Hardware = "hardware-light-1280x800" },
     @{ Software = "basic-dark-1280x800"; Hardware = "hardware-dark-1280x800" },
     @{ Software = "media-light-1280x800"; Hardware = "media-hardware-light-1280x800" },
-    @{ Software = "media-dark-1280x800"; Hardware = "media-hardware-dark-1280x800" }
+    @{ Software = "media-dark-1280x800"; Hardware = "media-hardware-dark-1280x800" },
+    @{ Software = "xaml-light-1280x800"; Hardware = "xaml-hardware-light-1280x800" },
+    @{ Software = "xaml-dark-1280x800"; Hardware = "xaml-hardware-dark-1280x800" }
 )
 foreach ($pair in $pathPairs) {
     $softwarePath = Join-Path $currentDir "$($pair.Software).png"

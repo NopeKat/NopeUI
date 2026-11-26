@@ -1,5 +1,7 @@
 #include "../test_check.h"
 
+#include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <string>
 #include <string_view>
@@ -66,6 +68,28 @@ nopeui::xaml::LoadResult LoadPage(std::vector<std::wstring>* events) {
     return std::move(result).value();
 }
 
+bool CheckCornerRadius(
+    const nopeui::xaml::LoadResult& page,
+    std::wstring_view name,
+    float expected) {
+    nopeui::Element* element = page.Find(name);
+    if (element == nullptr) {
+        std::cerr << "missing element\n";
+        return false;
+    }
+    nopeui::PropertyValue value;
+    if (!element->GetProperty(L"CornerRadius", &value)) {
+        std::cerr << "missing CornerRadius\n";
+        return false;
+    }
+    float actual = 0.0f;
+    if (!value.AsFloat(&actual) || actual != expected) {
+        std::cerr << "CornerRadius " << actual << " expected " << expected << "\n";
+        return false;
+    }
+    return true;
+}
+
 }  // namespace
 
 int main() {
@@ -92,7 +116,6 @@ int main() {
     std::vector<std::wstring> events;
     auto page = LoadPage(&events);
     NOPEUI_CHECK(static_cast<bool>(page.root));
-    NOPEUI_CHECK(static_cast<bool>(page.style_sheet));
     NOPEUI_CHECK(page.Find(L"title") != nullptr);
     NOPEUI_CHECK(page.Find(L"save") != nullptr);
     NOPEUI_CHECK(page.Find(L"missing") == nullptr);
@@ -146,6 +169,73 @@ int main() {
     auto* menu_host = dynamic_cast<nopeui::Border*>(page.Find(L"menuHost"));
     NOPEUI_CHECK(menu_host != nullptr);
     NOPEUI_CHECK(dynamic_cast<nopeui::ContextMenu*>(menu_host->GetContextMenu()) != nullptr);
+
+    auto scoped = nopeui::xaml::Load(LR"XAML(
+<StackPanel Spacing="8">
+  <StackPanel.Resources>
+    <Style TargetType="Button">
+      <Setter Property="CornerRadius" Value="9"/>
+    </Style>
+  </StackPanel.Resources>
+  <Button x:Name="outer" Text="Outer"/>
+  <StackPanel>
+    <StackPanel.Resources>
+      <Style TargetType="Button">
+        <Setter Property="CornerRadius" Value="2"/>
+      </Style>
+    </StackPanel.Resources>
+    <Button x:Name="inner" Text="Inner"/>
+  </StackPanel>
+  <StackPanel>
+    <StackPanel.Resources>
+      <Style x:Key="primary" TargetType="Button">
+        <Setter Property="CornerRadius" Value="4"/>
+      </Style>
+    </StackPanel.Resources>
+    <Button x:Name="left" x:Key="primary" Text="Left"/>
+  </StackPanel>
+  <StackPanel>
+    <StackPanel.Resources>
+      <Style x:Key="primary" TargetType="Button">
+        <Setter Property="CornerRadius" Value="7"/>
+      </Style>
+    </StackPanel.Resources>
+    <Button x:Name="right" x:Key="primary" Text="Right"/>
+  </StackPanel>
+</StackPanel>
+)XAML");
+    if (!scoped.ok()) {
+        std::cerr << scoped.error().message << "\n";
+        return 1;
+    }
+    auto scoped_page = std::move(scoped).value();
+    NOPEUI_CHECK(CheckCornerRadius(scoped_page, L"outer", 9.0f));
+    NOPEUI_CHECK(CheckCornerRadius(scoped_page, L"inner", 2.0f));
+    NOPEUI_CHECK(CheckCornerRadius(scoped_page, L"left", 4.0f));
+    NOPEUI_CHECK(CheckCornerRadius(scoped_page, L"right", 7.0f));
+
+    const std::filesystem::path file_path =
+        std::filesystem::temp_directory_path() / L"nopeui_xaml_load_file_test.xaml";
+    {
+        std::ofstream stream(file_path, std::ios::binary);
+        stream << "<Label xmlns:x=\"https://nopeui.local/xaml\" "
+                  "x:Name=\"fromFile\" Text=\"From file\"/>";
+    }
+    const auto file_utf8 = file_path.u8string();
+    auto from_file = nopeui::xaml::LoadFile(
+        std::string(file_utf8.begin(), file_utf8.end()));
+    std::filesystem::remove(file_path);
+    if (!from_file.ok()) {
+        std::cerr << from_file.error().message << "\n";
+        return 1;
+    }
+    auto file_page = std::move(from_file).value();
+    nopeui::PropertyValue file_text;
+    NOPEUI_CHECK(file_page.Find(L"fromFile") != nullptr);
+    NOPEUI_CHECK(file_page.Find(L"fromFile")->GetProperty(L"Text", &file_text));
+    std::wstring file_string;
+    NOPEUI_CHECK(file_text.AsString(&file_string));
+    NOPEUI_CHECK(file_string == L"From file");
 
     NOPEUI_CHECK(!nopeui::xaml::Load(L"<Label Unknown=\"value\"/>").ok());
     NOPEUI_CHECK(!nopeui::xaml::Load(L"<Button Text=\"x\" Click=\"Missing\"/>").ok());

@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <cwchar>
+#include <deque>
 #include <filesystem>
 #include <fstream>
 #include <functional>
@@ -678,16 +679,27 @@ struct LocalAttributes {
     const Node* node = nullptr;
 };
 
+struct ResourceScope {
+    Element* owner = nullptr;
+    const Node* block = nullptr;
+    ResourceScope* parent = nullptr;
+    Ref<StyleSheet> styles;
+    std::unordered_map<std::wstring, Ref<ControlTemplate>> templates;
+    std::unordered_map<std::wstring, Ref<Style>> styles_by_key;
+};
+
 struct DirectTemplate {
     Element* element = nullptr;
     const Node* node = nullptr;
     std::wstring key;
+    ResourceScope* scope = nullptr;
 };
 
 struct DirectStyle {
     Element* element = nullptr;
     const Node* node = nullptr;
     std::wstring key;
+    ResourceScope* scope = nullptr;
 };
 
 class Loader {
@@ -696,25 +708,19 @@ public:
         : context_(context), root_(root) {}
 
     Result<LoadResult> Load() {
-        if (!CollectResources(root_)) {
+        Ref<Element> element = BuildElement(root_);
+        if (!element) {
             return Failure();
         }
         if (!BuildResourceObjects()) {
             return Failure();
         }
-        Ref<Element> element = BuildElement(root_);
-        if (!element) {
-            return Failure();
-        }
 
-        if (style_sheet_) {
-            style_sheet_->ApplyTo(*element);
-        }
+        ApplyStyles(*element);
         for (const DirectStyle& direct : direct_styles_) {
             if (direct.element != nullptr) {
-                if (const auto found = styles_by_key_.find(direct.key);
-                    found != styles_by_key_.end()) {
-                    found->second->Apply(*direct.element);
+                if (Ref<Style> style = FindStyle(direct.scope, direct.key)) {
+                    style->Apply(*direct.element);
                 } else if (direct.node != nullptr) {
                     Fail(*direct.node, "Style references an unknown resource");
                     return Failure();
@@ -723,9 +729,9 @@ public:
         }
         for (const DirectTemplate& direct : direct_templates_) {
             if (direct.element != nullptr) {
-                if (const auto found = templates_.find(direct.key);
-                    found != templates_.end()) {
-                    direct.element->ApplyControlTemplate(*found->second);
+                if (Ref<ControlTemplate> control_template =
+                        FindTemplate(direct.scope, direct.key)) {
+                    direct.element->ApplyControlTemplate(*control_template);
                 } else if (direct.node != nullptr) {
                     Fail(*direct.node, "Template references an unknown resource");
                     return Failure();
@@ -740,7 +746,6 @@ public:
 
         LoadResult result;
         result.root = std::move(element);
-        result.style_sheet = style_sheet_;
         result.names = std::move(names_);
         return Result<LoadResult>::Ok(std::move(result));
     }
@@ -762,44 +767,66 @@ private:
         return false;
     }
 
-    bool CollectResources(const Node& node) {
+    bool FindResourceBlock(const Node& node, const Node** block) {
         for (const Node& child : node.children) {
             const std::wstring local = LocalName(child.name);
-            if (EndsWith(local, L".Resources") || local == L"Resources") {
-                if (!CollectResourceBlock(child)) {
-                    return false;
-                }
+            if (!EndsWith(local, L".Resources") && local != L"Resources") {
                 continue;
             }
-            if (!CollectResources(child)) {
-                return false;
+            if (*block != nullptr) {
+                return Fail(child, "element has more than one Resources block");
             }
+            *block = &child;
         }
         return true;
     }
 
-    bool CollectResourceBlock(const Node& block) {
-        for (const Node& child : block.children) {
-            const std::wstring local = LocalName(child.name);
-            if (local == L"ControlTemplate") {
-                if (!AddTemplate(child)) {
-                    return false;
-                }
-            } else if (local == L"Style") {
-                style_nodes_.push_back(&child);
-            } else {
-                return Fail(child, "only Style and ControlTemplate belong in Resources");
-            }
-        }
-        return true;
+    ResourceScope* CreateScope(
+        Element& owner,
+        const Node& block,
+        ResourceScope* parent) {
+        scopes_.emplace_back();
+        ResourceScope* scope = &scopes_.back();
+        scope->owner = &owner;
+        scope->block = &block;
+        scope->parent = parent;
+        return scope;
     }
 
-    bool AddTemplate(const Node& node) {
+    Ref<ControlTemplate> FindTemplate(
+        ResourceScope* scope,
+        std::wstring_view key) const {
+        const std::wstring name(key);
+        for (ResourceScope* current = scope; current != nullptr;
+             current = current->parent) {
+            if (const auto found = current->templates.find(name);
+                found != current->templates.end()) {
+                return found->second;
+            }
+        }
+        return {};
+    }
+
+    Ref<Style> FindStyle(
+        ResourceScope* scope,
+        std::wstring_view key) const {
+        const std::wstring name(key);
+        for (ResourceScope* current = scope; current != nullptr;
+             current = current->parent) {
+            if (const auto found = current->styles_by_key.find(name);
+                found != current->styles_by_key.end()) {
+                return found->second;
+            }
+        }
+        return {};
+    }
+
+    bool AddTemplate(const Node& node, ResourceScope* scope) {
         const std::wstring key = AttributeValue(node, L"Key");
         if (key.empty()) {
             return Fail(node, "ControlTemplate requires Key");
         }
-        if (templates_.find(key) != templates_.end()) {
+        if (scope->templates.find(key) != scope->templates.end()) {
             return Fail(node, "duplicate ControlTemplate Key");
         }
         Ref<ControlTemplate> control_template = ControlTemplate::Create();
@@ -811,7 +838,7 @@ private:
                 return false;
             }
         }
-        templates_.emplace(key, std::move(control_template));
+        scope->templates.emplace(key, std::move(control_template));
         return true;
     }
 
@@ -855,13 +882,27 @@ private:
     }
 
     bool BuildResourceObjects() {
-        style_sheet_ = StyleSheet::Create();
-        for (const Node* style_node : style_nodes_) {
-            if (style_node == nullptr) {
-                continue;
+        for (ResourceScope& scope : scopes_) {
+            scope.styles = StyleSheet::Create();
+            for (const Node& child : scope.block->children) {
+                if (LocalName(child.name) != L"ControlTemplate") {
+                    continue;
+                }
+                if (!AddTemplate(child, &scope)) {
+                    return false;
+                }
             }
-            if (!BuildStyle(*style_node)) {
-                return false;
+            for (const Node& child : scope.block->children) {
+                const std::wstring local = LocalName(child.name);
+                if (local == L"ControlTemplate") {
+                    continue;
+                }
+                if (local != L"Style") {
+                    return Fail(child, "only Style and ControlTemplate belong in Resources");
+                }
+                if (!BuildStyle(child, &scope)) {
+                    return false;
+                }
             }
         }
         return true;
@@ -881,7 +922,7 @@ private:
         return probe;
     }
 
-    bool BuildStyle(const Node& node) {
+    bool BuildStyle(const Node& node, ResourceScope* scope) {
         const std::wstring target_type = LocalName(AttributeValue(node, L"TargetType"));
         if (target_type.empty()) {
             return Fail(node, "Style requires TargetType");
@@ -890,7 +931,7 @@ private:
         const std::wstring key = AttributeValue(node, L"Key");
         if (!key.empty()) {
             style->SetTargetKey(key);
-            if (styles_by_key_.find(key) != styles_by_key_.end()) {
+            if (scope->styles_by_key.find(key) != scope->styles_by_key.end()) {
                 return Fail(node, "duplicate Style Key");
             }
         }
@@ -903,18 +944,22 @@ private:
             if (LocalName(child.name) != L"Setter") {
                 return Fail(child, "Style expects Setter elements");
             }
-            if (!AddSetter(child, *probe, style.Get())) {
+            if (!AddSetter(child, *probe, style.Get(), scope)) {
                 return false;
             }
         }
-        style_sheet_->Add(style);
+        scope->styles->Add(style);
         if (!key.empty()) {
-            styles_by_key_.emplace(key, std::move(style));
+            scope->styles_by_key.emplace(key, std::move(style));
         }
         return true;
     }
 
-    bool AddSetter(const Node& node, Element& probe, Style* style) {
+    bool AddSetter(
+        const Node& node,
+        Element& probe,
+        Style* style,
+        ResourceScope* scope) {
         const std::wstring property = AttributeValue(node, L"Property");
         if (property.empty()) {
             return Fail(node, "Setter requires Property");
@@ -925,8 +970,8 @@ private:
             if (key.empty()) {
                 return Fail(node, "Template Setter requires a resource key");
             }
-            if (const auto found = templates_.find(key); found != templates_.end()) {
-                style->SetTemplate(found->second);
+            if (Ref<ControlTemplate> found = FindTemplate(scope, key)) {
+                style->SetTemplate(std::move(found));
                 return true;
             }
             return Fail(node, "Template Setter references an unknown template");
@@ -944,6 +989,13 @@ private:
     }
 
     Ref<Element> BuildElement(const Node& node) {
+        ResourceScope* saved_scope = current_scope_;
+        Ref<Element> element = BuildElementInternal(node);
+        current_scope_ = saved_scope;
+        return element;
+    }
+
+    Ref<Element> BuildElementInternal(const Node& node) {
         const std::wstring local = LocalName(node.name);
         if (local.find(L'.') != std::wstring::npos) {
             Fail(node, "unsupported property element");
@@ -953,6 +1005,17 @@ private:
         if (!element) {
             return {};
         }
+
+        const Node* resource_block = nullptr;
+        if (!FindResourceBlock(node, &resource_block)) {
+            return {};
+        }
+        ResourceScope* scope = current_scope_;
+        if (resource_block != nullptr) {
+            scope = CreateScope(*element, *resource_block, current_scope_);
+            current_scope_ = scope;
+        }
+        element_scopes_.emplace(element.Get(), scope);
 
         const std::wstring key = AttributeValue(node, L"Key");
         if (!key.empty()) {
@@ -981,7 +1044,8 @@ private:
                 Fail(node, "Template requires a resource key");
                 return {};
             }
-            direct_templates_.push_back(DirectTemplate{element.Get(), &node, template_key});
+            direct_templates_.push_back(
+                DirectTemplate{element.Get(), &node, template_key, scope});
         }
         const Attribute* style_attribute = FindAttribute(node, L"Style");
         if (style_attribute != nullptr) {
@@ -990,7 +1054,8 @@ private:
                 Fail(node, "Style requires a resource key");
                 return {};
             }
-            direct_styles_.push_back(DirectStyle{element.Get(), &node, style_key});
+            direct_styles_.push_back(
+                DirectStyle{element.Get(), &node, style_key, scope});
         }
 
         if (local == L"ContextMenu") {
@@ -1396,6 +1461,35 @@ private:
         return Fail(node, "event is not supported by this element");
     }
 
+    void ApplyStyles(Element& element) {
+        std::vector<ResourceScope*> chain;
+        for (ResourceScope* scope = ScopeFor(element); scope != nullptr;
+             scope = scope->parent) {
+            chain.push_back(scope);
+        }
+        for (auto it = chain.rbegin(); it != chain.rend(); ++it) {
+            const auto& styles = (*it)->styles->Styles();
+            for (const Ref<Style>& style : styles) {
+                if (style) {
+                    style->Apply(element);
+                }
+            }
+        }
+
+        std::vector<Element*> children;
+        element.CollectChildren(children);
+        for (Element* child : children) {
+            if (child != nullptr) {
+                ApplyStyles(*child);
+            }
+        }
+    }
+
+    ResourceScope* ScopeFor(Element& element) const noexcept {
+        const auto found = element_scopes_.find(&element);
+        return found == element_scopes_.end() ? nullptr : found->second;
+    }
+
     bool BuildMenuItems(const Node& node, Element& element) {
         auto* menu = dynamic_cast<ContextMenu*>(&element);
         if (menu == nullptr) {
@@ -1454,11 +1548,10 @@ private:
 
     const LoadContext& context_;
     const Node& root_;
-    Ref<StyleSheet> style_sheet_;
-    std::unordered_map<std::wstring, Ref<ControlTemplate>> templates_;
-    std::unordered_map<std::wstring, Ref<Style>> styles_by_key_;
+    std::deque<ResourceScope> scopes_;
+    ResourceScope* current_scope_ = nullptr;
+    std::unordered_map<Element*, ResourceScope*> element_scopes_;
     std::unordered_map<std::wstring, Ref<Element>> probes_;
-    std::vector<const Node*> style_nodes_;
     std::vector<LocalAttributes> locals_;
     std::vector<DirectTemplate> direct_templates_;
     std::vector<DirectStyle> direct_styles_;
