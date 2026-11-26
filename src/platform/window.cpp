@@ -132,9 +132,12 @@ public:
         return value + slack;
     }
 
-    static int SurfaceCountFor(int width, int height) noexcept {
+    int SurfaceCountFor(int width, int height) const noexcept {
+        if (forced_surface_count_ > 0) {
+            return forced_surface_count_;
+        }
         constexpr std::uint64_t triple_limit =
-            static_cast<std::uint64_t>(1920) * static_cast<std::uint64_t>(1200);
+            static_cast<std::uint64_t>(2560) * static_cast<std::uint64_t>(1600);
         const std::uint64_t area =
             static_cast<std::uint64_t>(width) * static_cast<std::uint64_t>(height);
         return area <= triple_limit ? kMaxAsyncSurfaces : kMinAsyncSurfaces;
@@ -150,7 +153,7 @@ public:
         const int target_height =
             exact ? height : (surface_height_ >= height ? surface_height_ : AllocationExtent(height));
 
-        const int async_surfaces = SurfaceCountFor(target_width, target_height);
+        const int async_surfaces = SurfaceCountFor(width, height);
         const int needed_surfaces = async_commit_ ? async_surfaces : 1;
         if (async_commit_) {
             async_surface_count_ = async_surfaces;
@@ -572,6 +575,23 @@ public:
         diagnostic_text_runs_ = 0;
         diagnostic_virtual_list_ = true;
         full_redraw_required_ = true;
+    }
+
+    void SetDiagnosticAsyncSurfaces(int count) noexcept {
+        if (count < kMinAsyncSurfaces || count > kMaxAsyncSurfaces) {
+            forced_surface_count_ = 0;
+        } else {
+            forced_surface_count_ = count;
+        }
+        if (async_commit_) {
+            const int content_width = content_width_ > 0 ? content_width_ : surface_width_;
+            const int content_height = content_height_ > 0 ? content_height_ : surface_height_;
+            Resize(content_width, content_height, true);
+        }
+    }
+
+    int DiagnosticAsyncSurfaceCount() const noexcept {
+        return surface_count_;
     }
 
     ComPtr<IDWriteTextLayout> DiagnosticLayout(std::uint32_t row) noexcept {
@@ -1095,6 +1115,7 @@ private:
     int content_height_ = 0;
     int surface_count_ = 0;
     int async_surface_count_ = kMinAsyncSurfaces;
+    int forced_surface_count_ = 0;
     int draw_index_ = 0;
     int pending_surface_index_ = -1;
     int target_bound_index_ = -1;
@@ -1311,6 +1332,16 @@ void Window::SetDiagnosticTextList(
     if (graphics_ != nullptr) {
         graphics_->SetDiagnosticTextList(rows, row_height, cache_layouts);
     }
+}
+
+void Window::SetDiagnosticAsyncSurfaces(int count) noexcept {
+    if (graphics_ != nullptr) {
+        graphics_->SetDiagnosticAsyncSurfaces(count);
+    }
+}
+
+int Window::DiagnosticAsyncSurfaceCount() const noexcept {
+    return graphics_ != nullptr ? graphics_->DiagnosticAsyncSurfaceCount() : 0;
 }
 
 void Window::RenderFrame(const Rect& dirty_rect) noexcept {

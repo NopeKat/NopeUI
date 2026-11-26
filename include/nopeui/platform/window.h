@@ -83,14 +83,20 @@ public:
         float row_height,
         bool cache_layouts) noexcept;
 
+    // Benchmark-only override of the asynchronous surface count. Zero restores
+    // the area-based selection (three up to 1920x1200, two above).
+    void SetDiagnosticAsyncSurfaces(int count) noexcept;
+    int DiagnosticAsyncSurfaceCount() const noexcept;
+
     // Presents the latest rendered surface immediately.
     void Present() noexcept;
 
     // Batches commits to at most one per display refresh. Enabled by default.
     void SetCommitThrottle(bool enabled) noexcept;
 
-    // Alternates two surfaces and commits them off the UI thread. Enabled by
-    // default; disabling waits for pending commits and falls back to synchronous.
+    // Alternates two or three surfaces and commits them off the UI thread.
+    // Enabled by default; disabling waits for pending commits and falls back
+    // to synchronous.
     void SetAsyncCommit(bool enabled) noexcept;
 
     HWND Handle() const noexcept;
