@@ -53,6 +53,9 @@ public:
     // Batches commits to at most one per display refresh. Enabled by default.
     void SetCommitThrottle(bool enabled) noexcept;
 
+    // Experimental: alternates two surfaces and commits them off the UI thread.
+    void SetAsyncCommit(bool enabled) noexcept;
+
     HWND Handle() const noexcept;
 
 private:

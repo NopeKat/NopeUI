@@ -25,6 +25,7 @@ int main(int argc, char** argv) {
     bool paced = true;
     bool full_frame = false;
     bool throttle_commits = true;
+    bool async_commit = false;
     double target_hz = 120.0;
     for (int index = 1; index < argc; ++index) {
         if (std::strcmp(argv[index], "--paced") == 0) {
@@ -35,6 +36,8 @@ int main(int argc, char** argv) {
             full_frame = true;
         } else if (std::strcmp(argv[index], "--no-throttle") == 0) {
             throttle_commits = false;
+        } else if (std::strcmp(argv[index], "--async-commit") == 0) {
+            async_commit = true;
         } else if (std::strcmp(argv[index], "--hz") == 0 && index + 1 < argc) {
             const double value = std::strtod(argv[++index], nullptr);
             if (value > 0.0) {
@@ -56,6 +59,7 @@ int main(int argc, char** argv) {
     auto window = std::move(result).value();
     window->Show();
     window->SetCommitThrottle(throttle_commits);
+    window->SetAsyncCommit(async_commit);
 
     DWM_TIMING_INFO composition_timing{};
     composition_timing.cbSize = sizeof(composition_timing);
@@ -115,6 +119,7 @@ int main(int argc, char** argv) {
         wait_for_frame();
         render_frame();
     }
+    const auto commits_before_measurement = window->CommitCount();
 
     std::vector<double> frame_times;
     std::vector<double> begin_times;
@@ -137,7 +142,7 @@ int main(int argc, char** argv) {
         render_frame();
         const auto elapsed = std::chrono::steady_clock::now() - start;
 
-        if (window->CommitCount() != commits_before) {
+        if (async_commit || window->CommitCount() != commits_before) {
             const auto timings = window->LastFrameTimings();
             frame_times.push_back(
                 std::chrono::duration<double, std::milli>(elapsed).count());
@@ -147,6 +152,22 @@ int main(int argc, char** argv) {
             commit_times.push_back(timings.commit_ms);
         }
         ++attempts;
+    }
+
+    double drain_ms = 0.0;
+    if (async_commit) {
+        const auto drain_start = std::chrono::steady_clock::now();
+        const auto target_commits =
+            commits_before_measurement + static_cast<std::uint64_t>(measured_frames);
+        while (window->CommitCount() < target_commits) {
+            const auto elapsed = std::chrono::steady_clock::now() - drain_start;
+            if (elapsed > std::chrono::seconds(2)) {
+                break;
+            }
+            Sleep(1);
+        }
+        drain_ms = std::chrono::duration<double, std::milli>(
+            std::chrono::steady_clock::now() - drain_start).count();
     }
 
     if (frame_times.empty()) {
@@ -182,13 +203,14 @@ int main(int argc, char** argv) {
     const double p99 = frame_summary.second;
 
     std::printf(
-        "content=%s pace=%s throttle=%s target_hz=%.0f dwm_refresh=%.1f "
+        "content=%s pace=%s throttle=%s async=%s target_hz=%.0f dwm_refresh=%.1f "
         "frames=%zu attempts=%d "
         "commits=%llu avg=%.3f ms p99=%.3f ms min=%.3f ms max=%.3f ms "
-        "begin=%.3f/%.3f draw=%.3f/%.3f end=%.3f/%.3f commit=%.3f/%.3f\n",
+        "drain=%.1f ms begin=%.3f/%.3f draw=%.3f/%.3f end=%.3f/%.3f commit=%.3f/%.3f\n",
         full_frame ? "full" : "dirty",
         paced ? "fixed" : "unpaced",
         throttle_commits ? "on" : "off",
+        async_commit ? "on" : "off",
         paced ? target_hz : 0.0,
         dwm_refresh_hz,
         frame_times.size(),
@@ -198,6 +220,7 @@ int main(int argc, char** argv) {
         p99,
         *std::min_element(frame_times.begin(), frame_times.end()),
         *std::max_element(frame_times.begin(), frame_times.end()),
+        drain_ms,
         begin_summary.first,
         begin_summary.second,
         draw_summary.first,

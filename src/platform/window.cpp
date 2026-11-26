@@ -9,11 +9,15 @@
 #include <wrl/client.h>
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cmath>
+#include <condition_variable>
 #include <cstdio>
+#include <deque>
 #include <mutex>
 #include <string>
+#include <thread>
 #include <utility>
 
 namespace {
@@ -81,6 +85,7 @@ public:
     }
 
     ~WindowGraphics() {
+        StopCommitThread();
         ReleaseSurface();
         if (visual_ != nullptr) {
             visual_->SetContent(nullptr);
@@ -91,51 +96,68 @@ public:
         if (width <= 0 || height <= 0) {
             return Result<void>::Ok();
         }
-        if (width == surface_width_ && height == surface_height_) {
+        if (async_commit_) {
+            WaitForAllCommits();
+        }
+        if (surface_count_ >= (async_commit_ ? 2 : 1) &&
+            width == surface_width_ && height == surface_height_) {
             return Result<void>::Ok();
         }
 
-        HRESULT result = S_OK;
-        if (virtual_surface_ == nullptr) {
-            result = dcomp_device_->CreateVirtualSurface(
-                static_cast<UINT>(width),
-                static_cast<UINT>(height),
-                DXGI_FORMAT_B8G8R8A8_UNORM,
-                DXGI_ALPHA_MODE_PREMULTIPLIED,
-                virtual_surface_.GetAddressOf());
-            if (FAILED(result)) {
-                return Result<void>::Fail(
-                    Error{ErrorCode::PlatformFailure, PlatformError("CreateVirtualSurface", result)});
+        const int needed_surfaces = async_commit_ ? 2 : std::max(1, surface_count_);
+        for (int index = 0; index < needed_surfaces; ++index) {
+            auto& state = surfaces_[index];
+            if (state.surface == nullptr) {
+                HRESULT result = dcomp_device_->CreateVirtualSurface(
+                    static_cast<UINT>(width),
+                    static_cast<UINT>(height),
+                    DXGI_FORMAT_B8G8R8A8_UNORM,
+                    DXGI_ALPHA_MODE_PREMULTIPLIED,
+                    state.surface.GetAddressOf());
+                if (FAILED(result)) {
+                    return Result<void>::Fail(
+                        Error{ErrorCode::PlatformFailure, PlatformError("CreateVirtualSurface", result)});
+                }
+
+                if (index == 0) {
+                    result = visual_->SetContent(state.surface.Get());
+                    if (FAILED(result)) {
+                        return Result<void>::Fail(
+                            Error{ErrorCode::PlatformFailure, PlatformError("SetContent", result)});
+                    }
+                }
+            } else {
+                HRESULT result =
+                    state.surface->Resize(static_cast<UINT>(width), static_cast<UINT>(height));
+                if (FAILED(result)) {
+                    return Result<void>::Fail(
+                        Error{ErrorCode::PlatformFailure, PlatformError("Resize", result)});
+                }
             }
 
-            result = visual_->SetContent(virtual_surface_.Get());
-            if (FAILED(result)) {
-                return Result<void>::Fail(
-                    Error{ErrorCode::PlatformFailure, PlatformError("SetContent", result)});
-            }
-        } else {
-            result = virtual_surface_->Resize(
-                static_cast<UINT>(width), static_cast<UINT>(height));
-            if (FAILED(result)) {
-                return Result<void>::Fail(
-                    Error{ErrorCode::PlatformFailure, PlatformError("Resize", result)});
-            }
+            state.target_bitmap.Reset();
         }
-
-        target_bitmap_.Reset();
-        target_set_ = false;
-        transform_set_ = false;
+        surface_count_ = std::max(surface_count_, needed_surfaces);
+        target_bound_index_ = -1;
+        full_redraw_required_ = true;
         surface_width_ = width;
         surface_height_ = height;
         return Result<void>::Ok();
     }
 
     void Render(const RECT* dirty_rect = nullptr, bool force_commit = false) noexcept {
-        if (virtual_surface_ == nullptr || d2d_context_ == nullptr) {
+        const auto start = std::chrono::steady_clock::now();
+        if (async_commit_) {
+            WaitForSurface(draw_index_);
+        }
+        if (d2d_context_ == nullptr) {
             return;
         }
 
-        const auto start = std::chrono::steady_clock::now();
+        auto& surface_state = surfaces_[draw_index_];
+        if (surface_state.surface == nullptr) {
+            return;
+        }
 
         RECT update{};
         const RECT* update_ptr = nullptr;
@@ -150,6 +172,11 @@ public:
             update_ptr = &update;
         }
 
+        if (full_redraw_required_) {
+            update_ptr = nullptr;
+            full_redraw_required_ = false;
+        }
+
         const D2D1_RECT_F background_rect = update_ptr == nullptr
             ? D2D1::RectF(0.0f, 0.0f, static_cast<float>(surface_width_), static_cast<float>(surface_height_))
             : D2D1::RectF(
@@ -161,7 +188,7 @@ public:
         ComPtr<IDXGISurface> dxgi_surface;
         POINT offset{};
         const auto begin_start = std::chrono::steady_clock::now();
-        HRESULT result = virtual_surface_->BeginDraw(
+        HRESULT result = surface_state.surface->BeginDraw(
             update_ptr,
             __uuidof(IDXGISurface),
             reinterpret_cast<void**>(dxgi_surface.GetAddressOf()),
@@ -171,30 +198,25 @@ public:
             return;
         }
 
-        if (target_bitmap_ == nullptr) {
+        if (surface_state.target_bitmap == nullptr) {
             D2D1_BITMAP_PROPERTIES1 properties = D2D1::BitmapProperties1(
                 D2D1_BITMAP_OPTIONS_TARGET | D2D1_BITMAP_OPTIONS_CANNOT_DRAW,
                 D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED));
             result = d2d_context_->CreateBitmapFromDxgiSurface(
-                dxgi_surface.Get(), properties, target_bitmap_.GetAddressOf());
+                dxgi_surface.Get(), properties, surface_state.target_bitmap.GetAddressOf());
             if (FAILED(result)) {
-                virtual_surface_->EndDraw();
+                surface_state.surface->EndDraw();
                 return;
             }
         }
 
-        if (!target_set_) {
-            d2d_context_->SetTarget(target_bitmap_.Get());
-            target_set_ = true;
+        if (target_bound_index_ != draw_index_) {
+            d2d_context_->SetTarget(surface_state.target_bitmap.Get());
+            target_bound_index_ = draw_index_;
         }
-        if (!transform_set_ || offset.x != offset_x_ || offset.y != offset_y_) {
-            d2d_context_->SetTransform(D2D1::Matrix3x2F::Translation(
-                static_cast<float>(offset.x),
-                static_cast<float>(offset.y)));
-            offset_x_ = offset.x;
-            offset_y_ = offset.y;
-            transform_set_ = true;
-        }
+        d2d_context_->SetTransform(D2D1::Matrix3x2F::Translation(
+            static_cast<float>(offset.x),
+            static_cast<float>(offset.y)));
         d2d_context_->BeginDraw();
         if (update_ptr == nullptr) {
             d2d_context_->FillRectangle(background_rect, background_brush_.Get());
@@ -229,17 +251,18 @@ public:
         }
         result = d2d_context_->EndDraw();
         if (FAILED(result)) {
-            target_set_ = false;
+            target_bound_index_ = -1;
         }
         const auto draw_end = std::chrono::steady_clock::now();
 
-        virtual_surface_->EndDraw();
+        surface_state.surface->EndDraw();
         const auto surface_end = std::chrono::steady_clock::now();
         if (FAILED(result)) {
             return;
         }
 
         commit_pending_ = true;
+        pending_surface_index_ = draw_index_;
         bool committed = false;
         if (force_commit || !throttle_commits_ || CommitDue()) {
             committed = Present();
@@ -255,7 +278,7 @@ public:
             std::chrono::duration<double, std::milli>(draw_end - begin_end).count();
         timings.end_draw_ms =
             std::chrono::duration<double, std::milli>(surface_end - draw_end).count();
-        if (committed) {
+        if (committed && !async_commit_) {
             timings.commit_ms = last_commit_ms_;
         }
         last_timings_ = timings;
@@ -267,6 +290,17 @@ public:
     bool Present() noexcept {
         if (!commit_pending_ || dcomp_device_ == nullptr) {
             return false;
+        }
+
+        if (async_commit_) {
+            const int surface_index = pending_surface_index_;
+            QueueCommit(surface_index);
+            pending_surface_index_ = -1;
+            commit_pending_ = false;
+            last_commit_time_ = std::chrono::steady_clock::now();
+            draw_index_ = surface_index == 0 ? 1 : 0;
+            CancelCommitTimer();
+            return true;
         }
 
         const auto commit_start = std::chrono::steady_clock::now();
@@ -297,6 +331,33 @@ public:
         commit_interval_ms_ = QueryRefreshIntervalMilliseconds(hwnd_);
     }
 
+    void SetAsyncCommit(bool enabled) noexcept {
+        if (enabled == async_commit_) {
+            return;
+        }
+
+        if (enabled) {
+            async_commit_ = true;
+            auto resized = Resize(surface_width_, surface_height_);
+            if (!resized.ok() || surface_count_ < 2) {
+                async_commit_ = false;
+                draw_index_ = 0;
+                return;
+            }
+            if (!commit_thread_.joinable()) {
+                commit_thread_ = std::thread([this] { CommitThreadMain(); });
+            }
+            draw_index_ = 1;
+            full_redraw_required_ = true;
+            return;
+        }
+
+        WaitForAllCommits();
+        async_commit_ = false;
+        draw_index_ = 0;
+        full_redraw_required_ = true;
+    }
+
     double LastFrameMilliseconds() const noexcept {
         return last_frame_ms_;
     }
@@ -315,6 +376,84 @@ public:
 
 private:
     WindowGraphics() = default;
+
+    struct SurfaceState {
+        ComPtr<IDCompositionVirtualSurface> surface;
+        ComPtr<ID2D1Bitmap1> target_bitmap;
+    };
+
+    void WaitForSurface(int index) noexcept {
+        std::unique_lock<std::mutex> lock(commit_mutex_);
+        commit_cv_.wait(lock, [this, index] {
+            return !surface_busy_[index];
+        });
+    }
+
+    void WaitForAllCommits() noexcept {
+        std::unique_lock<std::mutex> lock(commit_mutex_);
+        commit_cv_.wait(lock, [this] {
+            return !surface_busy_[0] && !surface_busy_[1];
+        });
+    }
+
+    void QueueCommit(int index) noexcept {
+        std::lock_guard<std::mutex> lock(commit_mutex_);
+        surface_busy_[index] = true;
+        commit_queue_.push_back(index);
+        commit_cv_.notify_one();
+    }
+
+    void CommitThreadMain() noexcept {
+        const HRESULT com_result = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+        for (;;) {
+            std::unique_lock<std::mutex> lock(commit_mutex_);
+            commit_cv_.wait(lock, [this] {
+                return !commit_running_ || !commit_queue_.empty();
+            });
+            if (!commit_running_) {
+                break;
+            }
+
+            const int index = commit_queue_.front();
+            commit_queue_.pop_front();
+            lock.unlock();
+
+            const auto commit_start = std::chrono::steady_clock::now();
+            HRESULT result = E_FAIL;
+            if (visual_ != nullptr && surfaces_[index].surface != nullptr) {
+                result = visual_->SetContent(surfaces_[index].surface.Get());
+                if (SUCCEEDED(result)) {
+                    result = dcomp_device_->Commit();
+                }
+            }
+            const auto commit_end = std::chrono::steady_clock::now();
+
+            lock.lock();
+            last_commit_ms_ = std::chrono::duration<double, std::milli>(
+                commit_end - commit_start).count();
+            surface_busy_[index] = false;
+            if (SUCCEEDED(result)) {
+                commit_count_.fetch_add(1, std::memory_order_relaxed);
+            }
+            commit_cv_.notify_all();
+        }
+        if (com_result == S_OK || com_result == S_FALSE) {
+            CoUninitialize();
+        }
+    }
+
+    void StopCommitThread() noexcept {
+        if (!commit_thread_.joinable()) {
+            return;
+        }
+
+        {
+            std::lock_guard<std::mutex> lock(commit_mutex_);
+            commit_running_ = false;
+        }
+        commit_cv_.notify_all();
+        commit_thread_.join();
+    }
 
     bool CommitDue() const noexcept {
         if (!throttle_commits_) {
@@ -523,10 +662,12 @@ private:
 
     void ReleaseSurface() noexcept {
         CancelCommitTimer();
-        target_bitmap_.Reset();
-        target_set_ = false;
-        transform_set_ = false;
-        virtual_surface_.Reset();
+        for (auto& state : surfaces_) {
+            state.target_bitmap.Reset();
+            state.surface.Reset();
+        }
+        surface_count_ = 0;
+        target_bound_index_ = -1;
         surface_width_ = 0;
         surface_height_ = 0;
     }
@@ -536,11 +677,10 @@ private:
     ComPtr<IDCompositionDevice> dcomp_device_;
     ComPtr<IDCompositionTarget> target_;
     ComPtr<IDCompositionVisual> visual_;
-    ComPtr<IDCompositionVirtualSurface> virtual_surface_;
+    SurfaceState surfaces_[2];
     ComPtr<ID2D1Factory1> d2d_factory_;
     ComPtr<ID2D1Device> d2d_device_;
     ComPtr<ID2D1DeviceContext> d2d_context_;
-    ComPtr<ID2D1Bitmap1> target_bitmap_;
     ComPtr<IDWriteFactory> dwrite_factory_;
     ComPtr<IDWriteTextFormat> text_format_;
     ComPtr<IDWriteTextLayout> text_layout_;
@@ -551,20 +691,28 @@ private:
     HWND hwnd_ = nullptr;
     int surface_width_ = 0;
     int surface_height_ = 0;
+    int surface_count_ = 0;
+    int draw_index_ = 0;
+    int pending_surface_index_ = -1;
+    int target_bound_index_ = -1;
     double commit_interval_ms_ = 1000.0 / 120.0;
     double last_frame_ms_ = 0.0;
     double last_commit_ms_ = 0.0;
     FrameTimings last_timings_{};
     std::chrono::steady_clock::time_point last_commit_time_{};
     std::uint64_t frame_count_ = 0;
-    std::uint64_t commit_count_ = 0;
+    std::atomic<std::uint64_t> commit_count_{0};
     bool throttle_commits_ = true;
     bool commit_pending_ = false;
     bool commit_timer_active_ = false;
-    bool target_set_ = false;
-    bool transform_set_ = false;
-    LONG offset_x_ = 0;
-    LONG offset_y_ = 0;
+    bool async_commit_ = false;
+    bool commit_running_ = true;
+    bool full_redraw_required_ = false;
+    bool surface_busy_[2] = {false, false};
+    std::deque<int> commit_queue_;
+    std::thread commit_thread_;
+    std::mutex commit_mutex_;
+    std::condition_variable commit_cv_;
 };
 
 Window::Window() noexcept = default;
@@ -742,6 +890,12 @@ void Window::Present() noexcept {
 void Window::SetCommitThrottle(bool enabled) noexcept {
     if (graphics_ != nullptr) {
         graphics_->SetCommitThrottle(enabled);
+    }
+}
+
+void Window::SetAsyncCommit(bool enabled) noexcept {
+    if (graphics_ != nullptr) {
+        graphics_->SetAsyncCommit(enabled);
     }
 }
 

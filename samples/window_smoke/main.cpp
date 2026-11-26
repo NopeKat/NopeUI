@@ -6,7 +6,7 @@
 
 #include "nopeui/platform/window.h"
 
-int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
+int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR command_line, int) {
     auto result = nopeui::Window::Create(900, 600, u"NopeUI Window Smoke");
     if (!result.ok()) {
         return 1;
@@ -14,6 +14,10 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
 
     auto window = std::move(result).value();
     window->Show();
+    if (command_line != nullptr && std::wcsstr(command_line, L"--async") != nullptr) {
+        window->SetAsyncCommit(true);
+        window->RenderFrame();
+    }
 
     wchar_t title[128]{};
     std::swprintf(
