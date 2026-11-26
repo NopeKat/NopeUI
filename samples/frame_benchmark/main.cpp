@@ -27,6 +27,7 @@ int main(int argc, char** argv) {
     bool throttle_commits = true;
     bool async_commit = false;
     bool diagnostic_virtual = false;
+    double diagnostic_scroll_step = 0.0;
     double target_hz = 120.0;
     std::uint32_t diagnostic_rectangles = 0;
     std::uint32_t diagnostic_text_runs = 0;
@@ -43,6 +44,8 @@ int main(int argc, char** argv) {
             async_commit = true;
         } else if (std::strcmp(argv[index], "--virtual") == 0) {
             diagnostic_virtual = true;
+        } else if (std::strcmp(argv[index], "--scroll") == 0 && index + 1 < argc) {
+            diagnostic_scroll_step = std::strtod(argv[++index], nullptr);
         } else if (std::strcmp(argv[index], "--rects") == 0 && index + 1 < argc) {
             diagnostic_rectangles = static_cast<std::uint32_t>(std::strtoul(argv[++index], nullptr, 10));
         } else if (std::strcmp(argv[index], "--text") == 0 && index + 1 < argc) {
@@ -115,7 +118,12 @@ int main(int argc, char** argv) {
         }
     };
 
+    double diagnostic_scroll = 0.0;
     const auto render_frame = [&] {
+        if (diagnostic_scroll_step != 0.0) {
+            diagnostic_scroll += diagnostic_scroll_step;
+            window->SetDiagnosticScroll(static_cast<float>(diagnostic_scroll));
+        }
         if (full_frame) {
             window->RenderFrame();
         } else {
@@ -241,7 +249,7 @@ int main(int argc, char** argv) {
 
     std::printf(
         "content=%s pace=%s throttle=%s async=%s target_hz=%.0f dwm_refresh=%.1f "
-        "load_rects=%u load_text=%u virtual=%d "
+        "load_rects=%u load_text=%u virtual=%d scroll=%.2f "
         "frames=%zu attempts=%d "
         "commits=%llu avg=%.3f ms p99=%.3f ms min=%.3f ms max=%.3f ms "
         "drain=%.1f ms begin=%.3f/%.3f draw=%.3f/%.3f end=%.3f/%.3f commit=%.3f/%.3f "
@@ -256,6 +264,7 @@ int main(int argc, char** argv) {
         diagnostic_rectangles,
         diagnostic_text_runs,
         diagnostic_virtual ? 1 : 0,
+        diagnostic_scroll_step,
         frame_times.size(),
         attempts,
         static_cast<unsigned long long>(commit_count),

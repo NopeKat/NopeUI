@@ -75,6 +75,7 @@ public:
         std::uint32_t rectangles,
         std::uint32_t text_runs,
         bool virtual_list = false) noexcept;
+    void SetDiagnosticScroll(float offset) noexcept;
 
     // Presents the latest rendered surface immediately.
     void Present() noexcept;

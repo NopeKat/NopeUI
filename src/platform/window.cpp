@@ -317,10 +317,12 @@ public:
                     (diagnostic_rectangles_ + columns - 1) / columns;
                 const int first_row = std::max(
                     0,
-                    static_cast<int>(std::floor((background_rect.top - first_y) / row_step)));
+                    static_cast<int>(std::floor(
+                        (background_rect.top + diagnostic_scroll_ - first_y) / row_step)));
                 const int last_row = std::min(
                     static_cast<int>(total_rows) - 1,
-                    static_cast<int>(std::floor((background_rect.bottom - first_y) / row_step)));
+                    static_cast<int>(std::floor(
+                        (background_rect.bottom + diagnostic_scroll_ - first_y) / row_step)));
                 for (int row = first_row; row <= last_row; ++row) {
                     for (std::uint32_t column = 0; column < columns; ++column) {
                         const std::uint32_t index =
@@ -329,7 +331,8 @@ public:
                             break;
                         }
                         const float x = 4.0f + static_cast<float>(column) * 10.0f;
-                        const float y = first_y + static_cast<float>(row) * row_step;
+                        const float y = first_y + static_cast<float>(row) * row_step -
+                                        diagnostic_scroll_;
                         d2d_context_->FillRectangle(
                             D2D1::RectF(x, y, x + 6.0f, y + 6.0f),
                             (index & 1U) != 0 ? accent_brush_.Get() : text_brush_.Get());
@@ -368,10 +371,12 @@ public:
                     (diagnostic_text_runs_ + columns - 1) / columns;
                 const int first_row = std::max(
                     0,
-                    static_cast<int>(std::floor((background_rect.top - first_y) / row_step)));
+                    static_cast<int>(std::floor(
+                        (background_rect.top + diagnostic_scroll_ - first_y) / row_step)));
                 const int last_row = std::min(
                     static_cast<int>(total_rows) - 1,
-                    static_cast<int>(std::floor((background_rect.bottom - first_y) / row_step)));
+                    static_cast<int>(std::floor(
+                        (background_rect.bottom + diagnostic_scroll_ - first_y) / row_step)));
                 for (int row = first_row; row <= last_row; ++row) {
                     for (std::uint32_t column = 0; column < columns; ++column) {
                         const std::uint32_t index =
@@ -381,7 +386,8 @@ public:
                         }
                         draw_diagnostic_text(
                             24.0f + static_cast<float>(column) * 120.0f,
-                            first_y + static_cast<float>(row) * row_step);
+                            first_y + static_cast<float>(row) * row_step -
+                                diagnostic_scroll_);
                     }
                 }
             } else {
@@ -492,6 +498,11 @@ public:
         diagnostic_rectangles_ = rectangles;
         diagnostic_text_runs_ = text_runs;
         diagnostic_virtual_list_ = virtual_list;
+        full_redraw_required_ = true;
+    }
+
+    void SetDiagnosticScroll(float offset) noexcept {
+        diagnostic_scroll_ = offset;
         full_redraw_required_ = true;
     }
 
@@ -969,6 +980,7 @@ private:
     std::uint32_t diagnostic_rectangles_ = 0;
     std::uint32_t diagnostic_text_runs_ = 0;
     bool diagnostic_virtual_list_ = false;
+    float diagnostic_scroll_ = 0.0f;
     HWND hwnd_ = nullptr;
     int surface_width_ = 0;
     int surface_height_ = 0;
@@ -1175,6 +1187,12 @@ void Window::SetDiagnosticLoad(
     bool virtual_list) noexcept {
     if (graphics_ != nullptr) {
         graphics_->SetDiagnosticLoad(rectangles, text_runs, virtual_list);
+    }
+}
+
+void Window::SetDiagnosticScroll(float offset) noexcept {
+    if (graphics_ != nullptr) {
+        graphics_->SetDiagnosticScroll(offset);
     }
 }
 
