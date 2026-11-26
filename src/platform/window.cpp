@@ -3,6 +3,7 @@
 #include <d2d1_1.h>
 #include <dcomp.h>
 #include <d3d11.h>
+#include <dwrite.h>
 #include <dwmapi.h>
 #include <dxgi.h>
 #include <wrl/client.h>
@@ -32,7 +33,7 @@ double QueryRefreshIntervalMilliseconds(HWND hwnd) noexcept {
             return std::clamp(milliseconds, 1.0, 1000.0);
         }
     }
-    return 1000.0 / 60.0;
+    return 1000.0 / 120.0;
 }
 
 void EnableDpiAwareness() noexcept {
@@ -189,6 +190,17 @@ public:
             d2d_context_->PushAxisAlignedClip(background_rect, D2D1_ANTIALIAS_MODE_ALIASED);
             d2d_context_->FillRectangle(background_rect, background_brush_.Get());
         }
+
+        const bool draw_text = update_ptr == nullptr ||
+            (update.right > 24 && update.left < 324 &&
+             update.bottom > 28 && update.top < 88);
+        if (draw_text) {
+            d2d_context_->DrawTextLayout(
+                D2D1::Point2F(24.0f, 28.0f),
+                text_layout_.Get(),
+                text_brush_.Get());
+        }
+
         d2d_context_->FillRectangle(
             D2D1::RectF(0.0f, 0.0f, static_cast<float>(surface_width_), 4.0f),
             accent_brush_.Get());
@@ -382,6 +394,48 @@ private:
                 Error{ErrorCode::PlatformFailure, PlatformError("CreateDeviceContext", result)});
         }
 
+        result = DWriteCreateFactory(
+            DWRITE_FACTORY_TYPE_SHARED,
+            __uuidof(IDWriteFactory),
+            reinterpret_cast<IUnknown**>(dwrite_factory_.GetAddressOf()));
+        if (FAILED(result)) {
+            return Result<void>::Fail(
+                Error{ErrorCode::PlatformFailure, PlatformError("DWriteCreateFactory", result)});
+        }
+
+        result = dwrite_factory_->CreateTextFormat(
+            L"Segoe UI",
+            nullptr,
+            DWRITE_FONT_WEIGHT_SEMI_BOLD,
+            DWRITE_FONT_STYLE_NORMAL,
+            DWRITE_FONT_STRETCH_NORMAL,
+            26.0f,
+            L"en-US",
+            text_format_.GetAddressOf());
+        if (FAILED(result)) {
+            return Result<void>::Fail(
+                Error{ErrorCode::PlatformFailure, PlatformError("CreateTextFormat", result)});
+        }
+
+        result = dwrite_factory_->CreateTextLayout(
+            L"NopeUI",
+            6,
+            text_format_.Get(),
+            800.0f,
+            60.0f,
+            text_layout_.GetAddressOf());
+        if (FAILED(result)) {
+            return Result<void>::Fail(
+                Error{ErrorCode::PlatformFailure, PlatformError("CreateTextLayout", result)});
+        }
+
+        result = d2d_context_->CreateSolidColorBrush(
+            D2D1::ColorF(0x1B1B1B), text_brush_.GetAddressOf());
+        if (FAILED(result)) {
+            return Result<void>::Fail(
+                Error{ErrorCode::PlatformFailure, PlatformError("CreateSolidColorBrush", result)});
+        }
+
         result = d2d_context_->CreateSolidColorBrush(
             D2D1::ColorF(0xF3F3F3), background_brush_.GetAddressOf());
         if (FAILED(result)) {
@@ -423,12 +477,16 @@ private:
     ComPtr<ID2D1Device> d2d_device_;
     ComPtr<ID2D1DeviceContext> d2d_context_;
     ComPtr<ID2D1Bitmap1> target_bitmap_;
+    ComPtr<IDWriteFactory> dwrite_factory_;
+    ComPtr<IDWriteTextFormat> text_format_;
+    ComPtr<IDWriteTextLayout> text_layout_;
+    ComPtr<ID2D1SolidColorBrush> text_brush_;
     ComPtr<ID2D1SolidColorBrush> background_brush_;
     ComPtr<ID2D1SolidColorBrush> accent_brush_;
     HWND hwnd_ = nullptr;
     int surface_width_ = 0;
     int surface_height_ = 0;
-    double commit_interval_ms_ = 1000.0 / 60.0;
+    double commit_interval_ms_ = 1000.0 / 120.0;
     double last_frame_ms_ = 0.0;
     std::chrono::steady_clock::time_point last_commit_time_{};
     std::uint64_t frame_count_ = 0;

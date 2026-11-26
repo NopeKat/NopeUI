@@ -8,4 +8,4 @@ add_executable(nopeui_frame_benchmark
     frame_benchmark/main.cpp
 )
 
-target_link_libraries(nopeui_frame_benchmark PRIVATE nopeui_platform dwmapi)
+target_link_libraries(nopeui_frame_benchmark PRIVATE nopeui_platform)

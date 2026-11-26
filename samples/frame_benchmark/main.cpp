@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <chrono>
 #include <cstdio>
 #include <cstring>
 #include <cwchar>
@@ -6,13 +7,20 @@
 #include <utility>
 #include <vector>
 
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+
 #include <Windows.h>
-#include <dwmapi.h>
 
 #include "nopeui/platform/window.h"
 
+#ifndef CREATE_WAITABLE_TIMER_HIGH_RESOLUTION
+#define CREATE_WAITABLE_TIMER_HIGH_RESOLUTION 0x00000002
+#endif
+
 int main(int argc, char** argv) {
-    bool paced = false;
+    bool paced = true;
     bool full_frame = false;
     bool throttle_commits = true;
     for (int index = 1; index < argc; ++index) {
@@ -41,32 +49,77 @@ int main(int argc, char** argv) {
     window->Show();
     window->SetCommitThrottle(throttle_commits);
 
-    constexpr int warmup_frames = 30;
-    constexpr int measured_frames = 300;
-    const nopeui::Rect dirty_rect{0.0f, 0.0f, 900.0f, 4.0f};
-    for (int index = 0; index < warmup_frames; ++index) {
+    const double frame_ms = paced ? 1000.0 / 120.0 : 0.0;
+    HANDLE frame_timer = nullptr;
+    if (paced) {
+        frame_timer = CreateWaitableTimerExW(
+            nullptr,
+            nullptr,
+            CREATE_WAITABLE_TIMER_HIGH_RESOLUTION,
+            TIMER_ALL_ACCESS);
+        if (frame_timer == nullptr) {
+            std::fprintf(stderr, "high-resolution timer unavailable; using Sleep\n");
+        }
+    }
+
+    const auto wait_for_frame = [&] {
+        if (frame_timer != nullptr) {
+            LARGE_INTEGER due{};
+            due.QuadPart = -static_cast<LONGLONG>(frame_ms * 10000.0);
+            if (SetWaitableTimer(frame_timer, &due, 0, nullptr, nullptr, FALSE)) {
+                WaitForSingleObject(frame_timer, INFINITE);
+                return;
+            }
+        }
+        if (paced) {
+            Sleep(static_cast<DWORD>(frame_ms));
+        }
+    };
+
+    const auto render_frame = [&] {
         if (full_frame) {
             window->RenderFrame();
         } else {
-            window->RenderFrame(dirty_rect);
+            window->RenderFrame(nopeui::Rect{0.0f, 0.0f, 900.0f, 4.0f});
         }
+    };
+
+    constexpr int warmup_frames = 30;
+    constexpr int measured_frames = 300;
+    for (int index = 0; index < warmup_frames; ++index) {
+        wait_for_frame();
+        render_frame();
     }
 
     std::vector<double> frame_times;
     frame_times.reserve(measured_frames);
-    for (int index = 0; index < measured_frames; ++index) {
-        if (paced) {
-            DwmFlush();
+    int attempts = 0;
+    const int max_attempts = measured_frames * 4;
+    while (static_cast<int>(frame_times.size()) < measured_frames &&
+           attempts < max_attempts) {
+        wait_for_frame();
+
+        const auto commits_before = window->CommitCount();
+        const auto start = std::chrono::steady_clock::now();
+        render_frame();
+        const auto elapsed = std::chrono::steady_clock::now() - start;
+
+        if (window->CommitCount() != commits_before) {
+            frame_times.push_back(
+                std::chrono::duration<double, std::milli>(elapsed).count());
         }
-        if (full_frame) {
-            window->RenderFrame();
-        } else {
-            window->RenderFrame(dirty_rect);
-        }
-        frame_times.push_back(window->LastFrameMilliseconds());
+        ++attempts;
     }
 
-    window->Present();
+    if (frame_times.empty()) {
+        std::fprintf(stderr, "no committed frames measured\n");
+        if (frame_timer != nullptr) {
+            CloseHandle(frame_timer);
+        }
+        window->Close();
+        return 1;
+    }
+
     const auto commit_count = window->CommitCount();
 
     std::sort(frame_times.begin(), frame_times.end());
@@ -81,12 +134,14 @@ int main(int argc, char** argv) {
     const double p99 = frame_times[p99_index];
 
     std::printf(
-        "content=%s pace=%s throttle=%s frames=%zu commits=%llu "
-        "avg=%.3f ms p99=%.3f ms min=%.3f ms max=%.3f ms\n",
+        "content=%s pace=%s throttle=%s target_hz=%.0f frames=%zu attempts=%d "
+        "commits=%llu avg=%.3f ms p99=%.3f ms min=%.3f ms max=%.3f ms\n",
         full_frame ? "full" : "dirty",
-        paced ? "dwm-synced" : "unpaced",
+        paced ? "fixed" : "unpaced",
         throttle_commits ? "on" : "off",
+        paced ? 1000.0 / frame_ms : 0.0,
         frame_times.size(),
+        attempts,
         static_cast<unsigned long long>(commit_count),
         average,
         p99,
@@ -102,6 +157,9 @@ int main(int argc, char** argv) {
         p99);
     SetWindowTextW(window->Handle(), title);
 
+    if (frame_timer != nullptr) {
+        CloseHandle(frame_timer);
+    }
     window->Close();
     return 0;
 }
