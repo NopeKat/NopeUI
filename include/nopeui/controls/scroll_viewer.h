@@ -8,8 +8,8 @@
 
 namespace nopeui {
 
-// Single child scrolled vertically by wheel input, clipped to its viewport.
-// There is no scrollbar yet; the offset is clamped to the measured content.
+// Single child scrolled by wheel input in both directions, clipped to its
+// viewport. Thin scrollbars only appear on axes whose content overflows.
 class ScrollViewer : public Element {
 public:
     static Ref<ScrollViewer> Create() noexcept;
@@ -17,9 +17,14 @@ public:
     void SetChild(Ref<Element> child) noexcept;
 
     float VerticalOffset() const noexcept {
-        return offset_;
+        return offset_y_;
     }
     void SetVerticalOffset(float offset) noexcept;
+
+    float HorizontalOffset() const noexcept {
+        return offset_x_;
+    }
+    void SetHorizontalOffset(float offset) noexcept;
 
 protected:
     Size MeasureOverride(Size available) noexcept override;
@@ -34,18 +39,34 @@ protected:
     void BringChildIntoView(const Element* descendant) noexcept override;
 
 private:
+    enum class DragAxis {
+        None,
+        Vertical,
+        Horizontal,
+    };
+
     ScrollViewer() noexcept = default;
 
-    float MaxOffset() const noexcept;
-    Rect TrackRect() const noexcept;
-    Rect ThumbRect() const noexcept;
+    float MaxVerticalOffset() const noexcept;
+    float MaxHorizontalOffset() const noexcept;
+    bool HasVerticalScrollbar() const noexcept;
+    bool HasHorizontalScrollbar() const noexcept;
+
+    Rect VerticalTrackRect() const noexcept;
+    Rect VerticalThumbRect() const noexcept;
+    Rect HorizontalTrackRect() const noexcept;
+    Rect HorizontalThumbRect() const noexcept;
 
     Ref<Element> child_;
-    float offset_ = 0.0f;
+    float offset_x_ = 0.0f;
+    float offset_y_ = 0.0f;
+    float content_width_ = 0.0f;
     float content_height_ = 0.0f;
+    float drag_start_x_ = 0.0f;
     float drag_start_y_ = 0.0f;
-    float drag_start_offset_ = 0.0f;
-    bool dragging_ = false;
+    float drag_start_offset_x_ = 0.0f;
+    float drag_start_offset_y_ = 0.0f;
+    DragAxis drag_axis_ = DragAxis::None;
 };
 
 }  // namespace nopeui

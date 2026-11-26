@@ -92,6 +92,10 @@ public:
     virtual bool OnKeyUp(unsigned int) noexcept {
         return false;
     }
+    // Printable character produced by the host after key translation.
+    virtual bool OnChar(wchar_t) noexcept {
+        return false;
+    }
 
     // Wheel input walks from the hit element up to the nearest scrollable
     // ancestor. Returns true when one of them handled the delta.

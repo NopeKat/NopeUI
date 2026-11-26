@@ -70,11 +70,11 @@ NopeUI 是一个仅面向 Windows 的开源 C++ 桌面 UI 框架。外观参考 
 
 ## 布局与控件
 
-元素树只做四件事：`Measure` 用可用尺寸算期望尺寸，`Arrange` 落最终矩形，`HitTest` 找最上层命中的元素，`Paint` 由窗口在硬件与软件两条路径里统一调用。`StackPanel` 支持纵向与横向排列，`Border` 负责背景、1 像素描边、内边距与可选圆角，`ScrollViewer` 提供单子元素的纵向滚动，`Label` 和 `Button` 复用 `graphics::TextRun` 缓存的文字布局；`Button` 带圆角、悬停与按下底色、焦点矩形和点击回调，鼠标点击或 Enter/Space 都会触发，`SetEnabled(false)` 后按 `ControlState::Disabled` 取色，不参与命中、焦点和滚轮。
+元素树只做四件事：`Measure` 用可用尺寸算期望尺寸，`Arrange` 落最终矩形，`HitTest` 找最上层命中的元素，`Paint` 由窗口在硬件与软件两条路径里统一调用。`StackPanel` 支持纵向与横向排列，`Border` 负责背景、1 像素描边、内边距与可选圆角，`ScrollViewer` 提供单子元素的横向与纵向滚动。`Label`、`Button`、`CheckBox`、`ToggleButton`、`TextBox` 共用 `graphics::TextRun` 缓存的文字布局；`Button` 带圆角、悬停与按下底色、焦点矩形和点击回调，`CheckBox` 与 `ToggleButton` 保留选中态，鼠标点击或 Enter/Space 都会切换；`SetEnabled(false)` 后按 `ControlState::Disabled` 取色，不参与命中、焦点和滚轮。
 
-`TextStyle` 控制字号、粗细、换行与省略。`Label` 换行时按可用宽度重建文本布局并在高度上增长，省略时用 DirectWrite 的尾部裁剪；布局变化通过 `InvalidateLayout` 回到窗口重新测量与排列，单纯改颜色只触发重绘。
+`TextStyle` 控制字号、粗细、字族、对齐、行高倍数、换行与省略。`Label` 换行时按可用宽度重建文本布局并在高度上增长，省略时用 DirectWrite 的尾部裁剪，居中或右对齐时占满可用宽度；布局变化通过 `InvalidateLayout` 回到窗口重新测量与排列，单纯改颜色只触发重绘。`TextBox` 是单行编辑框，支持字符输入、光标、退格/删除、方向键、Home/End 和回车提交，`SetPlaceholder` 提供空内容提示；选择、剪贴板和输入法组合还未实现。
 
-容器在绘制子元素前按自身 bounds 压裁剪区，`Border`、`StackPanel`、`ScrollViewer` 都这么做。`ScrollViewer` 在右侧画 6 像素细滚动条，滑块长度按视口与内容比例计算，可直接拖动；滚轮从命中元素向上冒泡到最近的滚动容器，步长按系统“每次滚动几行”换算，设为整页滚动时改滚一屏。焦点移到视口外的控件时，窗口会沿父链调用 `BringChildIntoView`，最近的滚动容器自动把该控件滚进视口。
+容器在绘制子元素前按自身 bounds 压裁剪区，`Border`、`StackPanel`、`ScrollViewer` 都这么做。`ScrollViewer` 在内容溢出时按需显示 6 像素细滚动条，横向与纵向都可拖动，内容放得下时自动隐藏；滚轮从命中元素向上冒泡到最近的滚动容器，步长按系统“每次滚动几行”换算，设为整页滚动时改滚一屏，按住 Shift 或只有横向溢出时滚横向。焦点移到视口外的控件时，窗口会沿父链调用 `BringChildIntoView`，最近的滚动容器自动把该控件滚进视口。
 
 焦点按视觉顺序排序：`IsFocusable()` 标记可聚焦元素，`CollectFocusable()` 递归收集，窗口维护 Tab 与 Shift+Tab，失去窗口焦点时清空。禁用元素及其子树不进入焦点序列。`Button` 的 `SetOnClick` 保存单个回调，`SubscribeClick` 返回可管理的订阅。
 
@@ -84,6 +84,8 @@ NopeUI 是一个仅面向 Windows 的开源 C++ 桌面 UI 框架。外观参考 
 auto panel = nopeui::StackPanel::Create(12.0f);
 panel->Add(nopeui::Label::Create(L"Title"));
 panel->Add(nopeui::Button::Create(L"Continue"));
+panel->Add(nopeui::CheckBox::Create(L"Remember me"));
+panel->Add(nopeui::TextBox::Create(L"Editable line"));
 
 auto card = nopeui::Border::Create();
 card->SetPadding(nopeui::Thickness{24.0f, 20.0f, 24.0f, 20.0f});

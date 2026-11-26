@@ -1929,6 +1929,13 @@ bool Window::OnKeyUp(unsigned int key) noexcept {
     return focused_->OnKeyUp(key);
 }
 
+bool Window::OnChar(wchar_t character) noexcept {
+    if (focused_ == nullptr) {
+        return false;
+    }
+    return focused_->OnChar(character);
+}
+
 HWND Window::Handle() const noexcept {
     return hwnd_;
 }
@@ -2214,6 +2221,13 @@ LRESULT CALLBACK Window::WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM 
             }
             break;
         }
+
+        case WM_CHAR:
+            if (window != nullptr &&
+                window->OnChar(static_cast<wchar_t>(wparam))) {
+                return 0;
+            }
+            break;
 
         case WM_KEYUP:
             if (window != nullptr &&

@@ -12,6 +12,7 @@
 #include <dwrite.h>
 #include <wrl/client.h>
 
+#include <algorithm>
 #include <cstdio>
 #include <string>
 
@@ -54,6 +55,7 @@ struct TextRun::Impl {
     ComPtr<IDWriteTextFormat> format;
     ComPtr<IDWriteTextLayout> layout;
     Size size;
+    std::size_t length = 0;
 };
 
 TextRun::TextRun() noexcept = default;
@@ -80,9 +82,11 @@ Result<std::unique_ptr<TextRun>> TextRun::Create(
 
     auto impl = std::make_unique<Impl>();
     impl->factory = factory_result.value();
+    impl->length = text.size();
 
+    const std::wstring family = style.font_family.empty() ? L"Segoe UI" : style.font_family;
     HRESULT result = impl->factory->CreateTextFormat(
-        L"Segoe UI",
+        family.c_str(),
         nullptr,
         style.bold ? DWRITE_FONT_WEIGHT_SEMI_BOLD : DWRITE_FONT_WEIGHT_NORMAL,
         DWRITE_FONT_STYLE_NORMAL,
@@ -90,9 +94,39 @@ Result<std::unique_ptr<TextRun>> TextRun::Create(
         style.size,
         L"en-US",
         impl->format.GetAddressOf());
+    if (FAILED(result) && family != L"Segoe UI") {
+        result = impl->factory->CreateTextFormat(
+            L"Segoe UI",
+            nullptr,
+            style.bold ? DWRITE_FONT_WEIGHT_SEMI_BOLD : DWRITE_FONT_WEIGHT_NORMAL,
+            DWRITE_FONT_STYLE_NORMAL,
+            DWRITE_FONT_STRETCH_NORMAL,
+            style.size,
+            L"en-US",
+            impl->format.GetAddressOf());
+    }
     if (FAILED(result)) {
         return Result<std::unique_ptr<TextRun>>::Fail(
             Error{ErrorCode::PlatformFailure, HResultMessage("CreateTextFormat", result)});
+    }
+
+    if (style.line_spacing > 0.0f) {
+        const float line_height = style.size * style.line_spacing;
+        impl->format->SetLineSpacing(
+            DWRITE_LINE_SPACING_METHOD_UNIFORM,
+            line_height,
+            line_height * 0.8f);
+    }
+
+    switch (style.alignment) {
+        case TextAlignment::Center:
+            impl->format->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_CENTER);
+            break;
+        case TextAlignment::Trailing:
+            impl->format->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_TRAILING);
+            break;
+        case TextAlignment::Leading:
+            break;
     }
 
     const float layout_width = max_width > 1.0f ? max_width : 1.0f;
@@ -136,6 +170,38 @@ Result<std::unique_ptr<TextRun>> TextRun::Create(
 
 Size TextRun::Measure() const noexcept {
     return impl_->size;
+}
+
+float TextRun::CaretX(std::size_t index) const noexcept {
+    if (impl_ == nullptr || impl_->layout == nullptr) {
+        return 0.0f;
+    }
+    const UINT32 position = static_cast<UINT32>(
+        std::min<std::size_t>(index, impl_->length));
+    float x = 0.0f;
+    float y = 0.0f;
+    DWRITE_HIT_TEST_METRICS metrics{};
+    if (FAILED(impl_->layout->HitTestTextPosition(
+            position, FALSE, &x, &y, &metrics))) {
+        return 0.0f;
+    }
+    return x;
+}
+
+std::size_t TextRun::IndexFromX(float x) const noexcept {
+    if (impl_ == nullptr || impl_->layout == nullptr) {
+        return 0;
+    }
+    BOOL trailing = FALSE;
+    DWRITE_HIT_TEST_METRICS metrics{};
+    if (FAILED(impl_->layout->HitTestPoint(x, 0.0f, FALSE, &trailing, &metrics))) {
+        return 0;
+    }
+    std::size_t position = metrics.textPosition;
+    if (trailing != FALSE) {
+        position += metrics.length;
+    }
+    return std::min<std::size_t>(position, impl_->length);
 }
 
 void TextRun::Draw(

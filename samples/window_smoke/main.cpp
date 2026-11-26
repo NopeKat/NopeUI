@@ -11,9 +11,12 @@
 
 #include "nopeui/controls/border.h"
 #include "nopeui/controls/button.h"
+#include "nopeui/controls/check_box.h"
 #include "nopeui/controls/label.h"
 #include "nopeui/controls/scroll_viewer.h"
 #include "nopeui/controls/stack_panel.h"
+#include "nopeui/controls/text_box.h"
+#include "nopeui/controls/toggle_button.h"
 #include "nopeui/platform/window.h"
 #include "nopeui/theme/theme.h"
 
@@ -91,6 +94,21 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR command_line_ptr, int) {
     disabled_button->SetEnabled(false);
     theme_row->Add(disabled_button);
     panel->Add(theme_row);
+
+    auto options_row = nopeui::StackPanel::Create(16.0f);
+    options_row->SetOrientation(nopeui::Orientation::Horizontal);
+    auto check = nopeui::CheckBox::Create(L"Check box");
+    check->SetChecked(true);
+    auto toggle = nopeui::ToggleButton::Create(L"Toggle button");
+    toggle->SetChecked(true);
+    options_row->Add(check);
+    options_row->Add(toggle);
+    panel->Add(options_row);
+
+    auto input = nopeui::TextBox::Create(L"Editable single line");
+    input->SetPlaceholder(L"Type here and press Enter");
+    panel->Add(input);
+
     panel->Add(nopeui::Label::Create(L"Wheel over the card scrolls the list."));
 
     nopeui::graphics::TextStyle body;
@@ -109,6 +127,41 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR command_line_ptr, int) {
         L"instead of clipping in the middle of a word when the card is narrow. "
         L"The trimmed tail ends with a visible ellipsis when space runs out.",
         single));
+
+    nopeui::graphics::TextStyle mono;
+    mono.font_family = L"Consolas";
+    panel->Add(nopeui::Label::Create(
+        L"Consolas regular: const int value = 42;",
+        mono));
+
+    nopeui::graphics::TextStyle centered;
+    centered.alignment = nopeui::graphics::TextAlignment::Center;
+    panel->Add(nopeui::Label::Create(L"Centered text inside the card", centered));
+
+    nopeui::graphics::TextStyle spaced;
+    spaced.wrap = true;
+    spaced.line_spacing = 1.4f;
+    panel->Add(nopeui::Label::Create(
+        L"Line spacing is a multiplier over the font size, so this wrapped\n"
+        L"paragraph keeps its natural width handling while the lines sit\n"
+        L"further apart and stay readable.",
+        spaced));
+
+    auto strip = nopeui::StackPanel::Create(8.0f);
+    strip->SetOrientation(nopeui::Orientation::Horizontal);
+    for (int index = 0; index < 24; ++index) {
+        wchar_t item[32]{};
+        std::swprintf(item, std::size(item), L"Item %02d", index);
+        strip->Add(nopeui::Label::Create(item));
+    }
+    nopeui::graphics::TextStyle spacer;
+    spacer.size = 8.0f;
+    auto strip_content = nopeui::StackPanel::Create(0.0f);
+    strip_content->Add(strip);
+    strip_content->Add(nopeui::Label::Create(L" ", spacer));
+    auto strip_scroll = nopeui::ScrollViewer::Create();
+    strip_scroll->SetChild(strip_content);
+    panel->Add(strip_scroll);
 
     for (int index = 0; index < 40; ++index) {
         wchar_t row[64]{};

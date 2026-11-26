@@ -26,8 +26,7 @@ Ref<Label> Label::Create(std::wstring text, graphics::TextStyle style) noexcept 
 }
 
 void Label::SetTextStyle(graphics::TextStyle style) noexcept {
-    if (style_.size == style.size && style_.bold == style.bold &&
-        style_.wrap == style.wrap && style_.ellipsis == style.ellipsis) {
+    if (style_ == style) {
         return;
     }
     style_ = style;
@@ -54,14 +53,18 @@ void Label::RebuildRun(float width) noexcept {
 
 Size Label::MeasureOverride(Size available) noexcept {
     const float width = available.width > 1.0f ? available.width : 1.0f;
-    const bool width_matters = style_.wrap || style_.ellipsis;
+    const bool width_matters =
+        style_.wrap || style_.ellipsis ||
+        style_.alignment != graphics::TextAlignment::Leading;
     if (run_dirty_ || (width_matters && std::abs(width - run_width_) > 1.0f)) {
         RebuildRun(width);
     }
 
     if (run_ != nullptr) {
         const Size measured = run_->Measure();
-        const float desired_width = style_.wrap
+        const bool fills_width =
+            style_.wrap || style_.alignment != graphics::TextAlignment::Leading;
+        const float desired_width = fills_width
             ? available.width
             : std::min(measured.width, available.width);
         return Size{

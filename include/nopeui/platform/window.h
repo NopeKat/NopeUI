@@ -150,6 +150,7 @@ private:
     void ClearFocus() noexcept;
     bool OnKeyDown(unsigned int key) noexcept;
     bool OnKeyUp(unsigned int key) noexcept;
+    bool OnChar(wchar_t character) noexcept;
 
     HWND hwnd_ = nullptr;
     std::unique_ptr<WindowGraphics> graphics_;

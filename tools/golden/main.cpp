@@ -5,8 +5,12 @@
 
 #include "nopeui/controls/border.h"
 #include "nopeui/controls/button.h"
+#include "nopeui/controls/check_box.h"
 #include "nopeui/controls/label.h"
+#include "nopeui/controls/scroll_viewer.h"
 #include "nopeui/controls/stack_panel.h"
+#include "nopeui/controls/text_box.h"
+#include "nopeui/controls/toggle_button.h"
 #include "nopeui/graphics/hardware.h"
 #include "nopeui/graphics/offscreen.h"
 #include "nopeui/graphics/scene.h"
@@ -75,6 +79,22 @@ nopeui::Ref<nopeui::Element> BuildControlsScene(
     states->Add(disabled);
     panel->Add(states);
 
+    auto options = nopeui::StackPanel::Create(16.0f);
+    options->SetOrientation(nopeui::Orientation::Horizontal);
+    auto checked = nopeui::CheckBox::Create(L"Checked");
+    checked->SetChecked(true);
+    auto unchecked = nopeui::CheckBox::Create(L"Unchecked");
+    options->Add(checked);
+    options->Add(unchecked);
+    auto off = nopeui::ToggleButton::Create(L"Toggle off");
+    auto on = nopeui::ToggleButton::Create(L"Toggle on");
+    on->SetChecked(true);
+    options->Add(off);
+    options->Add(on);
+    panel->Add(options);
+
+    panel->Add(nopeui::TextBox::Create(L"Editable single line"));
+
     panel->Add(nopeui::Label::Create(L"Spacing, borders and text share one theme"));
 
     nopeui::graphics::TextStyle body;
@@ -94,6 +114,38 @@ nopeui::Ref<nopeui::Element> BuildControlsScene(
         L"available space instead of being clipped in the middle of a word. "
         L"The trimmed tail ends with a visible ellipsis when space runs out.",
         single));
+
+    nopeui::graphics::TextStyle mono;
+    mono.font_family = L"Consolas";
+    panel->Add(nopeui::Label::Create(L"Consolas: const int value = 42;", mono));
+
+    nopeui::graphics::TextStyle centered;
+    centered.alignment = nopeui::graphics::TextAlignment::Center;
+    panel->Add(nopeui::Label::Create(L"Centered text", centered));
+
+    nopeui::graphics::TextStyle spaced;
+    spaced.wrap = true;
+    spaced.line_spacing = 1.4f;
+    panel->Add(nopeui::Label::Create(
+        L"A wrapped paragraph with wider line spacing than the default,\n"
+        L"used to pin the line height multiplier in the golden image.",
+        spaced));
+
+    auto strip = nopeui::StackPanel::Create(8.0f);
+    strip->SetOrientation(nopeui::Orientation::Horizontal);
+    for (int index = 0; index < 24; ++index) {
+        wchar_t item[32]{};
+        std::swprintf(item, std::size(item), L"Item %02d", index);
+        strip->Add(nopeui::Label::Create(item));
+    }
+    nopeui::graphics::TextStyle spacer;
+    spacer.size = 8.0f;
+    auto strip_content = nopeui::StackPanel::Create(0.0f);
+    strip_content->Add(strip);
+    strip_content->Add(nopeui::Label::Create(L" ", spacer));
+    auto strip_scroll = nopeui::ScrollViewer::Create();
+    strip_scroll->SetChild(strip_content);
+    panel->Add(strip_scroll);
 
     card->SetChild(panel);
     page->SetChild(card);

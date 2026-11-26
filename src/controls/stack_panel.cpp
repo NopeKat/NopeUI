@@ -52,7 +52,7 @@ Size StackPanel::MeasureOverride(Size available) noexcept {
         }
     }
     return Size{
-        std::min(width, available.width),
+        width,
         std::min(height, available.height)};
 }
 
