@@ -32,6 +32,7 @@ protected:
     void PaintContent(ID2D1RenderTarget* target) noexcept override;
     Element* HitTestOverride(Point point) noexcept override;
     void CollectFocusable(std::vector<Element*>& elements) noexcept override;
+    void CollectChildren(std::vector<Element*>& elements) noexcept override;
     bool OnWheel(int delta) noexcept override;
     bool OnKeyDown(unsigned int key) noexcept override;
     void OnPointerEnter() noexcept override;

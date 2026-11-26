@@ -174,4 +174,10 @@ void Border::CollectFocusable(std::vector<Element*>& elements) noexcept {
     }
 }
 
+void Border::CollectChildren(std::vector<Element*>& elements) noexcept {
+    if (child_) {
+        elements.push_back(child_.Get());
+    }
+}
+
 }  // namespace nopeui

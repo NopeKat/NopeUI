@@ -84,4 +84,12 @@ void Label::PaintContent(ID2D1RenderTarget* target) noexcept {
     run_->Draw(target, Point{bounds_.x, bounds_.y}, color);
 }
 
+AccessibleRole Label::AccessibilityRole() const noexcept {
+    return AccessibleRole::Text;
+}
+
+std::wstring Label::AccessibilityName() const {
+    return text_;
+}
+
 }  // namespace nopeui

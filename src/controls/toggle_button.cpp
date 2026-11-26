@@ -211,4 +211,36 @@ void ToggleButton::Toggle() noexcept {
     }
 }
 
+AccessibleRole ToggleButton::AccessibilityRole() const noexcept {
+    return AccessibleRole::Button;
+}
+
+std::wstring ToggleButton::AccessibilityName() const {
+    return text_;
+}
+
+bool ToggleButton::HasAccessibilityInvoke() const noexcept {
+    return true;
+}
+
+bool ToggleButton::HasAccessibilityToggle() const noexcept {
+    return true;
+}
+
+bool ToggleButton::AccessibilityToggleOn() const noexcept {
+    return checked_;
+}
+
+void ToggleButton::InvokeAccessibility() noexcept {
+    if (IsEnabled()) {
+        Toggle();
+    }
+}
+
+void ToggleButton::ToggleAccessibility() noexcept {
+    if (IsEnabled()) {
+        Toggle();
+    }
+}
+
 }  // namespace nopeui

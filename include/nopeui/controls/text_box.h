@@ -48,6 +48,11 @@ protected:
     void OnImeResult(std::wstring_view text) noexcept override;
     void OnImeEnd() noexcept override;
     Point ImeCaretPoint() const noexcept override;
+    AccessibleRole AccessibilityRole() const noexcept override;
+    std::wstring AccessibilityName() const override;
+    std::wstring AccessibilityValue() const override;
+    bool SetAccessibilityValue(std::wstring_view value) override;
+    bool HasAccessibilityValue() const noexcept override;
 
 private:
     TextBox() noexcept = default;

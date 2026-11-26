@@ -102,4 +102,10 @@ void StackPanel::CollectFocusable(std::vector<Element*>& elements) noexcept {
     }
 }
 
+void StackPanel::CollectChildren(std::vector<Element*>& elements) noexcept {
+    for (const auto& child : children_) {
+        elements.push_back(child.Get());
+    }
+}
+
 }  // namespace nopeui

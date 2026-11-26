@@ -227,4 +227,26 @@ void CheckBox::Toggle() noexcept {
     }
 }
 
+AccessibleRole CheckBox::AccessibilityRole() const noexcept {
+    return AccessibleRole::CheckBox;
+}
+
+std::wstring CheckBox::AccessibilityName() const {
+    return label_;
+}
+
+bool CheckBox::HasAccessibilityToggle() const noexcept {
+    return true;
+}
+
+bool CheckBox::AccessibilityToggleOn() const noexcept {
+    return checked_;
+}
+
+void CheckBox::ToggleAccessibility() noexcept {
+    if (IsEnabled()) {
+        Toggle();
+    }
+}
+
 }  // namespace nopeui

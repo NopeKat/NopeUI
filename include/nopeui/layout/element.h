@@ -3,10 +3,12 @@
 
 #include <cstdint>
 #include <functional>
+#include <string>
 #include <string_view>
 #include <utility>
 #include <vector>
 
+#include "nopeui/base/accessibility.h"
 #include "nopeui/base/geometry.h"
 #include "nopeui/base/ref.h"
 
@@ -71,6 +73,38 @@ public:
         return false;
     }
     virtual void CollectFocusable(std::vector<Element*>& elements) noexcept;
+
+    // Accessibility metadata and automation actions. Controls override the
+    // parts they support; the window maps them to UI Automation properties.
+    virtual AccessibleRole AccessibilityRole() const noexcept {
+        return AccessibleRole::Pane;
+    }
+    virtual std::wstring AccessibilityName() const {
+        return {};
+    }
+    virtual std::wstring AccessibilityValue() const {
+        return {};
+    }
+    virtual bool SetAccessibilityValue(std::wstring_view) {
+        return false;
+    }
+    virtual bool HasAccessibilityValue() const noexcept {
+        return false;
+    }
+    virtual bool HasAccessibilityInvoke() const noexcept {
+        return false;
+    }
+    virtual bool HasAccessibilityToggle() const noexcept {
+        return false;
+    }
+    virtual bool AccessibilityToggleOn() const noexcept {
+        return false;
+    }
+    virtual void InvokeAccessibility() noexcept {}
+    virtual void ToggleAccessibility() noexcept {}
+
+    // Child order for the automation tree.
+    virtual void CollectChildren(std::vector<Element*>&) noexcept {}
 
     bool IsFocused() const noexcept {
         return focused_;

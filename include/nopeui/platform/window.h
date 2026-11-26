@@ -123,6 +123,15 @@ public:
 
     HWND Handle() const noexcept;
 
+    // Accessibility integration: the content root and current keyboard focus.
+    Element* ContentElement() const noexcept {
+        return content_.Get();
+    }
+    Element* FocusedElement() const noexcept {
+        return focused_;
+    }
+    void FocusFromAccessibility(Element* element) noexcept;
+
 private:
     Window() noexcept;
 

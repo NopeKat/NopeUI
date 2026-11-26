@@ -38,12 +38,13 @@ target_link_libraries(nopeui_layout PUBLIC nopeui_base nopeui_theme)
 target_compile_features(nopeui_layout PUBLIC cxx_std_20)
 
 add_library(nopeui_platform STATIC
+    src/platform/automation.cpp
     src/platform/window.cpp
 )
 
 target_link_libraries(nopeui_platform
     PUBLIC nopeui_base nopeui_theme
-    PRIVATE user32 d3d11 dxgi d2d1 dcomp dwrite dwmapi imm32 nopeui_graphics nopeui_layout
+    PRIVATE user32 d3d11 dxgi d2d1 dcomp dwrite dwmapi imm32 uiautomationcore oleaut32 nopeui_graphics nopeui_layout
 )
 target_compile_features(nopeui_platform PUBLIC cxx_std_20)
 

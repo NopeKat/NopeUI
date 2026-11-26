@@ -299,6 +299,12 @@ void ScrollViewer::CollectFocusable(std::vector<Element*>& elements) noexcept {
     }
 }
 
+void ScrollViewer::CollectChildren(std::vector<Element*>& elements) noexcept {
+    if (child_) {
+        elements.push_back(child_.Get());
+    }
+}
+
 bool ScrollViewer::OnWheel(int delta) noexcept {
     if (!IsEnabled()) {
         return false;

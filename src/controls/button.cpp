@@ -184,4 +184,22 @@ bool Button::OnKeyUp(unsigned int key) noexcept {
     return true;
 }
 
+AccessibleRole Button::AccessibilityRole() const noexcept {
+    return AccessibleRole::Button;
+}
+
+std::wstring Button::AccessibilityName() const {
+    return text_;
+}
+
+bool Button::HasAccessibilityInvoke() const noexcept {
+    return true;
+}
+
+void Button::InvokeAccessibility() noexcept {
+    if (IsEnabled()) {
+        click_.Raise();
+    }
+}
+
 }  // namespace nopeui

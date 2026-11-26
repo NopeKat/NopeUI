@@ -38,6 +38,13 @@ protected:
     bool IsFocusable() const noexcept override;
     bool OnKeyDown(unsigned int key) noexcept override;
     bool OnKeyUp(unsigned int key) noexcept override;
+    AccessibleRole AccessibilityRole() const noexcept override;
+    std::wstring AccessibilityName() const override;
+    bool HasAccessibilityInvoke() const noexcept override;
+    bool HasAccessibilityToggle() const noexcept override;
+    bool AccessibilityToggleOn() const noexcept override;
+    void InvokeAccessibility() noexcept override;
+    void ToggleAccessibility() noexcept override;
 
 private:
     ToggleButton() noexcept = default;

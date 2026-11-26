@@ -14,6 +14,7 @@
 
 #include "nopeui/graphics/offscreen.h"
 #include "nopeui/graphics/scene.h"
+#include "nopeui/platform/automation.h"
 
 #include <algorithm>
 #include <atomic>
@@ -1565,6 +1566,7 @@ Result<Ref<Window>> Window::Create(int width, int height, std::u16string_view ti
 }
 
 Window::~Window() {
+    ReleaseAutomation(this);
     ReleaseGraphics();
     if (hwnd_ != nullptr) {
         DestroyWindow(hwnd_);
@@ -1896,6 +1898,15 @@ void Window::FocusElement(Element* element) noexcept {
             node = node->Parent();
         }
     }
+    NotifyAutomationFocus(this, focused_);
+}
+
+void Window::FocusFromAccessibility(Element* element) noexcept {
+    if (hwnd_ != nullptr) {
+        ::SetFocus(hwnd_);
+    }
+    FocusElement(element);
+    RenderFrame();
 }
 
 void Window::MoveFocus(bool forward) noexcept {
@@ -2292,6 +2303,15 @@ LRESULT CALLBACK Window::WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM 
                 return 0;
             }
             break;
+
+        case WM_GETOBJECT: {
+            LRESULT result = 0;
+            if (window != nullptr &&
+                HandleAutomationGetObject(window, hwnd, wparam, lparam, &result)) {
+                return result;
+            }
+            break;
+        }
 
         case WM_IME_STARTCOMPOSITION:
             if (window != nullptr) {

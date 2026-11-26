@@ -40,6 +40,10 @@ protected:
     bool IsFocusable() const noexcept override;
     bool OnKeyDown(unsigned int key) noexcept override;
     bool OnKeyUp(unsigned int key) noexcept override;
+    AccessibleRole AccessibilityRole() const noexcept override;
+    std::wstring AccessibilityName() const override;
+    bool HasAccessibilityInvoke() const noexcept override;
+    void InvokeAccessibility() noexcept override;
 
 private:
     Button() noexcept = default;

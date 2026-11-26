@@ -557,4 +557,28 @@ Point TextBox::ImeCaretPoint() const noexcept {
     return Point{caret_x, bounds_.Bottom() - kPaddingY};
 }
 
+AccessibleRole TextBox::AccessibilityRole() const noexcept {
+    return AccessibleRole::Edit;
+}
+
+std::wstring TextBox::AccessibilityName() const {
+    return placeholder_.empty() ? L"Text" : placeholder_;
+}
+
+std::wstring TextBox::AccessibilityValue() const {
+    return text_;
+}
+
+bool TextBox::SetAccessibilityValue(std::wstring_view value) {
+    if (!IsEnabled()) {
+        return false;
+    }
+    SetText(std::wstring(value));
+    return true;
+}
+
+bool TextBox::HasAccessibilityValue() const noexcept {
+    return true;
+}
+
 }  // namespace nopeui

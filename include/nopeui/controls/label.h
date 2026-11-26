@@ -28,6 +28,8 @@ public:
 protected:
     Size MeasureOverride(Size available) noexcept override;
     void PaintContent(ID2D1RenderTarget* target) noexcept override;
+    AccessibleRole AccessibilityRole() const noexcept override;
+    std::wstring AccessibilityName() const override;
 
 private:
     Label() noexcept = default;

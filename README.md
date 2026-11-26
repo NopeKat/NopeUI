@@ -78,6 +78,8 @@ NopeUI 是一个仅面向 Windows 的开源 C++ 桌面 UI 框架。外观参考 
 
 焦点按视觉顺序排序：`IsFocusable()` 标记可聚焦元素，`CollectFocusable()` 递归收集，窗口维护 Tab 与 Shift+Tab，失去窗口焦点时清空。禁用元素及其子树不进入焦点序列。`Button` 的 `SetOnClick` 保存单个回调，`SubscribeClick` 返回可管理的订阅。
 
+无障碍走 UI Automation 的服务端 Provider：窗口响应 `WM_GETOBJECT`，根节点是 Window，控件按元素树暴露 Name、ControlType、BoundingRectangle、IsEnabled 和焦点状态。`Button`、`ToggleButton`、`CheckBox` 和 `TextBox` 分别提供 Invoke、Toggle 和 Value 模式，焦点变化时发出 UIA 焦点事件。
+
 颜色不再写死在控件里：`Theme` 有浅色与深色两套值，`Window::SetTheme` 把主题指针交给内容树，子元素沿父链找到它；`Property<T>` 是带变更检测的最小属性槽，`Set` 返回是否真的变化，控件据此调用 `Invalidate` 触发重绘。窗口默认读系统应用深浅色偏好，`nopeui_window_smoke --light` 与 `--dark` 可强制指定。
 
 ```cpp
