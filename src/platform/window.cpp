@@ -41,6 +41,7 @@ constexpr UINT_PTR kResizeSettleTimerId = 3;
 constexpr UINT_PTR kToolTipTimerId = 4;
 constexpr UINT kToolTipDelayMs = 600;
 constexpr UINT kClosePopupMessage = WM_APP + 7;
+constexpr UINT kRecreateGraphicsMessage = WM_APP + 8;
 constexpr UINT kLiveResizeIntervalMs = 8;
 constexpr UINT kResizeSettleIntervalMs = 300;
 constexpr std::size_t kMaxQueuedCommits = 1;
@@ -93,6 +94,21 @@ void EnableDpiAwareness() noexcept {
     std::call_once(once, [] {
         SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
     });
+}
+
+float DpiScaleFrom(UINT dpi) noexcept {
+    return dpi > 0 ? static_cast<float>(dpi) / 96.0f : 1.0f;
+}
+
+UINT QueryWindowDpi(HWND hwnd) noexcept {
+    if (hwnd != nullptr) {
+        const UINT dpi = GetDpiForWindow(hwnd);
+        if (dpi > 0) {
+            return dpi;
+        }
+    }
+    const UINT dpi = GetDpiForSystem();
+    return dpi > 0 ? dpi : 96;
 }
 
 std::wstring ToWideString(std::u16string_view text) {
@@ -174,6 +190,50 @@ public:
     static int AllocationExtent(int value) noexcept {
         const int slack = value <= 2048 ? value / 3 : 256;
         return value + slack;
+    }
+
+    // Drawing happens in DIPs; surfaces and DXGI update rects are in pixels.
+    float DpiScale() const noexcept {
+        return dpi_ / 96.0f;
+    }
+
+    void SetDpi(float dpi) noexcept {
+        if (dpi <= 0.0f) {
+            return;
+        }
+        if (std::abs(dpi - dpi_) < 0.5f) {
+            return;
+        }
+        dpi_ = dpi;
+        if (d2d_context_ != nullptr) {
+            d2d_context_->SetDpi(dpi_, dpi_);
+        }
+        for (auto& state : surfaces_) {
+            state.target_bitmap.Reset();
+        }
+        swap_state_.target_bitmap.Reset();
+        target_bound_index_ = -1;
+        software_bitmap_.Reset();
+        software_surface_.reset();
+        software_painter_.reset();
+        if (pixel_width_ > 0 && pixel_height_ > 0) {
+            content_width_ = DipExtent(pixel_width_);
+            content_height_ = DipExtent(pixel_height_);
+        }
+        full_redraw_required_ = true;
+    }
+
+    int PixelWidth() const noexcept {
+        return pixel_width_ > 0 ? pixel_width_ : surface_width_;
+    }
+
+    int PixelHeight() const noexcept {
+        return pixel_height_ > 0 ? pixel_height_ : surface_height_;
+    }
+
+    int DipExtent(int pixels) const noexcept {
+        return static_cast<int>(
+            std::lround(static_cast<double>(pixels) * 96.0 / static_cast<double>(dpi_)));
     }
 
     int SurfaceCountFor(int width, int height) const noexcept {
@@ -260,6 +320,12 @@ public:
         return software_render_;
     }
 
+    bool TakeDeviceLost() noexcept {
+        const bool lost = device_lost_;
+        device_lost_ = false;
+        return lost;
+    }
+
     void SetContent(Element* content) noexcept {
         content_ = content;
     }
@@ -277,7 +343,7 @@ public:
     }
 
     void DrawSoftwareScene(const RECT* update_ptr, const D2D1_RECT_F& background_rect) noexcept {
-        if (!EnsureSoftwareSurface(content_width_, content_height_)) {
+        if (!EnsureSoftwareSurface(PixelWidth(), PixelHeight())) {
             return;
         }
         auto* surface = software_surface_.get();
@@ -335,7 +401,7 @@ public:
         if (software_surface_ == nullptr ||
             software_surface_->Width() != width ||
             software_surface_->Height() != height) {
-            auto created = graphics::OffscreenSurface::Create(width, height, 96.0f);
+            auto created = graphics::OffscreenSurface::Create(width, height, dpi_);
             if (!created.ok()) {
                 software_surface_.reset();
                 software_painter_.reset();
@@ -378,8 +444,8 @@ public:
             }
             surface_count_ = 0;
             target_bound_index_ = -1;
-            const int width = content_width_ > 0 ? content_width_ : surface_width_;
-            const int height = content_height_ > 0 ? content_height_ : surface_height_;
+            const int width = PixelWidth();
+            const int height = PixelHeight();
             auto created = CreateFlipSwapChain(width, height);
             flip_model_ = created.ok();
             if (flip_model_) {
@@ -396,8 +462,8 @@ public:
         swap_state_.target_bitmap.Reset();
         target_bound_index_ = -1;
         flip_model_ = false;
-        const int width = content_width_ > 0 ? content_width_ : surface_width_;
-        const int height = content_height_ > 0 ? content_height_ : surface_height_;
+        const int width = PixelWidth();
+        const int height = PixelHeight();
         Resize(width, height, true);
     }
 
@@ -405,14 +471,16 @@ public:
         if (width <= 0 || height <= 0) {
             return Result<void>::Ok();
         }
+        pixel_width_ = width;
+        pixel_height_ = height;
 
         if (flip_model_) {
             auto resized = CreateFlipSwapChain(width, height);
             if (!resized.ok()) {
                 return resized;
             }
-            content_width_ = width;
-            content_height_ = height;
+            content_width_ = DipExtent(width);
+            content_height_ = DipExtent(height);
             surface_width_ = width;
             surface_height_ = height;
             return Result<void>::Ok();
@@ -439,8 +507,8 @@ public:
             }
         }
         if (all_target) {
-            content_width_ = width;
-            content_height_ = height;
+            content_width_ = DipExtent(width);
+            content_height_ = DipExtent(height);
             full_redraw_required_ = true;
             return Result<void>::Ok();
         }
@@ -497,8 +565,8 @@ public:
         full_redraw_required_ = true;
         surface_width_ = target_width;
         surface_height_ = target_height;
-        content_width_ = width;
-        content_height_ = height;
+        content_width_ = DipExtent(width);
+        content_height_ = DipExtent(height);
         return Result<void>::Ok();
     }
 
@@ -525,6 +593,7 @@ public:
         }
 
         RECT update{};
+        RECT update_pixels{};
         const RECT* update_ptr = nullptr;
         if (dirty_rect != nullptr) {
             update.left = std::max(0L, dirty_rect->left);
@@ -534,7 +603,12 @@ public:
             if (update.right <= update.left || update.bottom <= update.top) {
                 return;
             }
-            update_ptr = &update;
+            const float scale = DpiScale();
+            update_pixels.left = static_cast<LONG>(std::lround(update.left * scale));
+            update_pixels.top = static_cast<LONG>(std::lround(update.top * scale));
+            update_pixels.right = static_cast<LONG>(std::lround(update.right * scale));
+            update_pixels.bottom = static_cast<LONG>(std::lround(update.bottom * scale));
+            update_ptr = &update_pixels;
         }
 
         if (full_redraw_required_) {
@@ -566,13 +640,18 @@ public:
         }
         const auto begin_end = std::chrono::steady_clock::now();
         if (FAILED(result)) {
+            if (result == D2DERR_RECREATE_TARGET) {
+                device_lost_ = true;
+            }
             return;
         }
 
         if (surface_state.target_bitmap == nullptr) {
             D2D1_BITMAP_PROPERTIES1 properties = D2D1::BitmapProperties1(
                 D2D1_BITMAP_OPTIONS_TARGET | D2D1_BITMAP_OPTIONS_CANNOT_DRAW,
-                D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED));
+                D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED),
+                dpi_,
+                dpi_);
             result = d2d_context_->CreateBitmapFromDxgiSurface(
                 dxgi_surface.Get(), properties, surface_state.target_bitmap.GetAddressOf());
             if (FAILED(result)) {
@@ -590,9 +669,10 @@ public:
             d2d_context_->SetTarget(surface_state.target_bitmap.Get());
             target_bound_index_ = draw_index_;
         }
+        const float scale = DpiScale();
         d2d_context_->SetTransform(D2D1::Matrix3x2F::Translation(
-            static_cast<float>(offset.x),
-            static_cast<float>(offset.y)));
+            static_cast<float>(offset.x) / scale,
+            static_cast<float>(offset.y) / scale));
         d2d_context_->BeginDraw();
         if (software_render_) {
             DrawSoftwareScene(update_ptr, background_rect);
@@ -737,6 +817,9 @@ public:
         result = d2d_context_->EndDraw();
         if (FAILED(result)) {
             target_bound_index_ = -1;
+            if (result == D2DERR_RECREATE_TARGET) {
+                device_lost_ = true;
+            }
         }
         const auto draw_end = std::chrono::steady_clock::now();
 
@@ -751,6 +834,10 @@ public:
             HRESULT present_result = swap_chain_->Present(0, 0);
             const auto present_end = std::chrono::steady_clock::now();
             if (FAILED(present_result)) {
+                if (present_result == DXGI_ERROR_DEVICE_REMOVED ||
+                    present_result == DXGI_ERROR_DEVICE_RESET) {
+                    device_lost_ = true;
+                }
                 return;
             }
             last_commit_ms_ =
@@ -907,8 +994,8 @@ public:
             forced_surface_count_ = count;
         }
         if (async_commit_) {
-            const int content_width = content_width_ > 0 ? content_width_ : surface_width_;
-            const int content_height = content_height_ > 0 ? content_height_ : surface_height_;
+            const int content_width = PixelWidth();
+            const int content_height = PixelHeight();
             Resize(content_width, content_height, true);
         }
     }
@@ -974,8 +1061,8 @@ public:
 
         if (enabled) {
             async_commit_ = true;
-            const int content_width = content_width_ > 0 ? content_width_ : surface_width_;
-            const int content_height = content_height_ > 0 ? content_height_ : surface_height_;
+            const int content_width = PixelWidth();
+            const int content_height = PixelHeight();
             auto resized = Resize(content_width, content_height, true);
             if (!resized.ok() || surface_count_ < async_surface_count_) {
                 async_commit_ = false;
@@ -993,8 +1080,8 @@ public:
         WaitForAllCommits();
         async_commit_ = false;
         draw_index_ = 0;
-        const int content_width = content_width_ > 0 ? content_width_ : surface_width_;
-        const int content_height = content_height_ > 0 ? content_height_ : surface_height_;
+        const int content_width = PixelWidth();
+        const int content_height = PixelHeight();
         Resize(content_width, content_height, true);
         full_redraw_required_ = true;
     }
@@ -1315,6 +1402,7 @@ private:
             return Result<void>::Fail(
                 Error{ErrorCode::PlatformFailure, PlatformError("CreateDeviceContext", result)});
         }
+        d2d_context_->SetDpi(dpi_, dpi_);
 
         result = DWriteCreateFactory(
             DWRITE_FACTORY_TYPE_SHARED,
@@ -1452,11 +1540,15 @@ private:
     float diagnostic_row_height_ = 32.0f;
     bool diagnostic_cache_layouts_ = false;
     std::unordered_map<std::uint32_t, ComPtr<IDWriteTextLayout>> diagnostic_layout_cache_;
+    bool device_lost_ = false;
     HWND hwnd_ = nullptr;
     int surface_width_ = 0;
     int surface_height_ = 0;
     int content_width_ = 0;
     int content_height_ = 0;
+    int pixel_width_ = 0;
+    int pixel_height_ = 0;
+    float dpi_ = 96.0f;
     int surface_count_ = 0;
     int async_surface_count_ = kMinAsyncSurfaces;
     int forced_surface_count_ = 0;
@@ -1508,6 +1600,7 @@ public:
     }
 
     void SetPopup(Ref<Element> popup, Point anchor) noexcept {
+        ++generation_;
         if (popup_) {
             popup_->SetParent(nullptr);
         }
@@ -1520,12 +1613,17 @@ public:
     }
 
     void ClearPopup() noexcept {
+        ++generation_;
         if (popup_) {
             popup_->SetParent(nullptr);
         }
         popup_.Reset();
         popup_bounds_ = Rect{};
         InvalidateLayout();
+    }
+
+    std::uint64_t Generation() const noexcept {
+        return generation_;
     }
 
     Element* Popup() const noexcept {
@@ -1628,6 +1726,7 @@ private:
     Ref<Element> popup_;
     Point anchor_{};
     Rect popup_bounds_{};
+    std::uint64_t generation_ = 0;
 };
 
 Window::Window() noexcept : theme_(SystemTheme()) {}
@@ -1665,6 +1764,9 @@ Result<Ref<Window>> Window::Create(int width, int height, std::u16string_view ti
 
     Ref<Window> window(new Window());
     const std::wstring native_title = ToWideString(title);
+    const float initial_scale = DpiScaleFrom(GetDpiForSystem());
+    const int pixel_width = static_cast<int>(std::lround(static_cast<double>(width) * initial_scale));
+    const int pixel_height = static_cast<int>(std::lround(static_cast<double>(height) * initial_scale));
 
     HWND hwnd = CreateWindowExW(
         0,
@@ -1673,8 +1775,8 @@ Result<Ref<Window>> Window::Create(int width, int height, std::u16string_view ti
         WS_OVERLAPPEDWINDOW,
         CW_USEDEFAULT,
         CW_USEDEFAULT,
-        width,
-        height,
+        pixel_width,
+        pixel_height,
         nullptr,
         nullptr,
         GetModuleHandleW(nullptr),
@@ -1703,10 +1805,12 @@ Result<Ref<Window>> Window::Create(int width, int height, std::u16string_view ti
         return Result<Ref<Window>>::Fail(graphics.error());
     }
 
+    const UINT dpi = QueryWindowDpi(hwnd);
+    window->scale_ = DpiScaleFrom(dpi);
     window->graphics_ = std::move(graphics).value();
+    window->graphics_->SetDpi(static_cast<float>(dpi));
     window->graphics_->SetPalette(PaletteFromTheme(window->theme_));
-    window->client_width_ = client.right - client.left;
-    window->client_height_ = client.bottom - client.top;
+    window->UpdateClientMetrics(client.right - client.left, client.bottom - client.top);
     return Result<Ref<Window>>::Ok(std::move(window));
 }
 
@@ -1793,6 +1897,13 @@ std::uint64_t Window::CommitCount() const noexcept {
 
 void Window::RenderFrame() noexcept {
     if (graphics_ == nullptr) {
+        return;
+    }
+    if (graphics_->TakeDeviceLost()) {
+        if (!recreate_pending_ && hwnd_ != nullptr) {
+            recreate_pending_ = true;
+            PostMessageW(hwnd_, kRecreateGraphicsMessage, 0, 0);
+        }
         return;
     }
 
@@ -1971,6 +2082,7 @@ void Window::ShowPopup(Ref<Element> popup, Point anchor) noexcept {
         }
     }
     if (root_->HasPopup()) {
+        root_->NotifyPopupClosed();
         root_->ClearPopup();
     } else {
         previous_focus_ = focused_;
@@ -1983,6 +2095,9 @@ void Window::ShowPopup(Ref<Element> popup, Point anchor) noexcept {
     }
     root_->SetPopup(std::move(popup), anchor);
     LayoutContent(client_width_, client_height_);
+    if (root_->HasPopup() && root_->Popup() != nullptr && root_->Popup()->IsFocusable()) {
+        FocusElement(root_->Popup());
+    }
     RenderFrame();
 }
 
@@ -1991,6 +2106,7 @@ void Window::ClosePopup() noexcept {
         return;
     }
     popup_close_pending_ = true;
+    pending_close_generation_ = root_->Generation();
     if (hwnd_ != nullptr) {
         PostMessageW(hwnd_, kClosePopupMessage, 0, 0);
     }
@@ -2195,8 +2311,20 @@ void Window::OnMouseLeave() noexcept {
     }
     hovered_->OnPointerLeave();
     hovered_ = nullptr;
-    pressed_ = nullptr;
+    CancelPointerPress();
     UpdateToolTipTimer();
+    RenderFrame();
+}
+
+void Window::CancelPointerPress() noexcept {
+    if (pressed_ == nullptr) {
+        return;
+    }
+    Element* pressed = pressed_;
+    pressed_ = nullptr;
+    // A point far outside every element cancels the press instead of
+    // activating it; controls that only track drag state end it regardless.
+    pressed->OnPointerUp(Point{-100000.0f, -100000.0f});
     RenderFrame();
 }
 
@@ -2400,12 +2528,36 @@ HWND Window::Handle() const noexcept {
     return hwnd_;
 }
 
+void Window::UpdateClientMetrics(int pixel_width, int pixel_height) noexcept {
+    if (pixel_width <= 0 || pixel_height <= 0) {
+        return;
+    }
+    client_pixel_width_ = pixel_width;
+    client_pixel_height_ = pixel_height;
+    const UINT dpi = QueryWindowDpi(hwnd_);
+    scale_ = DpiScaleFrom(dpi);
+    if (graphics_ != nullptr) {
+        graphics_->SetDpi(static_cast<float>(dpi));
+    }
+    client_width_ = std::max(1, static_cast<int>(
+        std::lround(static_cast<double>(pixel_width) / static_cast<double>(scale_))));
+    client_height_ = std::max(1, static_cast<int>(
+        std::lround(static_cast<double>(pixel_height) / static_cast<double>(scale_))));
+}
+
+Point Window::ToClientDip(int pixel_x, int pixel_y) const noexcept {
+    return Point{
+        static_cast<float>(pixel_x) / scale_,
+        static_cast<float>(pixel_y) / scale_};
+}
+
 void Window::OnSize(int width, int height) noexcept {
     if (graphics_ == nullptr || width <= 0 || height <= 0) {
         return;
     }
 
-    if (width == client_width_ && height == client_height_ && !resize_pending_) {
+    if (width == client_pixel_width_ && height == client_pixel_height_ &&
+        !resize_pending_) {
         return;
     }
 
@@ -2438,7 +2590,8 @@ void Window::OnSizing(const RECT& proposed) noexcept {
     if (width <= 0 || height <= 0) {
         return;
     }
-    if (width == client_width_ && height == client_height_ && !resize_pending_) {
+    if (width == client_pixel_width_ && height == client_pixel_height_ &&
+        !resize_pending_) {
         return;
     }
 
@@ -2477,7 +2630,8 @@ void Window::RenderLiveResize() noexcept {
     if (width <= 0 || height <= 0) {
         return;
     }
-    if (width == client_width_ && height == client_height_ && !resize_pending_) {
+    if (width == client_pixel_width_ && height == client_pixel_height_ &&
+        !resize_pending_) {
         return;
     }
 
@@ -2495,6 +2649,7 @@ void Window::RenderPendingResize() noexcept {
     resize_pending_ = false;
     const int width = pending_width_;
     const int height = pending_height_;
+    UpdateClientMetrics(width, height);
     const auto resize_start = std::chrono::steady_clock::now();
     auto resized = graphics_->Resize(width, height);
     last_resize_ms_ = std::chrono::duration<double, std::milli>(
@@ -2504,9 +2659,7 @@ void Window::RenderPendingResize() noexcept {
         return;
     }
 
-    client_width_ = width;
-    client_height_ = height;
-    LayoutContent(width, height);
+    LayoutContent(client_width_, client_height_);
     graphics_->Render(nullptr, !graphics_->IsAsyncCommitEnabled());
     ScheduleResizeSettle();
 }
@@ -2521,18 +2674,55 @@ void Window::CompactResize() noexcept {
     if (hwnd_ != nullptr) {
         KillTimer(hwnd_, kResizeSettleTimerId);
     }
-    if (live_resizing_ || graphics_ == nullptr || client_width_ <= 0 || client_height_ <= 0) {
+    if (live_resizing_ || graphics_ == nullptr || client_pixel_width_ <= 0 ||
+        client_pixel_height_ <= 0) {
         ScheduleResizeSettle();
         return;
     }
 
     const auto resize_start = std::chrono::steady_clock::now();
-    auto resized = graphics_->Resize(client_width_, client_height_, true);
+    auto resized = graphics_->Resize(client_pixel_width_, client_pixel_height_, true);
     last_resize_ms_ = std::chrono::duration<double, std::milli>(
         std::chrono::steady_clock::now() - resize_start).count();
     if (resized.ok()) {
         graphics_->Render(nullptr, true);
     }
+}
+
+void Window::RecreateGraphics() noexcept {
+    recreate_pending_ = false;
+    if (hwnd_ == nullptr || root_ == nullptr) {
+        return;
+    }
+    RECT client{};
+    if (GetClientRect(hwnd_, &client) == FALSE) {
+        return;
+    }
+    const int width = static_cast<int>(client.right - client.left);
+    const int height = static_cast<int>(client.bottom - client.top);
+    if (width <= 0 || height <= 0) {
+        return;
+    }
+    auto graphics = WindowGraphics::Create(hwnd_, width, height);
+    if (!graphics.ok()) {
+        return;
+    }
+    const UINT dpi = QueryWindowDpi(hwnd_);
+    scale_ = DpiScaleFrom(dpi);
+    graphics_ = std::move(graphics).value();
+    graphics_->SetDpi(static_cast<float>(dpi));
+    graphics_->SetPalette(PaletteFromTheme(theme_));
+    graphics_->SetContent(root_);
+    UpdateClientMetrics(width, height);
+    root_->SetInvalidateHandler([this] { RenderFrame(); });
+    root_->SetRelayoutHandler([this] {
+        if (root_ != nullptr) {
+            LayoutContent(client_width_, client_height_);
+            RenderFrame();
+        }
+    });
+    LayoutContent(client_width_, client_height_);
+    RenderFrame();
 }
 
 void Window::ReleaseGraphics() noexcept {
@@ -2565,9 +2755,21 @@ LRESULT CALLBACK Window::WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM 
     }
 
     switch (message) {
+        case kRecreateGraphicsMessage:
+            if (window != nullptr) {
+                window->RecreateGraphics();
+            }
+            return 0;
+
         case kClosePopupMessage:
             if (window != nullptr && window->root_) {
+                const bool close =
+                    window->popup_close_pending_ && window->root_->HasPopup() &&
+                    window->pending_close_generation_ == window->root_->Generation();
                 window->popup_close_pending_ = false;
+                if (!close) {
+                    return 0;
+                }
                 const bool was_tooltip = window->popup_is_tooltip_;
                 window->popup_is_tooltip_ = false;
                 Element* focused = window->focused_;
@@ -2598,6 +2800,7 @@ LRESULT CALLBACK Window::WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM 
         case WM_CAPTURECHANGED:
             if (window != nullptr) {
                 window->EndLiveResize();
+                window->CancelPointerPress();
             }
             break;
 
@@ -2655,9 +2858,8 @@ LRESULT CALLBACK Window::WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM 
 
         case WM_MOUSEMOVE:
             if (window != nullptr) {
-                window->OnMouseMove(Point{
-                    static_cast<float>(GET_X_LPARAM(lparam)),
-                    static_cast<float>(GET_Y_LPARAM(lparam))});
+                window->OnMouseMove(window->ToClientDip(
+                    GET_X_LPARAM(lparam), GET_Y_LPARAM(lparam)));
             }
             return 0;
 
@@ -2674,9 +2876,7 @@ LRESULT CALLBACK Window::WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM 
                     GET_Y_LPARAM(lparam)};
                 ScreenToClient(hwnd, &cursor);
                 window->OnMouseWheel(
-                    Point{
-                        static_cast<float>(cursor.x),
-                        static_cast<float>(cursor.y)},
+                    window->ToClientDip(cursor.x, cursor.y),
                     GET_WHEEL_DELTA_WPARAM(wparam));
             }
             return 0;
@@ -2684,9 +2884,8 @@ LRESULT CALLBACK Window::WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM 
 
         case WM_RBUTTONDOWN:
             if (window != nullptr) {
-                window->OnRightMouseDown(Point{
-                    static_cast<float>(GET_X_LPARAM(lparam)),
-                    static_cast<float>(GET_Y_LPARAM(lparam))});
+                window->OnRightMouseDown(window->ToClientDip(
+                    GET_X_LPARAM(lparam), GET_Y_LPARAM(lparam)));
             }
             return 0;
 
@@ -2695,18 +2894,16 @@ LRESULT CALLBACK Window::WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM 
 
         case WM_LBUTTONDOWN:
             if (window != nullptr) {
-                window->OnMouseDown(Point{
-                    static_cast<float>(GET_X_LPARAM(lparam)),
-                    static_cast<float>(GET_Y_LPARAM(lparam))});
+                window->OnMouseDown(window->ToClientDip(
+                    GET_X_LPARAM(lparam), GET_Y_LPARAM(lparam)));
                 SetCapture(hwnd);
             }
             return 0;
 
         case WM_LBUTTONUP:
             if (window != nullptr) {
-                window->OnMouseUp(Point{
-                    static_cast<float>(GET_X_LPARAM(lparam)),
-                    static_cast<float>(GET_Y_LPARAM(lparam))});
+                window->OnMouseUp(window->ToClientDip(
+                    GET_X_LPARAM(lparam), GET_Y_LPARAM(lparam)));
                 ReleaseCapture();
             }
             return 0;
@@ -2777,7 +2974,16 @@ LRESULT CALLBACK Window::WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM 
 
         case WM_KILLFOCUS:
             if (window != nullptr) {
-                window->ClearFocus();
+                // Keep the logical focus so typing resumes when the window is
+                // activated again; only transient layers go away.
+                window->ClosePopup();
+                window->CancelPointerPress();
+            }
+            break;
+
+        case WM_SETFOCUS:
+            if (window != nullptr) {
+                window->RenderFrame();
             }
             break;
 

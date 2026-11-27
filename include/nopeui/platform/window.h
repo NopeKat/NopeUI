@@ -135,6 +135,10 @@ public:
     const Theme& GetTheme() const noexcept;
 
     HWND Handle() const noexcept;
+    // DPI scale for client coordinates: 1.0 at 96 DPI.
+    float DpiScale() const noexcept {
+        return scale_;
+    }
 
     // Accessibility integration: the content root and current keyboard focus.
     Element* ContentElement() const noexcept {
@@ -160,13 +164,17 @@ private:
     void ScheduleResizeSettle() noexcept;
     void CompactResize() noexcept;
     void ReleaseGraphics() noexcept;
+    void RecreateGraphics() noexcept;
 
     void LayoutContent(int width, int height) noexcept;
+    void UpdateClientMetrics(int pixel_width, int pixel_height) noexcept;
+    Point ToClientDip(int pixel_x, int pixel_y) const noexcept;
     void OnMouseMove(Point point) noexcept;
     void OnMouseDown(Point point) noexcept;
     void OnMouseUp(Point point) noexcept;
     void OnRightMouseDown(Point point) noexcept;
     void OnMouseLeave() noexcept;
+    void CancelPointerPress() noexcept;
     void OnMouseWheel(Point point, int delta) noexcept;
     void OnToolTipTimer() noexcept;
     void UpdateToolTipTimer() noexcept;
@@ -196,14 +204,19 @@ private:
     Point pointer_{};
     bool tracking_mouse_ = false;
     bool popup_close_pending_ = false;
+    std::uint64_t pending_close_generation_ = 0;
     bool popup_is_tooltip_ = false;
     bool tooltip_timer_active_ = false;
     int client_width_ = 0;
     int client_height_ = 0;
+    int client_pixel_width_ = 0;
+    int client_pixel_height_ = 0;
+    float scale_ = 1.0f;
     int pending_width_ = 0;
     int pending_height_ = 0;
     bool resize_pending_ = false;
     bool live_resizing_ = false;
+    bool recreate_pending_ = false;
     double last_resize_ms_ = 0.0;
 };
 
