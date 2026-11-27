@@ -22,6 +22,7 @@
 #include "nopeui/controls/content_presenter.h"
 #include "nopeui/controls/context_menu.h"
 #include "nopeui/controls/dock_panel.h"
+#include "nopeui/controls/flex_panel.h"
 #include "nopeui/controls/flyout.h"
 #include "nopeui/controls/grid.h"
 #include "nopeui/controls/image.h"
@@ -819,6 +820,10 @@ public:
             }
         }
 
+        // Bindings recorded before their resource existed resolve here, once the
+        // whole tree and every Resources block are in place.
+        element->RefreshThemeResources();
+
         LoadResult result;
         result.root = std::move(element);
         result.names = std::move(names_);
@@ -1591,6 +1596,16 @@ private:
             }
             return true;
         }
+        if (tag == L"FlexPanel") {
+            auto* flex = dynamic_cast<FlexPanel*>(&element);
+            if (flex == nullptr) {
+                return Fail(node, "internal FlexPanel mismatch");
+            }
+            for (Ref<Element>& child : children) {
+                flex->Add(std::move(child));
+            }
+            return true;
+        }
         if (children.empty()) {
             return true;
         }
@@ -1657,6 +1672,9 @@ private:
         }
         if (tag == L"DockPanel") {
             return DockPanel::Create();
+        }
+        if (tag == L"FlexPanel") {
+            return FlexPanel::Create();
         }
         if (tag == L"Border") {
             return Border::Create();
@@ -1798,21 +1816,15 @@ private:
         }
         std::wstring theme_key;
         if (ThemeResourceKey(raw, &theme_key)) {
-            PropertyValue resolved;
-            if (FindResourceValue(current_scope_, theme_key, &resolved)) {
-                if (!element.SetProperty(name, resolved)) {
-                    return Fail(node, "resource type does not match the property");
-                }
-                return true;
-            }
             PropertyValueType type = PropertyValueType::String;
             if (!PropertyTypeFor(element, name, &type)) {
                 return Fail(node, "unknown property");
             }
-            if (type != PropertyValueType::Color) {
-                return Fail(node, "ThemeResource only resolves color properties");
+            // The binding resolves in-scope values now and waits for the theme
+            // refresh when the key is declared later in the same load.
+            if (!element.BindThemeResource(std::wstring(name), std::move(theme_key))) {
+                return Fail(node, "ThemeResource value does not match the property");
             }
-            element.BindThemeResource(std::wstring(name), std::move(theme_key));
             return true;
         }
         if (name == L"Dock") {
@@ -1831,6 +1843,21 @@ private:
             }
             if (!element.SetAttachedProperty(DockProperty(), PropertyValue(side))) {
                 return Fail(node, "Dock rejected the value");
+            }
+            return true;
+        }
+        if (name == L"Direction" && tag == L"FlexPanel") {
+            const std::wstring value = Trim(raw);
+            int direction = 0;
+            if (value == L"Row") {
+                direction = 0;
+            } else if (value == L"Column") {
+                direction = 1;
+            } else if (!ParseInt(raw, &direction)) {
+                return Fail(node, "invalid Direction value");
+            }
+            if (!element.SetProperty(L"Direction", PropertyValue(direction))) {
+                return Fail(node, "FlexPanel rejected Direction");
             }
             return true;
         }
