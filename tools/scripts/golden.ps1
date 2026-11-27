@@ -15,13 +15,18 @@ $diffExe = Join-Path $toolDir "nopeui_image_diff.exe"
 $currentDir = Join-Path $repoRoot ".build\golden"
 $diffDir = Join-Path $repoRoot ".build\golden\diff"
 $baselineDir = Join-Path $repoRoot "tests\golden\baseline"
+$sharedBaselineDir = if ($env:NOPEUI_GOLDEN_ASSETS) {
+    $env:NOPEUI_GOLDEN_ASSETS
+} else {
+    Join-Path $repoRoot "..\..\assets\golden"
+}
 $xamlPath = Join-Path $repoRoot "samples\xaml_smoke\page.xaml"
 
 if (-not $SkipBuild) {
     & (Join-Path $PSScriptRoot "build.ps1") -Preset $Preset
 }
 
-foreach ($path in @($currentDir, $diffDir, $baselineDir)) {
+foreach ($path in @($currentDir, $diffDir, $baselineDir, $sharedBaselineDir)) {
     New-Item -ItemType Directory -Path $path -Force | Out-Null
 }
 
@@ -66,6 +71,10 @@ foreach ($case in $cases) {
     }
 
     $baselinePath = Join-Path $baselineDir "$($case.Name).png"
+    $sharedBaselinePath = Join-Path $sharedBaselineDir "$($case.Name).png"
+    if (-not (Test-Path -LiteralPath $baselinePath) -and (Test-Path -LiteralPath $sharedBaselinePath)) {
+        $baselinePath = $sharedBaselinePath
+    }
     if ($Update) {
         Copy-Item -LiteralPath $currentPath -Destination $baselinePath -Force
         Write-Output "updated: $($case.Name)"
