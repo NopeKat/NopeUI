@@ -75,8 +75,8 @@ void ProgressBar::PaintContent(ID2D1RenderTarget* target) noexcept {
     }
     target->FillRoundedRectangle(track, track_brush.Get());
 
-    float start = 0.0f;
-    float end = 0.0f;
+    float start = bounds_.x;
+    float end = bounds_.x;
     if (indeterminate_) {
         start = bounds_.x + bounds_.width * 0.35f;
         end = bounds_.x + bounds_.width * 0.65f;
