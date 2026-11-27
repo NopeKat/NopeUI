@@ -47,6 +47,7 @@ constexpr UINT kResizeSettleIntervalMs = 300;
 constexpr std::size_t kMaxQueuedCommits = 1;
 constexpr int kMaxAsyncSurfaces = 3;
 constexpr int kMinAsyncSurfaces = 2;
+constexpr int kFlipBufferCount = 2;
 
 double MillisecondsToNextVblank(LONGLONG submit_qpc) noexcept {
     DWM_TIMING_INFO timing{};
@@ -211,7 +212,9 @@ public:
         for (auto& state : surfaces_) {
             state.target_bitmap.Reset();
         }
-        swap_state_.target_bitmap.Reset();
+        for (auto& state : flip_states_) {
+            state.target_bitmap.Reset();
+        }
         target_bound_index_ = -1;
         software_bitmap_.Reset();
         software_surface_.reset();
@@ -252,7 +255,9 @@ public:
             if (d2d_context_ != nullptr) {
                 d2d_context_->SetTarget(nullptr);
             }
-            swap_state_.target_bitmap.Reset();
+            for (auto& state : flip_states_) {
+                state.target_bitmap.Reset();
+            }
             target_bound_index_ = -1;
             HRESULT result = swap_chain_->ResizeBuffers(
                 0,
@@ -283,7 +288,7 @@ public:
             desc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
             desc.SampleDesc.Count = 1;
             desc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
-            desc.BufferCount = 2;
+            desc.BufferCount = kFlipBufferCount;
             desc.Scaling = DXGI_SCALING_STRETCH;
             desc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL;
             desc.AlphaMode = DXGI_ALPHA_MODE_PREMULTIPLIED;
@@ -299,9 +304,13 @@ public:
                     Error{ErrorCode::PlatformFailure, PlatformError("SetContent(swap chain)", result)});
             }
         }
-        swap_state_.target_bitmap.Reset();
-        swap_state_.width = width;
-        swap_state_.height = height;
+        for (auto& state : flip_states_) {
+            state.target_bitmap.Reset();
+            state.width = width;
+            state.height = height;
+        }
+        flip_buffer_index_ = 0;
+        first_flip_present_ = true;
         full_redraw_required_ = true;
         return Result<void>::Ok();
     }
@@ -328,6 +337,20 @@ public:
 
     void SetContent(Element* content) noexcept {
         content_ = content;
+    }
+
+    void RefreshComposition() noexcept {
+        if (visual_ == nullptr || dcomp_device_ == nullptr) {
+            return;
+        }
+        if (flip_model_) {
+            if (swap_chain_ != nullptr) {
+                visual_->SetContent(swap_chain_.Get());
+            }
+        } else if (surfaces_[draw_index_].surface != nullptr) {
+            visual_->SetContent(surfaces_[draw_index_].surface.Get());
+        }
+        dcomp_device_->Commit();
     }
 
     void SetPalette(const graphics::ScenePalette& palette) noexcept {
@@ -459,7 +482,11 @@ public:
             dcomp_device_->Commit();
             swap_chain_.Reset();
         }
-        swap_state_.target_bitmap.Reset();
+        for (auto& state : flip_states_) {
+            state.target_bitmap.Reset();
+            state.width = 0;
+            state.height = 0;
+        }
         target_bound_index_ = -1;
         flip_model_ = false;
         const int width = PixelWidth();
@@ -573,8 +600,13 @@ public:
     void Render(const RECT* dirty_rect = nullptr, bool force_commit = false) noexcept {
         const auto start = std::chrono::steady_clock::now();
         const auto sequence = ++frame_sequence_;
+        UINT flip_buffer_index = 0;
         if (flip_model_) {
             if (swap_chain_ == nullptr) {
+                return;
+            }
+            flip_buffer_index = flip_buffer_index_;
+            if (flip_buffer_index >= static_cast<UINT>(kFlipBufferCount)) {
                 return;
             }
         } else if (async_commit_) {
@@ -587,7 +619,7 @@ public:
             return;
         }
 
-        auto& surface_state = flip_model_ ? swap_state_ : surfaces_[draw_index_];
+        auto& surface_state = flip_model_ ? flip_states_[flip_buffer_index] : surfaces_[draw_index_];
         if (!flip_model_ && surface_state.surface == nullptr) {
             return;
         }
@@ -630,7 +662,9 @@ public:
         HRESULT result = E_FAIL;
         if (flip_model_) {
             result = swap_chain_->GetBuffer(
-                0, __uuidof(IDXGISurface), reinterpret_cast<void**>(dxgi_surface.GetAddressOf()));
+                flip_buffer_index,
+                __uuidof(IDXGISurface),
+                reinterpret_cast<void**>(dxgi_surface.GetAddressOf()));
         } else {
             result = surface_state.surface->BeginDraw(
                 update_ptr,
@@ -816,6 +850,10 @@ public:
         }
         result = d2d_context_->EndDraw();
         if (FAILED(result)) {
+            if (flip_model_) {
+                d2d_context_->SetTarget(nullptr);
+                surface_state.target_bitmap.Reset();
+            }
             target_bound_index_ = -1;
             if (result == D2DERR_RECREATE_TARGET) {
                 device_lost_ = true;
@@ -828,10 +866,10 @@ public:
                 return;
             }
             d2d_context_->SetTarget(nullptr);
-            surface_state.target_bitmap.Reset();
             target_bound_index_ = -1;
             const auto present_start = std::chrono::steady_clock::now();
-            HRESULT present_result = swap_chain_->Present(0, 0);
+            const UINT present_interval = first_flip_present_ ? 1u : 0u;
+            HRESULT present_result = swap_chain_->Present(present_interval, 0);
             const auto present_end = std::chrono::steady_clock::now();
             if (FAILED(present_result)) {
                 if (present_result == DXGI_ERROR_DEVICE_REMOVED ||
@@ -840,8 +878,13 @@ public:
                 }
                 return;
             }
+            first_flip_present_ = false;
             last_commit_ms_ =
                 std::chrono::duration<double, std::milli>(present_end - present_start).count();
+            flip_buffer_index_ = (flip_buffer_index_ + 1) % kFlipBufferCount;
+            if (dcomp_device_ != nullptr) {
+                dcomp_device_->Commit();
+            }
             commit_count_.fetch_add(1, std::memory_order_relaxed);
             commit_pending_ = false;
             last_commit_time_ = present_end;
@@ -1493,8 +1536,13 @@ private:
 
     void ReleaseSurface() noexcept {
         CancelCommitTimer();
-        swap_state_.target_bitmap.Reset();
+        for (auto& state : flip_states_) {
+            state.target_bitmap.Reset();
+            state.width = 0;
+            state.height = 0;
+        }
         swap_chain_.Reset();
+        flip_buffer_index_ = 0;
         for (auto& state : surfaces_) {
             state.target_bitmap.Reset();
             state.surface.Reset();
@@ -1514,7 +1562,9 @@ private:
     ComPtr<IDCompositionVisual> visual_;
     SurfaceState surfaces_[kMaxAsyncSurfaces];
     ComPtr<IDXGISwapChain1> swap_chain_;
-    SurfaceState swap_state_;
+    SurfaceState flip_states_[kFlipBufferCount];
+    UINT flip_buffer_index_ = 0;
+    bool first_flip_present_ = true;
     bool flip_model_ = false;
     ComPtr<ID2D1Factory1> d2d_factory_;
     ComPtr<ID2D1Device> d2d_device_;
@@ -1833,10 +1883,17 @@ Window::~Window() {
 
 void Window::Show() noexcept {
     if (hwnd_ != nullptr) {
+        if (graphics_ != nullptr && !graphics_->IsSoftwareRender()) {
+            graphics_->SetFlipModel(true);
+            if (!graphics_->IsFlipModel()) {
+                graphics_->SetAsyncCommit(true);
+            }
+        }
         ShowWindow(hwnd_, SW_SHOWNORMAL);
         UpdateWindow(hwnd_);
         if (graphics_ != nullptr) {
             graphics_->UpdateCommitInterval();
+            graphics_->RefreshComposition();
             if (resize_pending_) {
                 RenderPendingResize();
             } else {
