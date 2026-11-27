@@ -93,6 +93,19 @@ NopeUI 是一个仅面向 Windows 的开源 C++ 桌面 UI 框架。外观参考 
 
 窗口的硬件与软件两条路径现在都通过 `graphics/scene` 的 `ScenePainter` 绘制，占位场景只剩一份实现；`ScenePainter` 缓存画刷与文本布局，按帧只做矩形填充、文字与强调条。
 
+## 性能基准
+
+`nopeui_startup_benchmark` 从进程创建时间起算到首帧提交完成，并把加载器、窗口创建、内容构建、`Show` 和提交等待拆开输出，同时读取工作集峰值与私有提交峰值。`nopeui_theme_benchmark` 在表单页上反复切换浅色与深色，把 `SetTheme`（含重新布局、绘制与提交）与异步完成的等待分开统计；它默认关闭提交节流，避免 vblank 混进样本。
+
+```powershell
+.\eng\perf.ps1                                          # 构建并跑一组，打印汇总
+.\eng\perf.ps1 -Runs 5 -Switches 200 -Out tests\perf\baseline.md
+.\.build\x64-release\samples\Release\nopeui_startup_benchmark.exe --no-content
+.\.build\x64-release\samples\Release\nopeui_theme_benchmark.exe --switches 200 --contrast
+```
+
+启动的 `total` 含进程创建与加载器；`--no-content` 换成占位场景，`--sync` 与 `--software` 分别覆盖同步提交和软件光栅。第一组基线在 `tests/perf/baseline.md`：900×640 表单页启动 256 到 344 毫秒，工作集峰值约 48 MB；主题切换平均 8.9 毫秒、P99 25.4 毫秒。
+
 ## 布局与控件
 
 元素树只做四件事：`Measure` 用可用尺寸算期望尺寸，`Arrange` 落最终矩形，`HitTest` 找最上层命中的元素，`Paint` 由窗口在硬件与软件两条路径里统一调用。`StackPanel` 支持纵向与横向排列，`Grid` 按行列轨道摆放并把跨格与附加属性一起算进去，`Border` 负责背景、1 像素描边、内边距与可选圆角，`ScrollViewer` 提供单子元素的横向与纵向滚动。`Label`、`Button`、`CheckBox`、`RadioButton`、`ToggleButton`、`ToggleSwitch`、`TextBox`、`ProgressBar` 与 `Slider` 共用 `graphics::TextRun` 缓存的文字布局；`Button` 带圆角、悬停与按下底色、焦点矩形和点击回调，`CheckBox` 与 `ToggleButton` 保留选中态，鼠标点击或 Enter/Space 都会切换；同一父容器下的 `RadioButton` 自动互斥，`ToggleSwitch` 用 Space 切换；`ProgressBar` 支持确定值与不确定值，`Slider` 支持鼠标拖动、方向键、Home/End 与 PageUp/PageDown。`SetEnabled(false)` 后按 `ControlState::Disabled` 取色，不参与命中、焦点和滚轮。
