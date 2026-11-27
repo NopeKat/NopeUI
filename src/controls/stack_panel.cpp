@@ -28,6 +28,7 @@ void StackPanel::Add(Ref<Element> child) noexcept {
     }
     child->SetParent(this);
     children_.push_back(std::move(child));
+    InvalidateLayout();
 }
 
 void StackPanel::SetOrientation(Orientation orientation) noexcept {
@@ -35,7 +36,7 @@ void StackPanel::SetOrientation(Orientation orientation) noexcept {
         return;
     }
     orientation_ = orientation;
-    Invalidate();
+    InvalidateLayout();
 }
 
 void StackPanel::SetSpacing(float spacing) noexcept {

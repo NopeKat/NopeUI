@@ -50,10 +50,12 @@ void Border::SetChild(Ref<Element> child) noexcept {
     if (child_) {
         child_->SetParent(this);
     }
+    InvalidateLayout();
 }
 
 void Border::SetPadding(Thickness padding) noexcept {
     padding_ = padding;
+    InvalidateLayout();
 }
 
 void Border::SetCornerRadius(float radius) noexcept {

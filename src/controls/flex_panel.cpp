@@ -29,6 +29,7 @@ void FlexPanel::Add(Ref<Element> child) noexcept {
     }
     child->SetParent(this);
     children_.push_back(std::move(child));
+    InvalidateLayout();
 }
 
 void FlexPanel::SetDirection(FlexDirection direction) noexcept {
