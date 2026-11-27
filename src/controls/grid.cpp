@@ -340,9 +340,12 @@ Size Grid::MeasureOverride(Size available) noexcept {
     for (const float size : row_sizes_) {
         height += size;
     }
+    // Auto rows can exceed the available height when content wraps. Report the
+    // real height here; clipping it makes Measure and Arrange disagree and puts
+    // the last row outside the parent's hit-test bounds.
     return Size{
         std::min(width, available.width >= kUnbounded ? width : available.width),
-        std::min(height, available.height >= kUnbounded ? height : available.height)};
+        height};
 }
 
 Size Grid::ArrangeOverride(Size final_size) noexcept {
