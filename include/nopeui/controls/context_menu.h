@@ -35,6 +35,9 @@ protected:
     void OnPointerMove(Point point) noexcept override;
     void OnPointerDown(Point point) noexcept override;
     void OnPointerUp(Point point) noexcept override;
+    bool OnKeyDown(unsigned int key) noexcept override;
+    bool OnWheel(int delta) noexcept override;
+    bool IsFocusable() const noexcept override;
     AccessibleRole AccessibilityRole() const noexcept override;
     std::wstring AccessibilityName() const override;
 
@@ -48,9 +51,14 @@ private:
     ContextMenu() noexcept = default;
 
     int ItemAt(Point point) const noexcept;
+    void Activate(int index) noexcept;
+    void EnsureVisible(int index) noexcept;
+    float ContentHeight() const noexcept;
+    float MaxScroll() const noexcept;
 
     std::vector<Item> items_;
     std::uint32_t hovered_ = 0xffffffffu;
+    float scroll_ = 0.0f;
     bool pressed_ = false;
 };
 

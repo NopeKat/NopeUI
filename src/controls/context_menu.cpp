@@ -97,13 +97,21 @@ void ContextMenu::PaintContent(ID2D1RenderTarget* target) noexcept {
     }
 
     ComPtr<ID2D1SolidColorBrush> hover;
+    target->PushAxisAlignedClip(
+        D2D1::RectF(
+            bounds_.x,
+            bounds_.y + kPaddingY,
+            bounds_.Right(),
+            bounds_.Bottom() - kPaddingY),
+        D2D1_ANTIALIAS_MODE_ALIASED);
     if (SUCCEEDED(target->CreateSolidColorBrush(
             D2D1::ColorF(colors.button_hover), hover.GetAddressOf()))) {
         for (std::uint32_t index = 0; index < items_.size(); ++index) {
             if (index != hovered_) {
                 continue;
             }
-            const float top = bounds_.y + kPaddingY + kItemHeight * static_cast<float>(index);
+            const float top =
+                bounds_.y + kPaddingY + kItemHeight * static_cast<float>(index) - scroll_;
             target->FillRoundedRectangle(
                 D2D1::RoundedRect(
                     D2D1::RectF(
@@ -126,7 +134,8 @@ void ContextMenu::PaintContent(ID2D1RenderTarget* target) noexcept {
                 continue;
             }
             const Size measured = item.run->Measure();
-            const float top = bounds_.y + kPaddingY + kItemHeight * static_cast<float>(index);
+            const float top =
+                bounds_.y + kPaddingY + kItemHeight * static_cast<float>(index) - scroll_;
             item.run->Draw(
                 target,
                 Point{
@@ -135,13 +144,101 @@ void ContextMenu::PaintContent(ID2D1RenderTarget* target) noexcept {
                 colors.text);
         }
     }
+    PopContentClip(target);
+}
+
+float ContextMenu::ContentHeight() const noexcept {
+    return kPaddingY * 2.0f + kItemHeight * static_cast<float>(items_.size());
+}
+
+float ContextMenu::MaxScroll() const noexcept {
+    return std::max(0.0f, ContentHeight() - bounds_.height);
+}
+
+void ContextMenu::EnsureVisible(int index) noexcept {
+    if (index < 0) {
+        return;
+    }
+    const float top = kItemHeight * static_cast<float>(index);
+    const float visible = bounds_.height - kPaddingY * 2.0f;
+    if (top < scroll_) {
+        scroll_ = top;
+    } else if (top + kItemHeight > scroll_ + visible) {
+        scroll_ = top + kItemHeight - visible;
+    }
+    scroll_ = std::clamp(scroll_, 0.0f, MaxScroll());
+}
+
+void ContextMenu::Activate(int index) noexcept {
+    if (index < 0 || static_cast<std::size_t>(index) >= items_.size()) {
+        return;
+    }
+    auto handler = items_[static_cast<std::size_t>(index)].handler;
+    // Close first so a command that opens another popup is not dismissed by
+    // the pending close of this menu.
+    RequestClosePopup();
+    if (handler) {
+        handler();
+    }
+}
+
+bool ContextMenu::IsFocusable() const noexcept {
+    return IsEnabled();
+}
+
+bool ContextMenu::OnKeyDown(unsigned int key) noexcept {
+    if (!IsEnabled()) {
+        return false;
+    }
+    const int count = static_cast<int>(items_.size());
+    if (count == 0) {
+        return false;
+    }
+    int index = hovered_ == kNoItem ? -1 : static_cast<int>(hovered_);
+    switch (key) {
+        case VK_DOWN:
+            index = index < 0 ? 0 : std::min(index + 1, count - 1);
+            break;
+        case VK_UP:
+            index = index < 0 ? 0 : std::max(index - 1, 0);
+            break;
+        case VK_HOME:
+            index = 0;
+            break;
+        case VK_END:
+            index = count - 1;
+            break;
+        case VK_RETURN:
+        case VK_SPACE:
+            Activate(index);
+            return true;
+        default:
+            return false;
+    }
+    hovered_ = static_cast<std::uint32_t>(index);
+    EnsureVisible(index);
+    Invalidate();
+    return true;
+}
+
+bool ContextMenu::OnWheel(int delta) noexcept {
+    const float step = kItemHeight * 3.0f;
+    const float next = std::clamp(
+        scroll_ - (static_cast<float>(delta) / static_cast<float>(WHEEL_DELTA)) * step,
+        0.0f,
+        MaxScroll());
+    if (next != scroll_) {
+        scroll_ = next;
+        Invalidate();
+    }
+    return true;
 }
 
 int ContextMenu::ItemAt(Point point) const noexcept {
     if (!Contains(point)) {
         return -1;
     }
-    const float local_y = point.y - bounds_.y - kPaddingY;
+    const float local_y = point.y - bounds_.y - kPaddingY + scroll_;
     if (local_y < 0.0f) {
         return -1;
     }
@@ -182,12 +279,8 @@ void ContextMenu::OnPointerUp(Point point) noexcept {
     const bool activate = pressed_ && index >= 0;
     pressed_ = false;
     Invalidate();
-    if (!activate) {
-        return;
-    }
-    auto handler = items_[static_cast<std::size_t>(index)].handler;
-    if (handler) {
-        handler();
+    if (activate) {
+        Activate(index);
     }
 }
 

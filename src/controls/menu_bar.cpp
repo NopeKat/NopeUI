@@ -211,8 +211,6 @@ void MenuBar::OpenMenu(std::size_t index) noexcept {
     if (index >= items_.size()) {
         return;
     }
-    active_ = static_cast<int>(index);
-    Invalidate();
 
     float x = bounds_.x;
     for (std::size_t offset = 0; offset < index; ++offset) {
@@ -233,6 +231,12 @@ void MenuBar::OpenMenu(std::size_t index) noexcept {
         menu->AddItem(command.text, command.handler);
     }
     RequestPopup(menu, Point{x, bounds_.Bottom()});
+    // Setting the highlight after the request keeps it in sync when an
+    // already open menu is replaced: the old popup's close callback clears
+    // active_ synchronously inside RequestPopup.
+    active_ = static_cast<int>(index);
+    hovered_ = active_;
+    Invalidate();
 }
 
 bool MenuBar::IsFocusable() const noexcept {
@@ -246,10 +250,15 @@ bool MenuBar::OnKeyDown(unsigned int key) noexcept {
     const int count = static_cast<int>(items_.size());
     if (key == VK_LEFT || key == VK_RIGHT) {
         const int step = key == VK_RIGHT ? 1 : -1;
-        active_ = (active_ < 0) ? (step > 0 ? 0 : count - 1)
-                                : (active_ + step + count) % count;
-        hovered_ = active_;
-        Invalidate();
+        const int next = (active_ < 0) ? (step > 0 ? 0 : count - 1)
+                                       : (active_ + step + count) % count;
+        if (active_ >= 0) {
+            OpenMenu(static_cast<std::size_t>(next));
+        } else {
+            active_ = next;
+            hovered_ = active_;
+            Invalidate();
+        }
         return true;
     }
     if (key == VK_DOWN || key == VK_RETURN) {

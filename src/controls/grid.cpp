@@ -219,14 +219,25 @@ void Grid::ComputeColumns(Size available) noexcept {
     }
 
     // Natural pass: measure every child so auto columns can take the widest
-    // content they hold.
+    // content they hold. Children in an auto column are measured without a
+    // width limit, otherwise a long label clamps to the row and pushes every
+    // star column to zero.
     const bool unbounded = available.width >= kUnbounded;
     for (const auto& child : children_) {
-        child->Measure(Size{available.width, available.height});
-        const Size desired = child->DesiredSize();
         const GridCell cell = ReadGridCell(*child);
         const int start = ClampIndex(cell.column, count);
         const int span = std::clamp(cell.column_span, 1, count - start);
+        bool auto_width = span == 1;
+        if (auto_width) {
+            const GridLength track = columns_.empty()
+                ? GridLength{1.0f, GridUnitType::Star}
+                : columns_[static_cast<std::size_t>(start)];
+            auto_width = ContentSized(track, unbounded);
+        }
+        child->Measure(Size{
+            auto_width ? kUnbounded : available.width,
+            available.height});
+        const Size desired = child->DesiredSize();
         // Spanning children do not drive an auto track: their natural size
         // already covers several cells, so letting them size one track would
         // blow the layout up. They are measured again once the tracks exist.

@@ -356,8 +356,30 @@ bool ScrollViewer::OnWheel(int delta) noexcept {
 }
 
 bool ScrollViewer::OnKeyDown(unsigned int key) noexcept {
-    if (!IsEnabled() || !HasVerticalScrollbar()) {
+    if (!IsEnabled()) {
         return false;
+    }
+    if (!HasVerticalScrollbar()) {
+        if (!HasHorizontalScrollbar()) {
+            return false;
+        }
+        const float page = std::max(24.0f, bounds_.width * 0.9f);
+        switch (key) {
+            case VK_PRIOR:
+                SetHorizontalOffset(offset_x_ - page);
+                return true;
+            case VK_NEXT:
+                SetHorizontalOffset(offset_x_ + page);
+                return true;
+            case VK_HOME:
+                SetHorizontalOffset(0.0f);
+                return true;
+            case VK_END:
+                SetHorizontalOffset(MaxHorizontalOffset());
+                return true;
+            default:
+                return false;
+        }
     }
     const float page = std::max(24.0f, bounds_.height * 0.9f);
     switch (key) {

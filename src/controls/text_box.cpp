@@ -30,6 +30,42 @@ constexpr float kPaddingY = 8.0f;
 constexpr float kMinHeight = 32.0f;
 constexpr float kCornerRadius = 4.0f;
 
+bool IsHighSurrogate(wchar_t value) noexcept {
+    return value >= 0xD800 && value <= 0xDBFF;
+}
+
+bool IsLowSurrogate(wchar_t value) noexcept {
+    return value >= 0xDC00 && value <= 0xDFFF;
+}
+
+// Caret steps and deletion work on code points so a surrogate pair is never
+// split in half.
+std::size_t PreviousCharacter(
+    const std::wstring& text,
+    std::size_t position) noexcept {
+    if (position == 0) {
+        return 0;
+    }
+    if (position >= 2 && IsLowSurrogate(text[position - 1]) &&
+        IsHighSurrogate(text[position - 2])) {
+        return position - 2;
+    }
+    return position - 1;
+}
+
+std::size_t NextCharacter(
+    const std::wstring& text,
+    std::size_t position) noexcept {
+    if (position >= text.size()) {
+        return text.size();
+    }
+    if (position + 1 < text.size() && IsHighSurrogate(text[position]) &&
+        IsLowSurrogate(text[position + 1])) {
+        return position + 2;
+    }
+    return position + 1;
+}
+
 const PropertyMetadata kTextBoxProperties[] = {
     {L"Text", PropertyValueType::String, PropertyFlags::AffectsMeasure, PropertyValue(std::wstring())},
     {L"Placeholder", PropertyValueType::String, PropertyFlags::AffectsRender, PropertyValue(std::wstring())},
@@ -297,7 +333,7 @@ void TextBox::PaintContent(ID2D1RenderTarget* target) noexcept {
             }
         }
 
-        display->Draw(target, Point{text_x, text_y}, colors.text);
+        display->Draw(target, Point{text_x, text_y}, ForegroundOr(colors.text));
 
         if (composing_ && !composition_.empty()) {
             const float left = display->CaretX(caret_);
@@ -444,8 +480,9 @@ bool TextBox::OnKeyDown(unsigned int key) noexcept {
             if (HasSelection()) {
                 DropSelection();
             } else if (caret_ > 0) {
-                text_.erase(caret_ - 1, 1);
-                --caret_;
+                const std::size_t previous = PreviousCharacter(text_, caret_);
+                text_.erase(previous, caret_ - previous);
+                caret_ = previous;
                 anchor_ = caret_;
                 RebuildRun();
                 InvalidateLayout();
@@ -455,7 +492,8 @@ bool TextBox::OnKeyDown(unsigned int key) noexcept {
             if (HasSelection()) {
                 DropSelection();
             } else if (caret_ < text_.size()) {
-                text_.erase(caret_, 1);
+                const std::size_t next = NextCharacter(text_, caret_);
+                text_.erase(caret_, next - caret_);
                 RebuildRun();
                 InvalidateLayout();
             }
@@ -464,14 +502,14 @@ bool TextBox::OnKeyDown(unsigned int key) noexcept {
             if (HasSelection() && !shift) {
                 MoveCaret(SelectionStart(), false);
             } else {
-                MoveCaret(caret_ > 0 ? caret_ - 1 : 0, shift);
+                MoveCaret(PreviousCharacter(text_, caret_), shift);
             }
             return true;
         case VK_RIGHT:
             if (HasSelection() && !shift) {
                 MoveCaret(SelectionEnd(), false);
             } else {
-                MoveCaret(caret_ + 1, shift);
+                MoveCaret(NextCharacter(text_, std::min(caret_, text_.size())), shift);
             }
             return true;
         case VK_HOME:
