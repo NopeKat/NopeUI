@@ -62,8 +62,12 @@ void Slider::SetValue(double value) noexcept {
 void Slider::SetRange(double minimum, double maximum) noexcept {
     minimum_ = minimum;
     maximum_ = std::max(minimum, maximum);
+    const double previous = value_;
     value_ = std::clamp(value_, minimum_, maximum_);
     Invalidate();
+    if (value_ != previous && value_changed_) {
+        value_changed_(value_);
+    }
 }
 
 Size Slider::MeasureOverride(Size available) noexcept {
