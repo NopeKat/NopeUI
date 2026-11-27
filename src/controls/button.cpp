@@ -160,7 +160,9 @@ void Button::PaintContent(ID2D1RenderTarget* target) noexcept {
             : colors.button_border);
     const std::uint32_t text_color = content_part.foreground != 0
         ? content_part.foreground
-        : (state == ControlState::Disabled ? colors.text_disabled : colors.text);
+        : (state == ControlState::Disabled
+            ? colors.text_disabled
+            : ForegroundOr(colors.text));
 
     const float radius = background_part.corner_radius > 0.0f
         ? background_part.corner_radius

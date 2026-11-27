@@ -49,6 +49,7 @@ private:
     Property<std::uint32_t> color_{0};
     float run_width_ = 0.0f;
     bool run_dirty_ = true;
+    bool has_color_ = false;
 };
 
 }  // namespace nopeui

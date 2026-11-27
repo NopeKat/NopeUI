@@ -387,6 +387,12 @@ public:
     }
     void SetEnabled(bool enabled) noexcept;
 
+    // Foreground inheritance. A value of 0 is a legal color, so controllers
+    // that paint text ask for "explicit foreground or fallback" instead of
+    // testing against 0.
+    bool HasForeground() const noexcept;
+    std::uint32_t ForegroundOr(std::uint32_t fallback) const noexcept;
+
     // Lets a scrollable ancestor adjust its offset when focus moves.
     virtual void BringChildIntoView(const Element*) noexcept {}
 
@@ -445,6 +451,13 @@ protected:
     void PushContentClip(ID2D1RenderTarget* target) noexcept;
     void PopContentClip(ID2D1RenderTarget* target) noexcept;
 
+    // Lets control setters that change state directly (SetChecked, SetStretch,
+    // ...) notify property triggers and bindings.
+    void RaiseControlPropertyChange(
+        std::wstring_view name,
+        const PropertyValue& previous,
+        const PropertyValue& value) noexcept;
+
     bool Contains(Point point) const noexcept;
 
     Rect bounds_{};
@@ -495,6 +508,7 @@ private:
     Element* context_menu_ = nullptr;
     PropertyChangedEvent property_changed_;
     std::uint32_t foreground_ = 0;
+    bool has_foreground_ = false;
     Thickness margin_{};
     float width_ = 0.0f;
     float height_ = 0.0f;

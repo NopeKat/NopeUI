@@ -62,6 +62,8 @@ void RadioButton::SetChecked(bool checked) noexcept {
     }
     checked_ = checked;
     Invalidate();
+    RaiseControlPropertyChange(
+        L"IsChecked", PropertyValue(!checked), PropertyValue(checked_));
     if (checked_changed_) {
         checked_changed_(checked_);
     }
@@ -137,7 +139,7 @@ void RadioButton::PaintContent(ID2D1RenderTarget* target) noexcept {
         const Size text = run_->Measure();
         const std::uint32_t color = state == ControlState::Disabled
             ? colors.text_disabled
-            : colors.text;
+            : ForegroundOr(colors.text);
         run_->Draw(
             target,
             Point{
@@ -228,6 +230,7 @@ void RadioButton::DeselectRadioGroup(const Element* source) noexcept {
     }
     checked_ = false;
     Invalidate();
+    RaiseControlPropertyChange(L"IsChecked", PropertyValue(true), PropertyValue(false));
     if (checked_changed_) {
         checked_changed_(false);
     }

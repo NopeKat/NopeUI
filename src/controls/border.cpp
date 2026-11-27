@@ -79,6 +79,7 @@ void Border::SetBackground(std::uint32_t color) noexcept {
 }
 
 void Border::SetBorderColor(std::uint32_t color) noexcept {
+    has_border_color_ = true;
     if (border_color_.Set(color)) {
         Invalidate();
     }
@@ -220,7 +221,9 @@ void Border::PaintContent(ID2D1RenderTarget* target) noexcept {
     }
     if (border_visible_) {
         const std::uint32_t color =
-            border_color_.Get() != 0 ? border_color_.Get() : colors.surface_border;
+            border_color_.Get() != 0 || has_border_color_
+            ? border_color_.Get()
+            : colors.surface_border;
         ComPtr<ID2D1SolidColorBrush> outline;
         if (SUCCEEDED(target->CreateSolidColorBrush(
                 D2D1::ColorF(color), outline.GetAddressOf()))) {

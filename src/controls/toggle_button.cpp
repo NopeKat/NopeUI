@@ -52,8 +52,11 @@ void ToggleButton::SetChecked(bool checked) noexcept {
     if (checked_ == checked) {
         return;
     }
+    const bool previous = checked_;
     checked_ = checked;
     Invalidate();
+    RaiseControlPropertyChange(
+        L"IsChecked", PropertyValue(previous), PropertyValue(checked_));
     if (checked_changed_) {
         checked_changed_(checked_);
     }
@@ -94,7 +97,7 @@ void ToggleButton::PaintContent(ID2D1RenderTarget* target) noexcept {
         : (checked_ ? background : colors.button_border);
     const std::uint32_t text_color = state == ControlState::Disabled
         ? colors.text_disabled
-        : (checked_ ? colors.background : colors.text);
+        : (checked_ ? colors.background : ForegroundOr(colors.text));
 
     ComPtr<ID2D1SolidColorBrush> brush;
     if (FAILED(target->CreateSolidColorBrush(
@@ -210,11 +213,7 @@ bool ToggleButton::OnKeyUp(unsigned int key) noexcept {
 }
 
 void ToggleButton::Toggle() noexcept {
-    checked_ = !checked_;
-    Invalidate();
-    if (checked_changed_) {
-        checked_changed_(checked_);
-    }
+    SetChecked(!checked_);
 }
 
 const PropertyMetadata* ToggleButton::ControlPropertyTable(std::size_t* count) const noexcept {

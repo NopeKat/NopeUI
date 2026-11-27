@@ -115,9 +115,10 @@ Element::~Element() {
 }
 
 void Element::SetForeground(std::uint32_t color) noexcept {
-    if (foreground_ == color) {
+    if (has_foreground_ && foreground_ == color) {
         return;
     }
+    has_foreground_ = true;
     foreground_ = color;
     Invalidate();
 }
@@ -125,12 +126,34 @@ void Element::SetForeground(std::uint32_t color) noexcept {
 std::uint32_t Element::Foreground() const noexcept {
     const Element* node = this;
     while (node != nullptr) {
-        if (node->foreground_ != 0) {
+        if (node->has_foreground_) {
             return node->foreground_;
         }
         node = node->parent_;
     }
     return 0;
+}
+
+bool Element::HasForeground() const noexcept {
+    const Element* node = this;
+    while (node != nullptr) {
+        if (node->has_foreground_) {
+            return true;
+        }
+        node = node->parent_;
+    }
+    return false;
+}
+
+std::uint32_t Element::ForegroundOr(std::uint32_t fallback) const noexcept {
+    const Element* node = this;
+    while (node != nullptr) {
+        if (node->has_foreground_) {
+            return node->foreground_;
+        }
+        node = node->parent_;
+    }
+    return fallback;
 }
 
 void Element::SetMargin(Thickness margin) noexcept {
@@ -644,6 +667,20 @@ PropertyValue Element::StyleOrDefault(std::wstring_view name) const noexcept {  
     return PropertyValue();
 }
 
+void Element::RaiseControlPropertyChange(
+    std::wstring_view name,
+    const PropertyValue& previous,
+    const PropertyValue& value) noexcept {
+    std::size_t count = 0;
+    const PropertyMetadata* table = ControlPropertyTable(&count);
+    for (std::size_t index = 0; index < count; ++index) {
+        if (name == table[index].name) {
+            property_changed_.Raise(table[index], previous, value);
+            return;
+        }
+    }
+}
+
 bool Element::SetPropertyCore(
     std::wstring_view name,
     const PropertyValue& value,
@@ -664,14 +701,15 @@ bool Element::SetPropertyCore(
         if (!value.AsColor(&color)) {
             return false;
         }
+        const bool was_set = has_foreground_;
         const std::uint32_t old = foreground_;
         SetForeground(color);
         if (local) {
             RecordLocalProperty(name);
         }
-        if (old != foreground_) {
+        if (!was_set || old != foreground_) {
             property_changed_.Raise(
-                kForegroundProperty, PropertyValue(old), PropertyValue(foreground_));
+                kForegroundProperty, PropertyValue(was_set ? old : 0), PropertyValue(foreground_));
         }
         return true;
     }
@@ -846,7 +884,6 @@ Rect Element::ResolveSlot(const Rect& slot) const noexcept {
             break;
         case HorizontalAlignment::Stretch:
             width = ClampWidth(content.width, width_, min_width_, max_width_);
-            x = content.x + (content.width - width) / 2.0f;
             break;
     }
 
@@ -862,7 +899,6 @@ Rect Element::ResolveSlot(const Rect& slot) const noexcept {
             break;
         case VerticalAlignment::Stretch:
             height = ClampHeight(content.height, height_, min_height_, max_height_);
-            y = content.y + (content.height - height) / 2.0f;
             break;
     }
 

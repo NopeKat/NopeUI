@@ -45,6 +45,7 @@ void Label::SetTextStyle(graphics::TextStyle style) noexcept {
 }
 
 void Label::SetColor(std::uint32_t color) noexcept {
+    has_color_ = true;
     if (color_.Set(color)) {
         Invalidate();
     }
@@ -90,7 +91,8 @@ void Label::PaintContent(ID2D1RenderTarget* target) noexcept {
     if (run_ == nullptr) {
         return;
     }
-    const std::uint32_t color = color_.Get() != 0 ? color_.Get() : Colors().text;
+    const std::uint32_t color =
+        has_color_ ? color_.Get() : ForegroundOr(Colors().text);
     run_->Draw(target, Point{bounds_.x, bounds_.y}, color);
 }
 

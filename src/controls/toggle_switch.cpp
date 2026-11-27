@@ -52,8 +52,11 @@ void ToggleSwitch::SetChecked(bool checked) noexcept {
     if (checked_ == checked) {
         return;
     }
+    const bool previous = checked_;
     checked_ = checked;
     Invalidate();
+    RaiseControlPropertyChange(
+        L"IsChecked", PropertyValue(previous), PropertyValue(checked_));
     if (checked_changed_) {
         checked_changed_(checked_);
     }
@@ -147,7 +150,7 @@ void ToggleSwitch::PaintContent(ID2D1RenderTarget* target) noexcept {
         const Size text = run_->Measure();
         const std::uint32_t color = state == ControlState::Disabled
             ? colors.text_disabled
-            : colors.text;
+            : ForegroundOr(colors.text);
         run_->Draw(
             target,
             Point{
@@ -229,11 +232,7 @@ bool ToggleSwitch::OnKeyUp(unsigned int key) noexcept {
 }
 
 void ToggleSwitch::Toggle() noexcept {
-    checked_ = !checked_;
-    Invalidate();
-    if (checked_changed_) {
-        checked_changed_(checked_);
-    }
+    SetChecked(!checked_);
 }
 
 const PropertyMetadata* ToggleSwitch::ControlPropertyTable(std::size_t* count) const noexcept {

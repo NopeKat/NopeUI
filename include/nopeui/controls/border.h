@@ -52,6 +52,7 @@ private:
     bool use_theme_background_ = true;
     bool surface_ = false;
     bool border_visible_ = true;
+    bool has_border_color_ = false;
 };
 
 }  // namespace nopeui

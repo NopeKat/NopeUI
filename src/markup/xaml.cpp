@@ -1883,22 +1883,6 @@ private:
             static_cast<Border*>(&element)->SetPadding(padding);
             return true;
         }
-        if (name == L"Background" && tag == L"Border") {
-            std::uint32_t color = 0;
-            if (!ParseColor(raw, &color)) {
-                return Fail(node, "invalid Background");
-            }
-            static_cast<Border*>(&element)->SetBackground(color);
-            return true;
-        }
-        if (name == L"BorderColor" && tag == L"Border") {
-            std::uint32_t color = 0;
-            if (!ParseColor(raw, &color)) {
-                return Fail(node, "invalid BorderColor");
-            }
-            static_cast<Border*>(&element)->SetBorderColor(color);
-            return true;
-        }
         if (name == L"Source" && tag == L"Image") {
             Result<std::string> utf8 = Utf16ToUtf8(ToUtf16(raw));
             if (!utf8.ok()) {
