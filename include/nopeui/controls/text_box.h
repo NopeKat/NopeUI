@@ -13,8 +13,8 @@
 
 namespace nopeui {
 
-// Single-line editable text field with caret, submit handling and a placeholder.
-// Selection, clipboard and IME composition are not implemented yet.
+// Single-line editable text field with caret, selection, clipboard, IME
+// composition, submit handling and a placeholder.
 class TextBox : public Element {
 public:
     static Ref<TextBox> Create(

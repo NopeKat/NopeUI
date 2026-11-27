@@ -6,6 +6,8 @@
 #include <utility>
 #include <variant>
 
+#include "nopeui/base/geometry.h"
+
 namespace nopeui {
 
 enum class PropertyValueType {
@@ -15,6 +17,7 @@ enum class PropertyValueType {
     Double,
     Color,
     String,
+    Thickness,
 };
 
 enum class PropertyFlags : std::uint32_t {
@@ -45,6 +48,7 @@ public:
     explicit PropertyValue(double value) : value_(value) {}
     explicit PropertyValue(std::uint32_t color) : value_(color) {}
     explicit PropertyValue(std::wstring value) : value_(std::move(value)) {}
+    explicit PropertyValue(Thickness value) : value_(value) {}
 
     PropertyValueType Type() const noexcept {
         if (std::holds_alternative<bool>(value_)) {
@@ -61,6 +65,9 @@ public:
         }
         if (std::holds_alternative<std::uint32_t>(value_)) {
             return PropertyValueType::Color;
+        }
+        if (std::holds_alternative<Thickness>(value_)) {
+            return PropertyValueType::Thickness;
         }
         return PropertyValueType::String;
     }
@@ -113,8 +120,16 @@ public:
         return true;
     }
 
+    bool AsThickness(Thickness* out) const noexcept {
+        if (!std::holds_alternative<Thickness>(value_)) {
+            return false;
+        }
+        *out = std::get<Thickness>(value_);
+        return true;
+    }
+
 private:
-    std::variant<bool, int, float, double, std::uint32_t, std::wstring> value_;
+    std::variant<bool, int, float, double, std::uint32_t, std::wstring, Thickness> value_;
 };
 
 struct PropertyMetadata {

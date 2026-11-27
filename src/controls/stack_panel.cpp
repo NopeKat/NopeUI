@@ -128,14 +128,13 @@ Size StackPanel::ArrangeOverride(Size final_size) noexcept {
     float offset = vertical ? bounds_.y : bounds_.x;
     for (const auto& child : children_) {
         const Size measured = child->DesiredSize();
+        // The cross axis gets the full extent: the child's own alignment decides
+        // whether it stretches, stays at its measured size or centers.
         if (vertical) {
-            const float width = std::min(measured.width, final_size.width);
-            child->Arrange(Rect{bounds_.x, offset, width, measured.height});
+            child->Arrange(Rect{bounds_.x, offset, final_size.width, measured.height});
             offset += measured.height + spacing_;
         } else {
-            const float width = std::min(measured.width, final_size.width);
-            const float height = std::min(measured.height, final_size.height);
-            child->Arrange(Rect{offset, bounds_.y, width, height});
+            child->Arrange(Rect{offset, bounds_.y, measured.width, final_size.height});
             offset += measured.width + spacing_;
         }
     }

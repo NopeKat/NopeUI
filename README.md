@@ -6,9 +6,15 @@ NopeUI 是一个仅面向 Windows 的开源 C++ 桌面 UI 框架。外观参考 
 
 ## 当前状态
 
-项目进入 P1 早期，P0 的 `base`、`platform`、`layout`、`controls` 与无障碍闭环已完成：`Result` 与 `Error`、`Ref`、`Event` 与 `Subscription`、几何类型、UTF-8 与 UTF-16 转换，以及 Win32 窗口、消息循环、DirectComposition 虚拟表面、Direct2D 绘制与 DirectWrite 文字。窗口默认显示浅色背景、顶部强调条与一行示例文字的占位场景；`Window::SetContent` 可挂一棵元素树，覆盖客户区并接管鼠标命中。窗口默认启用按面积自适应的 2–3 块表面异步提交：客户区面积不超过 `2560×1600` 时用 3 块，更大的窗口用 2 块以控制显存。`SetAsyncCommit(false)` 可回退同步，`LastPresentedFrame()` 与 `AsyncCommitStats()` 可读取提交延迟、队列和丢帧。缩放时虚拟表面按小窗口约三分之一、较大窗口固定 256 像素的余量分配，停止缩放 300 ms 后回收到实际客户区尺寸，避免拖动过程中反复重建表面。帧提交默认按显示器刷新间隔节流，可用 `Window::Present()` 立即提交、`Window::SetCommitThrottle(false)` 关闭节流。`Window::LastFrameMilliseconds()`、`Window::FrameCount()`、`Window::CommitCount()` 与 `Window::RenderFrame()` 可读取和驱动帧，`nopeui_frame_benchmark` 提供 300 帧基准，`nopeui_resize_benchmark` 提供 resize 基准。软件回退已可用：远程会话自动切到 WIC 软件光栅，`Window::SetSoftwareRender(true)` 可手动切换，软件图与硬件图在黄金图里逐像素一致。黄金图基线与工具：`nopeui_golden` 出图、`nopeui_image_diff` 比对、`eng/golden.ps1` 管理。`layout` 提供 Measure/Arrange/HitTest/Paint 的最小元素树，`controls` 已落地 `Border`、`Label`、`Button`、`StackPanel`、`ScrollViewer`、`CheckBox`、`RadioButton`、`ToggleButton`、`ToggleSwitch`、`TextBox`、`ProgressBar`、`Slider`、`Image`，以及弹出层用的 `ToolTip`、`Flyout`、`ContextMenu`；`nopeui_window_smoke` 的默认界面就是这些控件拼出的卡片。`Theme` 定义浅色与深色两套调色板，窗口默认跟随系统应用深浅色偏好，可用 `SetTheme` 覆盖；元素沿父链继承主题，控件从主题取色，占位场景的调色板也跟随主题。11 个测试在 `x64-debug` 与 `x64-release` 下全部通过。
+项目进入 P1 早期，P0 的 `base`、`platform`、`layout`、`controls` 与无障碍闭环已完成：`Result` 与 `Error`、`Ref`、`Event` 与 `Subscription`、几何类型、UTF-8 与 UTF-16 转换，以及 Win32 窗口、消息循环、DirectComposition 虚拟表面、Direct2D 绘制与 DirectWrite 文字。窗口默认显示浅色背景、顶部强调条与一行示例文字的占位场景；`Window::SetContent` 可挂一棵元素树，覆盖客户区并接管鼠标命中。窗口默认启用按面积自适应的 2–3 块表面异步提交：客户区面积不超过 `2560×1600` 时用 3 块，更大的窗口用 2 块以控制显存。`SetAsyncCommit(false)` 可回退同步，`LastPresentedFrame()` 与 `AsyncCommitStats()` 可读取提交延迟、队列和丢帧。缩放时虚拟表面按小窗口约三分之一、较大窗口固定 256 像素的余量分配，停止缩放 300 ms 后回收到实际客户区尺寸，避免拖动过程中反复重建表面。帧提交默认按显示器刷新间隔节流，可用 `Window::Present()` 立即提交、`Window::SetCommitThrottle(false)` 关闭节流。`Window::LastFrameMilliseconds()`、`Window::FrameCount()`、`Window::CommitCount()` 与 `Window::RenderFrame()` 可读取和驱动帧，`nopeui_frame_benchmark` 提供 300 帧基准，`nopeui_resize_benchmark` 提供 resize 基准。软件回退已可用：远程会话自动切到 WIC 软件光栅，`Window::SetSoftwareRender(true)` 可手动切换，软件图与硬件图在黄金图里逐像素一致。黄金图基线与工具：`nopeui_golden` 出图、`nopeui_image_diff` 比对、`eng/golden.ps1` 管理。`layout` 提供 Measure/Arrange/HitTest/Paint 的最小元素树，`controls` 已落地 `Border`、`Grid`、`Label`、`Button`、`StackPanel`、`ScrollViewer`、`CheckBox`、`RadioButton`、`ToggleButton`、`ToggleSwitch`、`TextBox`、`ProgressBar`、`Slider`、`Image`，以及弹出层用的 `ToolTip`、`Flyout`、`ContextMenu`；`nopeui_window_smoke` 的默认界面是一页用 `Grid` 拼出的表单，实现在 `samples/common/form_page.h`，黄金图里的 `form` 场景用的也是这棵树。`Theme` 定义浅色与深色两套调色板，窗口默认跟随系统应用深浅色偏好，可用 `SetTheme` 覆盖；元素沿父链继承主题，控件从主题取色，占位场景的调色板也跟随主题。13 个测试在 `x64-debug` 与 `x64-release` 下全部通过。
 
-属性元数据放在 `property_value.h`：`PropertyValue` 用 `std::variant` 承载布尔、整数、浮点、颜色与字符串，`PropertyMetadata` 记录名字、类型、默认值与 `AffectsMeasure`、`AffectsArrange`、`AffectsRender`、`Inherits` 标志。`Element` 提供 `Properties`、`GetProperty`、`SetProperty` 与 `SubscribePropertyChanged`，基类固定暴露 `IsEnabled` 和可继承的 `Foreground`；`Foreground` 沿父链向上查找，最后回落到主题文字色。各控件通过自己的属性表暴露可枚举属性，`SetProperty` 会校验类型、发出变更事件，再按标志触发重绘或重新布局。
+属性元数据放在 `property_value.h`：`PropertyValue` 用 `std::variant` 承载布尔、整数、浮点、颜色、字符串与 `Thickness`，`PropertyMetadata` 记录名字、类型、默认值与 `AffectsMeasure`、`AffectsArrange`、`AffectsRender`、`Inherits` 标志。`Element` 提供 `Properties`、`GetProperty`、`SetProperty` 与 `SubscribePropertyChanged`，基类固定暴露 `IsEnabled`、可继承的 `Foreground`，以及 `Margin`、`Width`、`Height`、`MinWidth`、`MinHeight`、`MaxWidth`、`MaxHeight`、`HorizontalAlignment`、`VerticalAlignment` 这组布局属性。`Foreground` 沿父链向上查找，最后回落到主题文字色。各控件通过自己的属性表暴露可枚举属性，`SetProperty` 会校验类型、发出变更事件，再按标志触发重绘或重新布局。
+
+布局按槽位模型走：`Measure` 先扣掉 `Margin`，按显式尺寸与最大最小约束夹取可用空间，再交给 `MeasureOverride`，回写时加回 `Margin` 并同时记下内容期望尺寸；`Arrange` 拿到父给的槽位，先按 `Margin`、显式尺寸与水平/垂直对齐算出最终矩形，再进 `ArrangeOverride`。对齐默认是 `Stretch`，零边距时结果与旧行为一致。`StackPanel` 在交叉轴给满槽位，由子元素自己的对齐决定摆放，所以单行输入框、滑块和进度条会自然拉满一列。
+
+`Grid` 三遍测量：先算列、再算行、最后排布。`ColumnDefinition` 与 `RowDefinition` 的 `Width`/`Height` 支持像素、`Auto` 与 `*` 星号，剩余空间按权重分配；`Auto` 只统计单格子元素，跨格内容不参与轨道尺寸，避免一段跨列标题把标签列撑开。`Grid.Row`、`Grid.Column`、`Grid.RowSpan`、`Grid.ColumnSpan` 是附加属性，可写在任意子元素上，也可在 XAML 里直接作为属性设置。
+
+属性优先级是“本地值优先”：`SetProperty` 记本地值，样式经 `Style::Apply` 走 `ApplyStyleProperty` 写入，若已有本地值就直接跳过。已知限制是没有 `ClearValue`，样式后到时不会覆盖本地值，需要清值只能重新 `SetProperty`。
 
 样式与模板走最小闭环：`Style` 按目标类型与可选键匹配，保存 `PropertyValue` setter 和可选模板；`StyleSheet::ApplyTo` 递归下发，先应用属性再套模板。`ControlTemplate` 既可保存按名字索引的部件，也可保存一棵视觉树；`TemplatePart` 带背景、前景、描边、圆角与内边距。`Button` 同时消费旧部件模板与视觉树模板，`CheckBox` 已消费 `Box`、`Check` 与 `Content`，说明模板不是只存不用。
 
@@ -66,11 +72,12 @@ NopeUI 是一个仅面向 Windows 的开源 C++ 桌面 UI 框架。外观参考 
 .\eng\golden.ps1 -Preset x64-debug -SkipBuild  # 只跑比对
 ```
 
-基线在 `tests/golden/baseline`，当前图与差异图在 `.build/golden`。占位场景有软件与硬件各两张基线，控件树与媒体场景各有浅色、深色两张软件基线，媒体场景另有浅色、深色两张硬件基线；XAML 场景同样有浅色、深色两张软件基线与两张硬件基线。脚本会把占位、媒体与 XAML 场景的软件图、硬件图分别互相比对。`nopeui_image_diff` 按单像素 2 级色差、总体 0.5% 判定，有差异时写出的图把变化像素标红。两个工具也可单独调用：
+基线在 `tests/golden/baseline`，当前图与差异图在 `.build/golden`，共 18 张。占位场景有软件与硬件各两张基线；控件树与媒体场景各有浅色、深色两张软件基线，媒体场景另有浅色、深色两张硬件基线；表单场景有浅色、深色两张软件基线与两张硬件基线，覆盖一页 `Grid` 表单的真实排版；XAML 场景同样有浅色、深色两张软件基线与两张硬件基线。脚本会把占位、媒体、表单与 XAML 场景的软件图、硬件图分别互相比对。`nopeui_image_diff` 按单像素 2 级色差、总体 0.5% 判定，有差异时写出的图把变化像素标红。两个工具也可单独调用：
 
 ```powershell
 .\.build\x64-release\tools\Release\nopeui_golden.exe --out .\.build\golden\basic.png --theme light --renderer software
 .\.build\x64-release\tools\Release\nopeui_golden.exe --out .\.build\golden\controls.png --scene controls --theme dark --renderer software
+.\.build\x64-release\tools\Release\nopeui_golden.exe --out .\.build\golden\form.png --scene form --theme light --renderer software
 .\.build\x64-release\tools\Release\nopeui_golden.exe --out .\.build\golden\media.png --scene media --theme light --renderer hardware
 .\.build\x64-release\tools\Release\nopeui_golden.exe --out .\.build\golden\xaml.png --scene xaml --xaml samples\xaml_smoke\page.xaml --theme dark --renderer software
 .\.build\x64-release\tools\Release\nopeui_image_diff.exe <baseline.png> <current.png> --diff <diff.png>
@@ -80,7 +87,7 @@ NopeUI 是一个仅面向 Windows 的开源 C++ 桌面 UI 框架。外观参考 
 
 ## 布局与控件
 
-元素树只做四件事：`Measure` 用可用尺寸算期望尺寸，`Arrange` 落最终矩形，`HitTest` 找最上层命中的元素，`Paint` 由窗口在硬件与软件两条路径里统一调用。`StackPanel` 支持纵向与横向排列，`Border` 负责背景、1 像素描边、内边距与可选圆角，`ScrollViewer` 提供单子元素的横向与纵向滚动。`Label`、`Button`、`CheckBox`、`RadioButton`、`ToggleButton`、`ToggleSwitch`、`TextBox`、`ProgressBar` 与 `Slider` 共用 `graphics::TextRun` 缓存的文字布局；`Button` 带圆角、悬停与按下底色、焦点矩形和点击回调，`CheckBox` 与 `ToggleButton` 保留选中态，鼠标点击或 Enter/Space 都会切换；同一父容器下的 `RadioButton` 自动互斥，`ToggleSwitch` 用 Space 切换；`ProgressBar` 支持确定值与不确定值，`Slider` 支持鼠标拖动、方向键、Home/End 与 PageUp/PageDown。`SetEnabled(false)` 后按 `ControlState::Disabled` 取色，不参与命中、焦点和滚轮。
+元素树只做四件事：`Measure` 用可用尺寸算期望尺寸，`Arrange` 落最终矩形，`HitTest` 找最上层命中的元素，`Paint` 由窗口在硬件与软件两条路径里统一调用。`StackPanel` 支持纵向与横向排列，`Grid` 按行列轨道摆放并把跨格与附加属性一起算进去，`Border` 负责背景、1 像素描边、内边距与可选圆角，`ScrollViewer` 提供单子元素的横向与纵向滚动。`Label`、`Button`、`CheckBox`、`RadioButton`、`ToggleButton`、`ToggleSwitch`、`TextBox`、`ProgressBar` 与 `Slider` 共用 `graphics::TextRun` 缓存的文字布局；`Button` 带圆角、悬停与按下底色、焦点矩形和点击回调，`CheckBox` 与 `ToggleButton` 保留选中态，鼠标点击或 Enter/Space 都会切换；同一父容器下的 `RadioButton` 自动互斥，`ToggleSwitch` 用 Space 切换；`ProgressBar` 支持确定值与不确定值，`Slider` 支持鼠标拖动、方向键、Home/End 与 PageUp/PageDown。`SetEnabled(false)` 后按 `ControlState::Disabled` 取色，不参与命中、焦点和滚轮。
 
 `TextStyle` 控制字号、粗细、字族、对齐、行高倍数、换行与省略。`Label` 换行时按可用宽度重建文本布局并在高度上增长，省略时用 DirectWrite 的尾部裁剪，居中或右对齐时占满可用宽度；布局变化通过 `InvalidateLayout` 回到窗口重新测量与排列，单纯改颜色只触发重绘。`TextBox` 是单行编辑框，支持字符输入、光标、拖选与 Shift 选区、Ctrl+A/C/X/V、退格/删除、方向键、Home/End 和回车提交，长文本会跟随光标横向滚动；IME 组合过程作为预览显示并加下划线，提交结果后才写入文本，`SetPlaceholder` 提供空内容提示。
 

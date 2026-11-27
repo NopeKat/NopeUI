@@ -14,6 +14,7 @@
 #include "nopeui/base/geometry.h"
 #include "nopeui/base/property_value.h"
 #include "nopeui/base/ref.h"
+#include "nopeui/layout/layout_types.h"
 
 struct ID2D1RenderTarget;
 
@@ -21,10 +22,17 @@ namespace nopeui {
 
 struct Theme;
 class ControlTemplate;
+struct AttachedPropertyMetadata;
 
 // Minimal visual tree node: measure with an available size, arrange into final
 // bounds, paint and hit test. Containers override HitTestOverride to route to
 // children; leaf controls rely on the base bounds check.
+//
+// Measure takes the slot the parent offers and subtracts the margin before
+// asking MeasureOverride for the content size, then adds the margin back to the
+// desired size. Arrange takes a slot as well and places the content inside it
+// according to Width/Height, Min/Max and the alignment pair. Containers therefore
+// pass slots, not final rectangles.
 class Element : public RefCounted {
 public:
     using PropertyChangedEvent =
@@ -33,7 +41,7 @@ public:
     ~Element() override;
 
     void Measure(Size available) noexcept;
-    void Arrange(const Rect& bounds) noexcept;
+    void Arrange(const Rect& slot) noexcept;
 
     Size DesiredSize() const noexcept {
         return desired_;
@@ -41,6 +49,45 @@ public:
 
     Rect Bounds() const noexcept {
         return bounds_;
+    }
+
+    // Layout inputs. Zero Width/Height means "measure the content", zero
+    // Min/Max means "no extra constraint" for Max and "zero" for Min.
+    void SetMargin(Thickness margin) noexcept;
+    Thickness Margin() const noexcept {
+        return margin_;
+    }
+    void SetWidth(float width) noexcept;
+    float Width() const noexcept {
+        return width_;
+    }
+    void SetHeight(float height) noexcept;
+    float Height() const noexcept {
+        return height_;
+    }
+    void SetMinWidth(float width) noexcept;
+    float MinWidth() const noexcept {
+        return min_width_;
+    }
+    void SetMinHeight(float height) noexcept;
+    float MinHeight() const noexcept {
+        return min_height_;
+    }
+    void SetMaxWidth(float width) noexcept;
+    float MaxWidth() const noexcept {
+        return max_width_;
+    }
+    void SetMaxHeight(float height) noexcept;
+    float MaxHeight() const noexcept {
+        return max_height_;
+    }
+    void SetHorizontalAlignment(HorizontalAlignment alignment) noexcept;
+    HorizontalAlignment GetHorizontalAlignment() const noexcept {
+        return horizontal_alignment_;
+    }
+    void SetVerticalAlignment(VerticalAlignment alignment) noexcept;
+    VerticalAlignment GetVerticalAlignment() const noexcept {
+        return vertical_alignment_;
     }
 
     Element* Parent() const noexcept {
@@ -79,14 +126,34 @@ public:
     void SetForeground(std::uint32_t color) noexcept;
     std::uint32_t Foreground() const noexcept;
 
-    // Metadata-backed properties. The base element contributes IsEnabled and
-    // Foreground; controls append their own tables.
+    // Metadata-backed properties. The base element contributes IsEnabled,
+    // Foreground and the layout inputs; controls append their own tables.
     bool GetProperty(std::wstring_view name, PropertyValue* value) const noexcept;
     bool SetProperty(std::wstring_view name, const PropertyValue& value) noexcept;
     std::vector<const PropertyMetadata*> Properties() const;
     Subscription SubscribePropertyChanged(PropertyChangedEvent::Handler handler) {
         return property_changed_.Subscribe(std::move(handler));
     }
+
+    // Style-sourced value: it is ignored once the name has a local value, so a
+    // style can never override what the app set directly. There is no
+    // ClearValue() yet, which means a style applied after a local value simply
+    // does not win.
+    bool ApplyStyleProperty(std::wstring_view name, const PropertyValue& value) noexcept;
+    bool HasLocalProperty(std::wstring_view name) const noexcept;
+
+    // Attached properties. Panels own the metadata and children store the
+    // value, which is how Grid.Row reaches a child without a Grid field.
+    bool SetAttachedProperty(
+        const AttachedPropertyMetadata& metadata,
+        const PropertyValue& value) noexcept;
+    bool SetAttachedProperty(
+        std::wstring_view name,
+        const PropertyValue& value) noexcept;
+    bool GetAttachedProperty(std::wstring_view name, PropertyValue* value) const noexcept;
+    const PropertyValue* FindAttachedProperty(
+        const AttachedPropertyMetadata& metadata) const noexcept;
+
 
     // Applies a template to this control. Controls that support named parts
     // override this and copy the parts they consume.
@@ -317,7 +384,7 @@ protected:
     virtual Element* HitTestOverride(Point point) noexcept;
 
     // Controls expose their own property descriptors here. The base element
-    // adds IsEnabled and Foreground on top.
+    // adds IsEnabled, Foreground and the layout inputs on top.
     virtual const PropertyMetadata* ControlPropertyTable(std::size_t* count) const noexcept;
     virtual bool GetControlProperty(std::wstring_view, PropertyValue*) const noexcept;
     virtual bool SetControlProperty(std::wstring_view, const PropertyValue&) noexcept;
@@ -332,6 +399,15 @@ protected:
     Size desired_{};
 
 private:
+    bool SetPropertyCore(
+        std::wstring_view name,
+        const PropertyValue& value,
+        bool local) noexcept;
+    Size ApplyMeasureConstraints(Size available) noexcept;
+    Size ApplySizeConstraints(Size content) const noexcept;
+    Rect ResolveSlot(const Rect& slot) const noexcept;
+    void RecordLocalProperty(std::wstring_view name) noexcept;
+
     Element* parent_ = nullptr;
     const Theme* theme_ = nullptr;
     std::function<void()> invalidate_;
@@ -341,6 +417,18 @@ private:
     Element* context_menu_ = nullptr;
     PropertyChangedEvent property_changed_;
     std::uint32_t foreground_ = 0;
+    Thickness margin_{};
+    float width_ = 0.0f;
+    float height_ = 0.0f;
+    float min_width_ = 0.0f;
+    float min_height_ = 0.0f;
+    float max_width_ = 0.0f;
+    float max_height_ = 0.0f;
+    Size content_desired_{};
+    std::vector<std::pair<const AttachedPropertyMetadata*, PropertyValue>> attached_;
+    std::vector<std::wstring> local_properties_;
+    HorizontalAlignment horizontal_alignment_ = HorizontalAlignment::Stretch;
+    VerticalAlignment vertical_alignment_ = VerticalAlignment::Stretch;
     bool focused_ = false;
     bool enabled_ = true;
     bool close_popup_on_click_ = false;

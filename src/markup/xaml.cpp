@@ -21,6 +21,7 @@
 #include "nopeui/controls/content_presenter.h"
 #include "nopeui/controls/context_menu.h"
 #include "nopeui/controls/flyout.h"
+#include "nopeui/controls/grid.h"
 #include "nopeui/controls/image.h"
 #include "nopeui/controls/label.h"
 #include "nopeui/controls/progress_bar.h"
@@ -32,6 +33,7 @@
 #include "nopeui/controls/toggle_button.h"
 #include "nopeui/controls/toggle_switch.h"
 #include "nopeui/controls/tooltip.h"
+#include "nopeui/layout/attached.h"
 #include "nopeui/layout/style.h"
 #include "nopeui/theme/control_template.h"
 
@@ -588,6 +590,33 @@ bool ParseThickness(std::wstring_view raw, Thickness* out) {
     return true;
 }
 
+// Grid track syntax: "120" (fixed), "Auto", "*" or "2*" (weighted star).
+bool ParseGridLength(std::wstring_view raw, GridLength* out) {
+    const std::wstring value = Trim(raw);
+    if (value == L"Auto") {
+        *out = AutoLength();
+        return true;
+    }
+    if (value == L"*") {
+        *out = StarLength(1.0f);
+        return true;
+    }
+    if (value.size() > 1 && value.back() == L'*') {
+        float weight = 1.0f;
+        if (!ParseFloat(value.substr(0, value.size() - 1), &weight)) {
+            return false;
+        }
+        *out = StarLength(weight);
+        return true;
+    }
+    float pixels = 0.0f;
+    if (!ParseFloat(value, &pixels)) {
+        return false;
+    }
+    *out = PixelLength(pixels);
+    return true;
+}
+
 bool PropertyTypeFor(Element& probe, std::wstring_view name, PropertyValueType* type) {
     for (const PropertyMetadata* metadata : probe.Properties()) {
         if (metadata != nullptr && std::wstring_view(metadata->name) == name) {
@@ -641,6 +670,14 @@ bool ConvertPropertyValue(
         case PropertyValueType::String:
             *out = PropertyValue(std::wstring(raw));
             return true;
+        case PropertyValueType::Thickness: {
+            Thickness thickness;
+            if (!ParseThickness(raw, &thickness)) {
+                return false;
+            }
+            *out = PropertyValue(thickness);
+            return true;
+        }
     }
     return false;
 }
@@ -1288,6 +1325,15 @@ private:
             if (EndsWith(local, L".Resources") || local == L"Resources") {
                 continue;
             }
+            if (EndsWith(local, L".ColumnDefinitions") || EndsWith(local, L".RowDefinitions")) {
+                if (tag != L"Grid") {
+                    return Fail(child, "grid definitions require a Grid");
+                }
+                if (!ApplyGridDefinitions(child, element, EndsWith(local, L".ColumnDefinitions"))) {
+                    return false;
+                }
+                continue;
+            }
             if (EndsWith(local, L".ContextMenu")) {
                 if (child.children.size() != 1) {
                     return Fail(child, "ContextMenu property expects one element");
@@ -1330,6 +1376,16 @@ private:
             }
             return true;
         }
+        if (tag == L"Grid") {
+            auto* grid = dynamic_cast<Grid*>(&element);
+            if (grid == nullptr) {
+                return Fail(node, "internal Grid mismatch");
+            }
+            for (Ref<Element>& child : children) {
+                grid->Add(std::move(child));
+            }
+            return true;
+        }
         if (children.empty()) {
             return true;
         }
@@ -1357,9 +1413,37 @@ private:
         return Fail(node, "element does not accept child elements");
     }
 
+    bool ApplyGridDefinitions(const Node& node, Element& element, bool columns) {
+        auto* grid = dynamic_cast<Grid*>(&element);
+        if (grid == nullptr) {
+            return Fail(node, "internal Grid mismatch");
+        }
+        const std::wstring expected = columns ? L"ColumnDefinition" : L"RowDefinition";
+        const std::wstring attribute_name = columns ? L"Width" : L"Height";
+        for (const Node& track : node.children) {
+            if (LocalName(track.name) != expected) {
+                return Fail(track, "unexpected grid track element");
+            }
+            GridLength length = AutoLength();
+            if (const Attribute* attribute = FindAttribute(track, attribute_name);
+                attribute != nullptr && !ParseGridLength(attribute->value, &length)) {
+                return Fail(track, "invalid grid track size");
+            }
+            if (columns) {
+                grid->AddColumn(length);
+            } else {
+                grid->AddRow(length);
+            }
+        }
+        return true;
+    }
+
     Ref<Element> CreateControl(const Node& node) {
         const std::wstring tag = LocalName(node.name);
         const std::wstring text = DefaultText(node);
+        if (tag == L"Grid") {
+            return Grid::Create();
+        }
         if (tag == L"Border") {
             return Border::Create();
         }
@@ -1498,6 +1582,17 @@ private:
         if (ReadOnlyTextProperty(tag, name)) {
             return true;
         }
+        if (IsAttachedPropertyName(name)) {
+            const AttachedPropertyMetadata* metadata = FindAttachedProperty(name);
+            PropertyValue attached;
+            if (!ConvertPropertyValue(metadata->type, raw, &attached)) {
+                return Fail(node, "invalid attached property value");
+            }
+            if (!element.SetAttachedProperty(*metadata, attached)) {
+                return Fail(node, "attached property rejected the value");
+            }
+            return true;
+        }
         if (name == L"Padding" && tag == L"Border") {
             Thickness padding;
             if (!ParseThickness(raw, &padding)) {
@@ -1530,20 +1625,6 @@ private:
             if (!static_cast<Image*>(&element)->LoadFromFile(utf8.value())) {
                 return Fail(node, "image failed to load");
             }
-            return true;
-        }
-        if ((name == L"Width" || name == L"Height") && tag == L"Image") {
-            float width = 0.0f;
-            float height = 0.0f;
-            if (const Attribute* attribute = FindAttribute(node, L"Width");
-                attribute != nullptr && !ParseFloat(attribute->value, &width)) {
-                return Fail(node, "invalid Width");
-            }
-            if (const Attribute* attribute = FindAttribute(node, L"Height");
-                attribute != nullptr && !ParseFloat(attribute->value, &height)) {
-                return Fail(node, "invalid Height");
-            }
-            static_cast<Image*>(&element)->SetDisplaySize(Size{width, height});
             return true;
         }
         if (name == L"Stretch" && tag == L"Image") {

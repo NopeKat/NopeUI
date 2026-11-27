@@ -46,7 +46,7 @@ void Style::Apply(Element& element) const noexcept {
         return;
     }
     for (const auto& setter : setters_) {
-        element.SetProperty(setter.first, setter.second);
+        element.ApplyStyleProperty(setter.first, setter.second);
     }
     if (control_template_) {
         element.ApplyControlTemplate(*control_template_);

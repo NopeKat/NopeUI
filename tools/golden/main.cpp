@@ -3,11 +3,13 @@
 #include <cstring>
 #include <string>
 
+#include "form_page.h"
 #include "nopeui/controls/border.h"
 #include "nopeui/controls/button.h"
 #include "nopeui/controls/check_box.h"
 #include "nopeui/controls/context_menu.h"
 #include "nopeui/controls/flyout.h"
+#include "nopeui/controls/grid.h"
 #include "nopeui/controls/image.h"
 #include "nopeui/controls/label.h"
 #include "nopeui/controls/progress_bar.h"
@@ -34,7 +36,7 @@ void PrintUsage() {
     std::fprintf(
         stderr,
         "usage: nopeui_golden --out <path> [--renderer software|hardware] "
-        "[--scene placeholder|controls|media|xaml] [--theme light|dark] "
+        "[--scene placeholder|controls|media|form|xaml] [--theme light|dark] "
         "[--xaml <path>] [--width 1280] [--height 800] [--dpi 96]\n");
 }
 
@@ -363,7 +365,16 @@ int RenderAndSave(
     const std::string& xaml_path,
     const std::string& out) {
     nopeui::Ref<nopeui::Element> tree;
-    if (scene == "controls") {
+    if (scene == "form") {
+        tree = nopeui::samples::BuildFormPage();
+        tree->SetTheme(&theme);
+        nopeui::samples::BuildFormStyleSheet()->ApplyTo(*tree);
+        const nopeui::Size available{
+            static_cast<float>(width),
+            static_cast<float>(height)};
+        tree->Measure(available);
+        tree->Arrange(nopeui::Rect{0.0f, 0.0f, available.width, available.height});
+    } else if (scene == "controls") {
         tree = BuildControlsScene(theme, width, height);
     } else if (scene == "media") {
         tree = BuildMediaScene(theme, width, height);
@@ -475,7 +486,7 @@ int main(int argc, char** argv) {
         return 2;
     }
     if (scene != "placeholder" && scene != "controls" && scene != "media" &&
-        scene != "xaml") {
+        scene != "form" && scene != "xaml") {
         std::fprintf(stderr, "unknown scene '%s'\n", scene.c_str());
         return 2;
     }

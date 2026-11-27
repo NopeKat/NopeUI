@@ -31,6 +31,7 @@ target_link_libraries(nopeui_theme PUBLIC nopeui_base PRIVATE advapi32)
 target_compile_features(nopeui_theme PUBLIC cxx_std_20)
 
 add_library(nopeui_layout STATIC
+    src/layout/attached.cpp
     src/layout/element.cpp
     src/layout/style.cpp
 )
@@ -70,6 +71,7 @@ add_library(nopeui_controls STATIC
     src/controls/content_presenter.cpp
     src/controls/context_menu.cpp
     src/controls/flyout.cpp
+    src/controls/grid.cpp
     src/controls/image.cpp
     src/controls/label.cpp
     src/controls/progress_bar.cpp

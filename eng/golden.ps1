@@ -32,6 +32,10 @@ $cases = @(
     @{ Name = "hardware-dark-1280x800"; Renderer = "hardware"; Theme = "dark"; Scene = "placeholder"; Width = 1280; Height = 800 },
     @{ Name = "controls-light-1280x800"; Renderer = "software"; Theme = "light"; Scene = "controls"; Width = 1280; Height = 800 },
     @{ Name = "controls-dark-1280x800"; Renderer = "software"; Theme = "dark"; Scene = "controls"; Width = 1280; Height = 800 },
+    @{ Name = "form-light-1280x800"; Renderer = "software"; Theme = "light"; Scene = "form"; Width = 1280; Height = 800 },
+    @{ Name = "form-dark-1280x800"; Renderer = "software"; Theme = "dark"; Scene = "form"; Width = 1280; Height = 800 },
+    @{ Name = "form-hardware-light-1280x800"; Renderer = "hardware"; Theme = "light"; Scene = "form"; Width = 1280; Height = 800 },
+    @{ Name = "form-hardware-dark-1280x800"; Renderer = "hardware"; Theme = "dark"; Scene = "form"; Width = 1280; Height = 800 },
     @{ Name = "media-light-1280x800"; Renderer = "software"; Theme = "light"; Scene = "media"; Width = 1280; Height = 800 },
     @{ Name = "media-dark-1280x800"; Renderer = "software"; Theme = "dark"; Scene = "media"; Width = 1280; Height = 800 },
     @{ Name = "media-hardware-light-1280x800"; Renderer = "hardware"; Theme = "light"; Scene = "media"; Width = 1280; Height = 800 },
@@ -79,6 +83,8 @@ $pathPairs = @(
     @{ Software = "basic-dark-1280x800"; Hardware = "hardware-dark-1280x800" },
     @{ Software = "media-light-1280x800"; Hardware = "media-hardware-light-1280x800" },
     @{ Software = "media-dark-1280x800"; Hardware = "media-hardware-dark-1280x800" },
+    @{ Software = "form-light-1280x800"; Hardware = "form-hardware-light-1280x800" },
+    @{ Software = "form-dark-1280x800"; Hardware = "form-hardware-dark-1280x800" },
     @{ Software = "xaml-light-1280x800"; Hardware = "xaml-hardware-light-1280x800" },
     @{ Software = "xaml-dark-1280x800"; Hardware = "xaml-hardware-dark-1280x800" }
 )
