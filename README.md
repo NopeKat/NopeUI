@@ -2,7 +2,7 @@
 
 NopeUI 是一个仅面向 Windows 的开源 C++ 桌面 UI 框架。外观参考 Fluent，交互与性能优先；API 与控件命名独立，不追求 WinUI 兼容。
 
-目标平台是 Windows 10 1809 及以上，支持 x64 与 ARM64。窗口与呈现使用 DWM 和 DirectComposition，文本使用 DirectWrite，输入法使用 Win32；布局、绘制、控件、外壳、XAML 与设计器由框架自建。
+目标平台是 Windows 10 1809 及以上，支持 x64 与 ARM64。窗口与呈现使用 DWM 和 DirectComposition，文本使用 DirectWrite，输入法使用 Win32；布局、绘制、控件、外壳、XAML 与设计器由框架自建。`Window::Create` 的宽高按逻辑 DIP 解释，窗口像素尺寸随所在显示器 DPI 缩放。
 
 ## 当前状态
 
@@ -24,7 +24,7 @@ NopeUI 是一个仅面向 Windows 的开源 C++ 桌面 UI 框架。外观参考 
 
 样式也有移除入口：`Element::ClearStyleValues()` 丢掉这个元素记住的样式值，`Element::RemoveTriggers(style)` 按来源摘掉触发器，两者都会让属性回落到本地值、剩余触发器或元数据默认值；`Style::RemoveTrigger(index)` 在样式对象上删一条触发器，方便复用样式。附加属性的本地值同样归 `ClearValue` 管，`Canvas.Left` 设过又清掉会回到 0。
 
-弹出层由窗口内置的覆盖根承载，不塞进内容树：`ShowPopup`、`ClosePopup`、`HasPopup` 管理锚定面板，测量、排列、绘制、命中与焦点都优先覆盖层；Esc、外部点击和外部滚轮关闭。右键沿命中元素的父链找到 `ContextMenu` 并打开；`ToolTipService` 以元素为键登记文本，悬停 600 ms 后弹出；`Flyout` 是单内容圆角面板。关闭走延迟消息，避免在控件的 `OnPointerUp` 回调里直接释放自身。
+弹出层由窗口内置的覆盖根承载，不塞进内容树：`ShowPopup`、`ClosePopup`、`HasPopup` 管理锚定面板，测量、排列、绘制、命中与焦点都优先覆盖层；Esc、外部点击和外部滚轮关闭。右键沿命中元素的父链找到 `ContextMenu` 并打开，超高菜单可用滚轮与键盘滚动；`ToolTipService` 以元素为键登记文本，悬停 600 ms 后弹出；`Flyout` 是单内容圆角面板。关闭走延迟消息，避免在控件的 `OnPointerUp` 回调里直接释放自身。
 
 `Image` 复用 `graphics::LoadPng` 的 WIC 解码入口，提供 `None`、`Fill`、`Uniform`、`UniformToFill` 四种拉伸；绘制时按渲染目标缓存 `ID2D1Bitmap`，直通 alpha 在缓存时转成预乘，软件与硬件路径共用同一套源矩形计算。
 
@@ -99,9 +99,9 @@ NopeUI 是一个仅面向 Windows 的开源 C++ 桌面 UI 框架。外观参考 
 
 `TextStyle` 控制字号、粗细、字族、对齐、行高倍数、换行与省略。`Label` 换行时按可用宽度重建文本布局并在高度上增长，省略时用 DirectWrite 的尾部裁剪，居中或右对齐时占满可用宽度；布局变化通过 `InvalidateLayout` 回到窗口重新测量与排列，单纯改颜色只触发重绘。`TextBox` 是单行编辑框，支持字符输入、光标、拖选与 Shift 选区、Ctrl+A/C/X/V、退格/删除、方向键、Home/End 和回车提交，长文本会跟随光标横向滚动；IME 组合过程作为预览显示并加下划线，提交结果后才写入文本，`SetPlaceholder` 提供空内容提示。
 
-容器在绘制子元素前按自身 bounds 压裁剪区，`Border`、`StackPanel`、`ScrollViewer` 都这么做。`ScrollViewer` 在内容溢出时按需显示 6 像素细滚动条，鼠标靠近时加粗到 10 像素，横向与纵向都可拖动，内容放得下时自动隐藏；滚轮从命中元素向上冒泡到最近的滚动容器，步长按系统“每次滚动几行”换算，设为整页滚动时改滚一屏，按住 Shift 或只有横向溢出时滚横向。键盘 PageUp/PageDown/Home/End 会在焦点控件不处理时冒泡到滚动容器。焦点移到视口外的控件时，窗口会沿父链调用 `BringChildIntoView`，最近的滚动容器自动把该控件滚进视口。
+容器在绘制子元素前按自身 bounds 压裁剪区，`Border`、`StackPanel`、`ScrollViewer` 都这么做。`ScrollViewer` 在内容溢出时按需显示 6 像素细滚动条，鼠标靠近时加粗到 10 像素，横向与纵向都可拖动，内容放得下时自动隐藏；滚轮从命中元素向上冒泡到最近的滚动容器，步长按系统“每次滚动几行”换算，设为整页滚动时改滚一屏，按住 Shift 或只有横向溢出时滚横向。键盘 PageUp/PageDown/Home/End 会在焦点控件不处理时冒泡到滚动容器；只有横向溢出时这几个键改滚横向。焦点移到视口外的控件时，窗口会沿父链调用 `BringChildIntoView`，最近的滚动容器自动把该控件滚进视口。
 
-焦点按视觉顺序排序：`IsFocusable()` 标记可聚焦元素，`CollectFocusable()` 递归收集，窗口维护 Tab 与 Shift+Tab，失去窗口焦点时清空。禁用元素及其子树不进入焦点序列。`Button` 的 `SetOnClick` 保存单个回调，`SubscribeClick` 返回可管理的订阅。
+焦点按视觉顺序排序：`IsFocusable()` 标记可聚焦元素，`CollectFocusable()` 递归收集，窗口维护 Tab 与 Shift+Tab；窗口失去激活时保留逻辑焦点，只关闭弹层并取消按压，重新激活后可直接继续输入。禁用元素及其子树不进入焦点序列。`Button` 的 `SetOnClick` 保存单个回调，`SubscribeClick` 返回可管理的订阅。
 
 无障碍走 UI Automation 的服务端 Provider：窗口响应 `WM_GETOBJECT`，根节点是 Window，控件按元素树暴露 Name、ControlType、BoundingRectangle、IsEnabled 和焦点状态。`Button`、`ToggleButton`、`CheckBox`、`RadioButton` 提供 Invoke 或 Toggle 模式，`TextBox` 提供 Value 与 Text 模式，`Slider` 和 `ProgressBar` 提供 RangeValue，`ScrollViewer` 提供 Scroll 模式，焦点变化时发出 UIA 焦点事件。`MenuBar` 与 `ContextMenu` 的菜单行是绘制出来的数据行，UIA 侧按 `MenuItem` 角色单独补一层子 Provider，挂在菜单元素的第一个子元素位置，可上下翻兄弟，名字就是菜单标题或菜单项文字。
 

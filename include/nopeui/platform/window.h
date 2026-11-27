@@ -54,6 +54,8 @@ struct CommitQueueStats {
 
 class Window : public RefCounted {
 public:
+    // width and height are logical DIPs; the native window is scaled to the
+    // monitor DPI, so 900x600 stays the same apparent size at 125% or 150%.
     static Result<Ref<Window>> Create(int width, int height, std::u16string_view title);
 
     ~Window() override;
