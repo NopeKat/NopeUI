@@ -15,6 +15,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <cwctype>
+#include <mutex>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -150,6 +151,67 @@ SAFEARRAY* CreateRuntimeId(int identifier) {
 int RuntimeIdFor(Element* element) {
     return static_cast<int>(
         reinterpret_cast<std::uintptr_t>(element) & 0x7fffffffU);
+}
+
+struct TrackedAutomationProvider {
+    IRawElementProviderSimple* provider = nullptr;
+    Window* window = nullptr;
+};
+
+std::mutex& AutomationProviderMutex() {
+    static std::mutex mutex;
+    return mutex;
+}
+
+std::vector<TrackedAutomationProvider>& TrackedAutomationProviders() {
+    static std::vector<TrackedAutomationProvider> providers;
+    return providers;
+}
+
+void TrackAutomationProvider(IRawElementProviderSimple* provider, Window* window) {
+    if (provider == nullptr) {
+        return;
+    }
+    std::lock_guard<std::mutex> lock(AutomationProviderMutex());
+    TrackedAutomationProviders().push_back(TrackedAutomationProvider{provider, window});
+}
+
+void UntrackAutomationProvider(const IRawElementProviderSimple* provider) {
+    std::lock_guard<std::mutex> lock(AutomationProviderMutex());
+    auto& providers = TrackedAutomationProviders();
+    providers.erase(
+        std::remove_if(
+            providers.begin(),
+            providers.end(),
+            [provider](const TrackedAutomationProvider& entry) {
+                return entry.provider == provider;
+            }),
+        providers.end());
+}
+
+void DisconnectAutomationProviders(Window* window) {
+    std::vector<IRawElementProviderSimple*> providers;
+    {
+        std::lock_guard<std::mutex> lock(AutomationProviderMutex());
+        for (const auto& entry : TrackedAutomationProviders()) {
+            if (entry.window == window) {
+                providers.push_back(entry.provider);
+            }
+        }
+        TrackedAutomationProviders().erase(
+            std::remove_if(
+                TrackedAutomationProviders().begin(),
+                TrackedAutomationProviders().end(),
+                [window](const TrackedAutomationProvider& entry) {
+                    return entry.window == window;
+                }),
+            TrackedAutomationProviders().end());
+    }
+    for (IRawElementProviderSimple* provider : providers) {
+        // UIA marshals to this thread, so no callback is running now; this
+        // invalidates any client-held reference before the window dies.
+        UiaDisconnectProvider(provider);
+    }
 }
 
 std::wstring WindowTitle(HWND hwnd) {
@@ -628,7 +690,13 @@ class WindowProvider final : public IRawElementProviderSimple,
                              public IRawElementProviderFragment,
                              public IRawElementProviderFragmentRoot {
 public:
-    explicit WindowProvider(Window* window) noexcept : window_(window) {}
+    explicit WindowProvider(Window* window) noexcept : window_(window) {
+        TrackAutomationProvider(static_cast<IRawElementProviderSimple*>(this), window);
+    }
+
+    ~WindowProvider() {
+        UntrackAutomationProvider(static_cast<IRawElementProviderSimple*>(this));
+    }
 
     void Detach() noexcept {
         window_ = nullptr;
@@ -884,6 +952,11 @@ public:
         if (root_ != nullptr) {
             root_->AddRef();
         }
+        TrackAutomationProvider(static_cast<IRawElementProviderSimple*>(this), window);
+    }
+
+    ~ElementProvider() {
+        UntrackAutomationProvider(static_cast<IRawElementProviderSimple*>(this));
     }
 
     HRESULT STDMETHODCALLTYPE QueryInterface(REFIID iid, void** object) override {
@@ -1592,7 +1665,13 @@ public:
         std::wstring name,
         IRawElementProviderFragmentRoot* root) noexcept
         : window_(window), owner_(owner), index_(index),
-          name_(std::move(name)), root_(root) {}
+          name_(std::move(name)), root_(root) {
+        TrackAutomationProvider(static_cast<IRawElementProviderSimple*>(this), window);
+    }
+
+    ~MenuItemProvider() {
+        UntrackAutomationProvider(static_cast<IRawElementProviderSimple*>(this));
+    }
 
     HRESULT STDMETHODCALLTYPE QueryInterface(REFIID iid, void** object) override {
         if (object == nullptr) {
@@ -1844,6 +1923,7 @@ bool HandleAutomationGetObject(
 }
 
 void ReleaseAutomation(Window* window) noexcept {
+    DisconnectAutomationProviders(window);
     auto& providers = WindowProviders();
     auto found = providers.find(window);
     if (found == providers.end()) {
