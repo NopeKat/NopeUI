@@ -1840,6 +1840,30 @@ Result<Ref<Window>> Window::Create(int width, int height, std::u16string_view ti
 
     window->hwnd_ = hwnd;
 
+    // CreateWindowExW sizes the native window in physical pixels. The API
+    // accepts logical DIPs, so scale the outer window to the DPI of the
+    // monitor the new window actually landed on before creating the swap chain
+    // or laying out content.
+    const UINT dpi = QueryWindowDpi(hwnd);
+    const int scaled_width = static_cast<int>(
+        std::lround(static_cast<double>(width) * DpiScaleFrom(dpi)));
+    const int scaled_height = static_cast<int>(
+        std::lround(static_cast<double>(height) * DpiScaleFrom(dpi)));
+    const BOOL resized = SetWindowPos(
+            hwnd,
+            nullptr,
+            0,
+            0,
+            scaled_width,
+            scaled_height,
+            SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+    if (resized == FALSE) {
+        window->Close();
+        return Result<Ref<Window>>::Fail(
+            Error{ErrorCode::PlatformFailure, "SetWindowPos failed with error " +
+                                                  std::to_string(GetLastError())});
+    }
+
     RECT client{};
     if (!GetClientRect(hwnd, &client)) {
         window->Close();
@@ -1855,7 +1879,6 @@ Result<Ref<Window>> Window::Create(int width, int height, std::u16string_view ti
         return Result<Ref<Window>>::Fail(graphics.error());
     }
 
-    const UINT dpi = QueryWindowDpi(hwnd);
     window->scale_ = DpiScaleFrom(dpi);
     window->graphics_ = std::move(graphics).value();
     window->graphics_->SetDpi(static_cast<float>(dpi));
