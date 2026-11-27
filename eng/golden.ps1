@@ -32,6 +32,8 @@ $cases = @(
     @{ Name = "hardware-dark-1280x800"; Renderer = "hardware"; Theme = "dark"; Scene = "placeholder"; Width = 1280; Height = 800 },
     @{ Name = "controls-light-1280x800"; Renderer = "software"; Theme = "light"; Scene = "controls"; Width = 1280; Height = 800 },
     @{ Name = "controls-dark-1280x800"; Renderer = "software"; Theme = "dark"; Scene = "controls"; Width = 1280; Height = 800 },
+    @{ Name = "controls-contrast-1280x800"; Renderer = "software"; Theme = "contrast"; Scene = "controls"; Width = 1280; Height = 800 },
+    @{ Name = "controls-contrast-hardware-1280x800"; Renderer = "hardware"; Theme = "contrast"; Scene = "controls"; Width = 1280; Height = 800 },
     @{ Name = "form-light-1280x800"; Renderer = "software"; Theme = "light"; Scene = "form"; Width = 1280; Height = 800 },
     @{ Name = "form-dark-1280x800"; Renderer = "software"; Theme = "dark"; Scene = "form"; Width = 1280; Height = 800 },
     @{ Name = "form-hardware-light-1280x800"; Renderer = "hardware"; Theme = "light"; Scene = "form"; Width = 1280; Height = 800 },
@@ -49,7 +51,9 @@ $cases = @(
     @{ Name = "panels-light-1280x800"; Renderer = "software"; Theme = "light"; Scene = "panels"; Width = 1280; Height = 800 },
     @{ Name = "panels-dark-1280x800"; Renderer = "software"; Theme = "dark"; Scene = "panels"; Width = 1280; Height = 800 },
     @{ Name = "panels-hardware-light-1280x800"; Renderer = "hardware"; Theme = "light"; Scene = "panels"; Width = 1280; Height = 800 },
-    @{ Name = "panels-hardware-dark-1280x800"; Renderer = "hardware"; Theme = "dark"; Scene = "panels"; Width = 1280; Height = 800 }
+    @{ Name = "panels-hardware-dark-1280x800"; Renderer = "hardware"; Theme = "dark"; Scene = "panels"; Width = 1280; Height = 800 },
+    @{ Name = "panels-contrast-1280x800"; Renderer = "software"; Theme = "contrast"; Scene = "panels"; Width = 1280; Height = 800 },
+    @{ Name = "panels-contrast-hardware-1280x800"; Renderer = "hardware"; Theme = "contrast"; Scene = "panels"; Width = 1280; Height = 800 }
 )
 
 $failed = $false
@@ -94,8 +98,10 @@ $pathPairs = @(
     @{ Software = "xaml-light-1280x800"; Hardware = "xaml-hardware-light-1280x800" },
     @{ Software = "xaml-dark-1280x800"; Hardware = "xaml-hardware-dark-1280x800" },
     @{ Software = "form-contrast-1280x800"; Hardware = "form-contrast-hardware-1280x800" },
+    @{ Software = "controls-contrast-1280x800"; Hardware = "controls-contrast-hardware-1280x800" },
     @{ Software = "panels-light-1280x800"; Hardware = "panels-hardware-light-1280x800" },
-    @{ Software = "panels-dark-1280x800"; Hardware = "panels-hardware-dark-1280x800" }
+    @{ Software = "panels-dark-1280x800"; Hardware = "panels-hardware-dark-1280x800" },
+    @{ Software = "panels-contrast-1280x800"; Hardware = "panels-contrast-hardware-1280x800" }
 )
 foreach ($pair in $pathPairs) {
     $softwarePath = Join-Path $currentDir "$($pair.Software).png"
