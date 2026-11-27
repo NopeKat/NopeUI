@@ -48,3 +48,17 @@ add_executable(nopeui_present_benchmark
 )
 
 target_link_libraries(nopeui_present_benchmark PRIVATE d3d11 dxgi dcomp user32)
+
+add_executable(nopeui_startup_benchmark
+    startup_benchmark/main.cpp
+)
+
+target_include_directories(nopeui_startup_benchmark PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/common)
+target_link_libraries(nopeui_startup_benchmark PRIVATE nopeui_platform nopeui_controls nopeui_theme psapi)
+
+add_executable(nopeui_theme_benchmark
+    theme_benchmark/main.cpp
+)
+
+target_include_directories(nopeui_theme_benchmark PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/common)
+target_link_libraries(nopeui_theme_benchmark PRIVATE nopeui_platform nopeui_controls nopeui_theme psapi)
