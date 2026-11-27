@@ -289,4 +289,63 @@ void MenuBar::CollectAccessibleMenuItems(
     }
 }
 
+Rect MenuBar::AccessibilityMenuItemBounds(std::size_t index) const noexcept {
+    if (index >= items_.size()) {
+        return Rect{};
+    }
+    float x = 0.0f;
+    for (std::size_t offset = 0; offset < index; ++offset) {
+        const auto& item = items_[offset];
+        const float text_width = item.run != nullptr
+            ? item.run->Measure().width
+            : static_cast<float>(item.title.size()) * 7.0f;
+        x += text_width + kPaddingX * 2.0f;
+    }
+    const auto& item = items_[index];
+    const float text_width = item.run != nullptr
+        ? item.run->Measure().width
+        : static_cast<float>(item.title.size()) * 7.0f;
+    const float width = std::min(
+        text_width + kPaddingX * 2.0f,
+        std::max(0.0f, bounds_.width - x));
+    if (width <= 0.0f) {
+        return Rect{};
+    }
+    return Rect{x, 0.0f, width, bounds_.height};
+}
+
+bool MenuBar::InvokeAccessibilityMenuItem(std::size_t index) noexcept {
+    if (index >= items_.size()) {
+        return false;
+    }
+    OpenMenu(index);
+    return true;
+}
+
+bool MenuBar::HasAccessibilityMenuItemExpandCollapse() const noexcept {
+    return true;
+}
+
+bool MenuBar::AccessibilityMenuItemExpanded(std::size_t index) const noexcept {
+    return index < items_.size() && active_ == static_cast<int>(index);
+}
+
+bool MenuBar::SetAccessibilityMenuItemExpanded(
+    std::size_t index,
+    bool expanded) noexcept {
+    if (index >= items_.size()) {
+        return false;
+    }
+    if (expanded) {
+        if (active_ != static_cast<int>(index)) {
+            OpenMenu(index);
+        }
+    } else if (active_ == static_cast<int>(index)) {
+        RequestClosePopup();
+        active_ = -1;
+        Invalidate();
+    }
+    return true;
+}
+
 }  // namespace nopeui

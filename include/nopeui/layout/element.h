@@ -375,6 +375,24 @@ public:
     // the row names here and the automation provider exposes them as menu items.
     virtual void CollectAccessibleMenuItems(std::vector<std::wstring>&) const noexcept {}
 
+    // Automation metrics and actions for painted menu rows. Bounds are relative
+    // to this element and empty when the row is clipped out of view.
+    virtual Rect AccessibilityMenuItemBounds(std::size_t) const noexcept {
+        return Rect{};
+    }
+    virtual bool InvokeAccessibilityMenuItem(std::size_t) noexcept {
+        return false;
+    }
+    virtual bool HasAccessibilityMenuItemExpandCollapse() const noexcept {
+        return false;
+    }
+    virtual bool AccessibilityMenuItemExpanded(std::size_t) const noexcept {
+        return false;
+    }
+    virtual bool SetAccessibilityMenuItemExpanded(std::size_t, bool) noexcept {
+        return false;
+    }
+
     bool IsFocused() const noexcept {
         return focused_;
     }

@@ -49,6 +49,8 @@ PROPERTYID ControlTypeForRole(AccessibleRole role) noexcept {
             return UIA_WindowControlTypeId;
         case AccessibleRole::MenuBar:
             return UIA_MenuBarControlTypeId;
+        case AccessibleRole::Menu:
+            return UIA_MenuControlTypeId;
         case AccessibleRole::MenuItem:
             return UIA_MenuItemControlTypeId;
         case AccessibleRole::Pane:
@@ -114,6 +116,25 @@ bool ElementScreenRect(Window* window, Element* element, UiaRect* rect) {
     rect->top = static_cast<double>(origin.y) + bounds.y;
     rect->width = bounds.width;
     rect->height = bounds.height;
+    return true;
+}
+
+bool ElementLocalScreenRect(
+    Window* window,
+    Element* element,
+    const Rect& local,
+    UiaRect* rect) {
+    if (local.IsEmpty() || rect == nullptr) {
+        return false;
+    }
+    UiaRect origin{};
+    if (!ElementScreenRect(window, element, &origin)) {
+        return false;
+    }
+    rect->left = origin.left + local.x;
+    rect->top = origin.top + local.y;
+    rect->width = local.width;
+    rect->height = local.height;
     return true;
 }
 
@@ -1654,9 +1675,12 @@ public:
 };
 
 // Menu rows are painted text rather than elements, so each row gets a small
-// read-only provider: a name, the menu item role and the owner's rectangle.
+// provider that reports its own rectangle and forwards invoke or expand
+// actions back to the owning control.
 class MenuItemProvider final : public IRawElementProviderSimple,
-                               public IRawElementProviderFragment {
+                               public IRawElementProviderFragment,
+                               public IInvokeProvider,
+                               public IExpandCollapseProvider {
 public:
     MenuItemProvider(
         Window* window,
@@ -1682,6 +1706,12 @@ public:
             *object = static_cast<IRawElementProviderSimple*>(this);
         } else if (iid == __uuidof(IRawElementProviderFragment)) {
             *object = static_cast<IRawElementProviderFragment*>(this);
+        } else if (iid == __uuidof(IInvokeProvider)) {
+            *object = static_cast<IInvokeProvider*>(this);
+        } else if (iid == __uuidof(IExpandCollapseProvider) &&
+                   owner_ != nullptr &&
+                   owner_->HasAccessibilityMenuItemExpandCollapse()) {
+            *object = static_cast<IExpandCollapseProvider*>(this);
         } else {
             return E_NOINTERFACE;
         }
@@ -1709,11 +1739,22 @@ public:
         return S_OK;
     }
 
-    HRESULT STDMETHODCALLTYPE GetPatternProvider(PATTERNID, IUnknown** provider) override {
+    HRESULT STDMETHODCALLTYPE GetPatternProvider(PATTERNID pattern, IUnknown** provider) override {
         if (provider == nullptr) {
             return E_INVALIDARG;
         }
         *provider = nullptr;
+        if (pattern == UIA_InvokePatternId) {
+            *provider = static_cast<IUnknown*>(static_cast<IInvokeProvider*>(this));
+        } else if (pattern == UIA_ExpandCollapsePatternId &&
+                   owner_ != nullptr &&
+                   owner_->HasAccessibilityMenuItemExpandCollapse()) {
+            *provider = static_cast<IUnknown*>(
+                static_cast<IExpandCollapseProvider*>(this));
+        }
+        if (*provider != nullptr) {
+            (*provider)->AddRef();
+        }
         return S_OK;
     }
 
@@ -1732,15 +1773,54 @@ public:
             case UIA_IsEnabledPropertyId:
                 VariantBool(value, owner_ != nullptr && owner_->IsEnabled());
                 break;
-            case UIA_IsOffscreenPropertyId:
-                VariantBool(value, false);
-                break;
             case UIA_IsKeyboardFocusablePropertyId:
-                VariantBool(value, false);
+                VariantBool(value, owner_ != nullptr && owner_->IsFocusable());
                 break;
+            case UIA_IsControlElementPropertyId:
+            case UIA_IsContentElementPropertyId:
+                VariantBool(value, true);
+                break;
+            case UIA_IsInvokePatternAvailablePropertyId:
+                VariantBool(value, owner_ != nullptr);
+                break;
+            case UIA_IsExpandCollapsePatternAvailablePropertyId:
+                VariantBool(
+                    value,
+                    owner_ != nullptr &&
+                        owner_->HasAccessibilityMenuItemExpandCollapse());
+                break;
+            case UIA_ExpandCollapseExpandCollapseStatePropertyId:
+                if (owner_ != nullptr &&
+                    owner_->HasAccessibilityMenuItemExpandCollapse()) {
+                    VariantInt(
+                        value,
+                        static_cast<int>(
+                            owner_->AccessibilityMenuItemExpanded(index_)
+                                ? ExpandCollapseState_Expanded
+                                : ExpandCollapseState_Collapsed));
+                }
+                break;
+            case UIA_IsOffscreenPropertyId: {
+                UiaRect bounds{};
+                VariantBool(
+                    value,
+                    !ElementLocalScreenRect(
+                        window_,
+                        owner_,
+                        owner_ != nullptr
+                            ? owner_->AccessibilityMenuItemBounds(index_)
+                            : Rect{},
+                        &bounds));
+                break;
+            }
             case UIA_BoundingRectanglePropertyId: {
                 UiaRect rect{};
-                if (ElementScreenRect(window_, owner_, &rect)) {
+                if (owner_ != nullptr &&
+                    ElementLocalScreenRect(
+                        window_,
+                        owner_,
+                        owner_->AccessibilityMenuItemBounds(index_),
+                        &rect)) {
                     VariantRect(value, rect);
                 }
                 break;
@@ -1753,6 +1833,15 @@ public:
                 break;
             case UIA_ProcessIdPropertyId:
                 VariantInt(value, static_cast<int>(GetCurrentProcessId()));
+                break;
+            case UIA_AutomationIdPropertyId:
+                if (owner_ != nullptr) {
+                    VariantString(
+                        value,
+                        L"NopeUI.MenuItem." +
+                            std::to_wstring(RuntimeIdFor(owner_)) + L"." +
+                            std::to_wstring(index_));
+                }
                 break;
             default:
                 break;
@@ -1811,7 +1900,13 @@ public:
             return E_INVALIDARG;
         }
         UiaRect bounds{};
-        ElementScreenRect(window_, owner_, &bounds);
+        if (owner_ != nullptr) {
+            ElementLocalScreenRect(
+                window_,
+                owner_,
+                owner_->AccessibilityMenuItemBounds(index_),
+                &bounds);
+        }
         *rect = bounds;
         return S_OK;
     }
@@ -1841,6 +1936,59 @@ public:
             root_->AddRef();
         }
         return S_OK;
+    }
+
+    HRESULT STDMETHODCALLTYPE Invoke() override {
+        if (owner_ == nullptr) {
+            return UIA_E_NOTSUPPORTED;
+        }
+        if (!owner_->IsEnabled()) {
+            return UIA_E_ELEMENTNOTENABLED;
+        }
+        return owner_->InvokeAccessibilityMenuItem(index_)
+            ? S_OK
+            : UIA_E_NOTSUPPORTED;
+    }
+
+    HRESULT STDMETHODCALLTYPE get_ExpandCollapseState(
+        ExpandCollapseState* state) override {
+        if (state == nullptr) {
+            return E_INVALIDARG;
+        }
+        if (owner_ == nullptr ||
+            !owner_->HasAccessibilityMenuItemExpandCollapse()) {
+            return UIA_E_NOTSUPPORTED;
+        }
+        *state = owner_->AccessibilityMenuItemExpanded(index_)
+            ? ExpandCollapseState_Expanded
+            : ExpandCollapseState_Collapsed;
+        return S_OK;
+    }
+
+    HRESULT STDMETHODCALLTYPE Expand() override {
+        if (owner_ == nullptr ||
+            !owner_->HasAccessibilityMenuItemExpandCollapse()) {
+            return UIA_E_NOTSUPPORTED;
+        }
+        if (!owner_->IsEnabled()) {
+            return UIA_E_ELEMENTNOTENABLED;
+        }
+        return owner_->SetAccessibilityMenuItemExpanded(index_, true)
+            ? S_OK
+            : UIA_E_NOTSUPPORTED;
+    }
+
+    HRESULT STDMETHODCALLTYPE Collapse() override {
+        if (owner_ == nullptr ||
+            !owner_->HasAccessibilityMenuItemExpandCollapse()) {
+            return UIA_E_NOTSUPPORTED;
+        }
+        if (!owner_->IsEnabled()) {
+            return UIA_E_ELEMENTNOTENABLED;
+        }
+        return owner_->SetAccessibilityMenuItemExpanded(index_, false)
+            ? S_OK
+            : UIA_E_NOTSUPPORTED;
     }
 
 private:

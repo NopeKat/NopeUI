@@ -15,6 +15,7 @@ enum class AccessibleRole {
     Group,
     Window,
     MenuBar,
+    Menu,
     MenuItem,
 };
 

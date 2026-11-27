@@ -26,6 +26,8 @@ public:
     }
 
     void CollectAccessibleMenuItems(std::vector<std::wstring>& items) const noexcept override;
+    Rect AccessibilityMenuItemBounds(std::size_t index) const noexcept override;
+    bool InvokeAccessibilityMenuItem(std::size_t index) noexcept override;
 
 protected:
     Size MeasureOverride(Size available) noexcept override;

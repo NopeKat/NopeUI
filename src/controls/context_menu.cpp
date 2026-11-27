@@ -292,11 +292,39 @@ void ContextMenu::OnPointerUp(Point point) noexcept {
 }
 
 AccessibleRole ContextMenu::AccessibilityRole() const noexcept {
-    return AccessibleRole::Pane;
+    return AccessibleRole::Menu;
 }
 
 std::wstring ContextMenu::AccessibilityName() const {
     return L"Context menu";
+}
+
+Rect ContextMenu::AccessibilityMenuItemBounds(std::size_t index) const noexcept {
+    if (index >= items_.size()) {
+        return Rect{};
+    }
+    const float top = kPaddingY + kItemHeight * static_cast<float>(index) - scroll_;
+    const float visible_top = kPaddingY;
+    const float visible_bottom =
+        std::max(kPaddingY, bounds_.height - kPaddingY);
+    const float clipped_top = std::max(top, visible_top);
+    const float clipped_bottom = std::min(top + kItemHeight, visible_bottom);
+    if (clipped_bottom <= clipped_top) {
+        return Rect{};
+    }
+    return Rect{
+        4.0f,
+        clipped_top,
+        std::max(0.0f, bounds_.width - 8.0f),
+        clipped_bottom - clipped_top};
+}
+
+bool ContextMenu::InvokeAccessibilityMenuItem(std::size_t index) noexcept {
+    if (index >= items_.size()) {
+        return false;
+    }
+    Activate(static_cast<int>(index));
+    return true;
 }
 
 void ContextMenu::CollectAccessibleMenuItems(
