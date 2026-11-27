@@ -158,6 +158,7 @@ private:
     static bool EnsureWindowClass() noexcept;
 
     void OnSize(int width, int height) noexcept;
+    void ApplyDpi(UINT dpi) noexcept;
     void OnSizing(const RECT& proposed) noexcept;
     void BeginLiveResize() noexcept;
     void EndLiveResize() noexcept;
@@ -219,6 +220,8 @@ private:
     bool resize_pending_ = false;
     bool live_resizing_ = false;
     bool recreate_pending_ = false;
+    bool dpi_change_active_ = false;
+    UINT pending_dpi_ = 0;
     double last_resize_ms_ = 0.0;
 };
 

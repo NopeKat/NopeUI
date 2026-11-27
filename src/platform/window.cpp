@@ -2612,7 +2612,8 @@ void Window::UpdateClientMetrics(int pixel_width, int pixel_height) noexcept {
     }
     client_pixel_width_ = pixel_width;
     client_pixel_height_ = pixel_height;
-    const UINT dpi = QueryWindowDpi(hwnd_);
+    const UINT dpi = dpi_change_active_ && pending_dpi_ != 0 ? pending_dpi_
+                                                             : QueryWindowDpi(hwnd_);
     scale_ = DpiScaleFrom(dpi);
     if (graphics_ != nullptr) {
         graphics_->SetDpi(static_cast<float>(dpi));
@@ -2621,6 +2622,33 @@ void Window::UpdateClientMetrics(int pixel_width, int pixel_height) noexcept {
         std::lround(static_cast<double>(pixel_width) / static_cast<double>(scale_))));
     client_height_ = std::max(1, static_cast<int>(
         std::lround(static_cast<double>(pixel_height) / static_cast<double>(scale_))));
+}
+
+// WM_DPICHANGED carries the new DPI in wParam, which is the value to trust:
+// the monitor query only reports the old scale until the move has completed.
+// The pending value also covers the resize that the suggested rect triggers,
+// so the rebuild does not fall back to the old scale halfway through.
+void Window::ApplyDpi(UINT dpi) noexcept {
+    if (dpi == 0) {
+        return;
+    }
+    pending_dpi_ = dpi;
+    dpi_change_active_ = true;
+    scale_ = DpiScaleFrom(dpi);
+    if (graphics_ != nullptr) {
+        graphics_->SetDpi(static_cast<float>(dpi));
+    }
+    if (client_pixel_width_ > 0 && client_pixel_height_ > 0) {
+        client_width_ = std::max(1, static_cast<int>(std::lround(
+            static_cast<double>(client_pixel_width_) / static_cast<double>(scale_))));
+        client_height_ = std::max(1, static_cast<int>(std::lround(
+            static_cast<double>(client_pixel_height_) / static_cast<double>(scale_))));
+    }
+    if (root_ != nullptr) {
+        LayoutContent(client_width_, client_height_);
+    }
+    RenderFrame();
+    dpi_change_active_ = false;
 }
 
 Point Window::ToClientDip(int pixel_x, int pixel_y) const noexcept {
@@ -3110,6 +3138,12 @@ LRESULT CALLBACK Window::WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM 
                 suggested->right - suggested->left,
                 suggested->bottom - suggested->top,
                 SWP_NOZORDER | SWP_NOACTIVATE);
+            // Apply the DPI after the resize, because the WM_SIZE handler
+            // re-queries the monitor and would otherwise bring back the old
+            // scale on the same display.
+            if (window != nullptr) {
+                window->ApplyDpi(LOWORD(wparam));
+            }
             return 0;
         }
 
