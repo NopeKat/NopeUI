@@ -2,8 +2,10 @@
 #include <cstdlib>
 #include <cstring>
 #include <string>
+#include <vector>
 
 #include "form_page.h"
+#include "panels_page.h"
 #include "nopeui/controls/border.h"
 #include "nopeui/controls/button.h"
 #include "nopeui/controls/check_box.h"
@@ -374,6 +376,15 @@ int RenderAndSave(
             static_cast<float>(height)};
         tree->Measure(available);
         tree->Arrange(nopeui::Rect{0.0f, 0.0f, available.width, available.height});
+    } else if (scene == "panels") {
+        tree = nopeui::samples::BuildPanelsPage();
+        tree->SetTheme(&theme);
+        nopeui::samples::BuildPanelsStyleSheet()->ApplyTo(*tree);
+        const nopeui::Size available{
+            static_cast<float>(width),
+            static_cast<float>(height)};
+        tree->Measure(available);
+        tree->Arrange(nopeui::Rect{0.0f, 0.0f, available.width, available.height});
     } else if (scene == "controls") {
         tree = BuildControlsScene(theme, width, height);
     } else if (scene == "media") {
@@ -477,7 +488,7 @@ int main(int argc, char** argv) {
         PrintUsage();
         return 2;
     }
-    if (theme != "light" && theme != "dark") {
+    if (theme != "light" && theme != "dark" && theme != "contrast") {
         std::fprintf(stderr, "unknown theme '%s'\n", theme.c_str());
         return 2;
     }
@@ -486,17 +497,22 @@ int main(int argc, char** argv) {
         return 2;
     }
     if (scene != "placeholder" && scene != "controls" && scene != "media" &&
-        scene != "form" && scene != "xaml") {
+        scene != "form" && scene != "xaml" && scene != "panels") {
         std::fprintf(stderr, "unknown scene '%s'\n", scene.c_str());
         return 2;
     }
 
-    const nopeui::graphics::ScenePalette palette = theme == "dark"
-        ? nopeui::graphics::DarkPalette()
-        : nopeui::graphics::LightPalette();
     const nopeui::Theme theme_value = theme == "dark"
         ? nopeui::DarkTheme()
-        : nopeui::LightTheme();
+        : (theme == "contrast" ? nopeui::HighContrastTheme() : nopeui::LightTheme());
+    nopeui::graphics::ScenePalette palette = theme == "dark"
+        ? nopeui::graphics::DarkPalette()
+        : nopeui::graphics::LightPalette();
+    if (theme == "contrast") {
+        palette.background = theme_value.background;
+        palette.accent = theme_value.accent;
+        palette.text = theme_value.text;
+    }
 
     if (renderer == "software") {
         auto surface_result = nopeui::graphics::OffscreenSurface::Create(width, height, dpi);
