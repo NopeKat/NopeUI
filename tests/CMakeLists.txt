@@ -36,6 +36,18 @@ add_executable(nopeui_layout_grid_test layout/grid_test.cpp)
 target_link_libraries(nopeui_layout_grid_test PRIVATE nopeui_controls nopeui_layout)
 add_test(NAME nopeui_layout.grid_test COMMAND nopeui_layout_grid_test)
 
+add_executable(nopeui_layout_panel_test layout/panel_test.cpp)
+target_link_libraries(nopeui_layout_panel_test PRIVATE nopeui_controls nopeui_layout)
+add_test(NAME nopeui_layout.panel_test COMMAND nopeui_layout_panel_test)
+
+add_executable(nopeui_layout_resource_test layout/resource_test.cpp)
+target_link_libraries(nopeui_layout_resource_test PRIVATE nopeui_controls nopeui_layout)
+add_test(NAME nopeui_layout.resource_test COMMAND nopeui_layout_resource_test)
+
+add_executable(nopeui_layout_state_test layout/state_test.cpp)
+target_link_libraries(nopeui_layout_state_test PRIVATE nopeui_controls nopeui_layout)
+add_test(NAME nopeui_layout.state_test COMMAND nopeui_layout_state_test)
+
 add_executable(nopeui_markup_xaml_test markup/xaml_test.cpp)
 target_link_libraries(nopeui_markup_xaml_test PRIVATE nopeui_markup nopeui_controls)
 add_test(NAME nopeui_markup.xaml_test COMMAND nopeui_markup_xaml_test)

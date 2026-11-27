@@ -9,13 +9,17 @@
 
 #include "nopeui/controls/border.h"
 #include "nopeui/controls/button.h"
+#include "nopeui/controls/canvas.h"
 #include "nopeui/controls/check_box.h"
 #include "nopeui/controls/content_presenter.h"
 #include "nopeui/controls/context_menu.h"
+#include "nopeui/controls/dock_panel.h"
 #include "nopeui/controls/label.h"
+#include "nopeui/controls/menu_bar.h"
 #include "nopeui/controls/stack_panel.h"
 #include "nopeui/controls/text_box.h"
 #include "nopeui/markup/xaml.h"
+#include "nopeui/theme/theme.h"
 
 namespace {
 
@@ -334,6 +338,176 @@ int main() {
         dynamic_cast<nopeui::ContentPresenter*>(autofill_children[0]);
     NOPEUI_CHECK(autofill_presenter != nullptr);
     NOPEUI_CHECK(autofill_presenter->Text() == L"Auto");
+
+    // Canvas and DockPanel take their attached properties from markup.
+    {
+        auto loaded = nopeui::xaml::Load(LR"XAML(
+<Canvas xmlns="https://nopeui.local/xaml">
+  <Label x:Name="pin" Canvas.Left="12" Canvas.Top="8" Text="Pinned"/>
+</Canvas>)XAML");
+        NOPEUI_CHECK(loaded.ok());
+        NOPEUI_CHECK(dynamic_cast<nopeui::Canvas*>(loaded.value().root.Get()) != nullptr);
+        auto* pin = loaded.value().Find(L"pin");
+        NOPEUI_CHECK(pin != nullptr);
+        nopeui::PropertyValue left;
+        NOPEUI_CHECK(pin->GetAttachedProperty(L"Canvas.Left", &left));
+        float offset = 0.0f;
+        NOPEUI_CHECK(left.AsFloat(&offset));
+        NOPEUI_CHECK(offset == 12.0f);
+
+        NOPEUI_CHECK(!nopeui::xaml::Load(
+            L"<Canvas xmlns=\"https://nopeui.local/xaml\">"
+            L"<Label Canvas.Left=\"oops\"/></Canvas>").ok());
+    }
+
+    {
+        auto loaded = nopeui::xaml::Load(LR"XAML(
+<DockPanel xmlns="https://nopeui.local/xaml" LastChildFill="False">
+  <Label x:Name="docked" Dock="Top" Text="Header"/>
+  <Label Text="Filler"/>
+</DockPanel>)XAML");
+        NOPEUI_CHECK(loaded.ok());
+        auto* dock = dynamic_cast<nopeui::DockPanel*>(loaded.value().root.Get());
+        NOPEUI_CHECK(dock != nullptr);
+        NOPEUI_CHECK(!dock->LastChildFill());
+        auto* docked = loaded.value().Find(L"docked");
+        NOPEUI_CHECK(docked != nullptr);
+        nopeui::PropertyValue side;
+        NOPEUI_CHECK(docked->GetAttachedProperty(L"Dock", &side));
+        int value = 0;
+        NOPEUI_CHECK(side.AsInt(&value));
+        NOPEUI_CHECK(value == 1);
+
+        NOPEUI_CHECK(!nopeui::xaml::Load(
+            L"<DockPanel xmlns=\"https://nopeui.local/xaml\">"
+            L"<Label Dock=\"Diagonal\"/></DockPanel>").ok());
+    }
+
+    // A value resource on an ancestor feeds a {ThemeResource} reference.
+    {
+        auto loaded = nopeui::xaml::Load(LR"XAML(
+<Border xmlns="https://nopeui.local/xaml" Padding="8">
+  <Border.Resources>
+    <Color Key="LocalAccent">#123456</Color>
+  </Border.Resources>
+  <Label x:Name="tinted" Foreground="{ThemeResource LocalAccent}" Text="Tint"/>
+</Border>)XAML");
+        NOPEUI_CHECK(loaded.ok());
+        auto* tinted = loaded.value().Find(L"tinted");
+        NOPEUI_CHECK(tinted != nullptr);
+        NOPEUI_CHECK(tinted->Foreground() == 0x123456u);
+    }
+
+    // A palette key follows the theme, so light and dark differ.
+    {
+        auto loaded = nopeui::xaml::Load(LR"XAML(
+<Label xmlns="https://nopeui.local/xaml" x:Name="accent"
+       Foreground="{ThemeResource Accent}" Text="Accent"/>)XAML");
+        NOPEUI_CHECK(loaded.ok());
+        auto* accent = loaded.value().Find(L"accent");
+        NOPEUI_CHECK(accent != nullptr);
+        NOPEUI_CHECK(accent->Foreground() == 0x0067C0u);
+        accent->SetTheme(&nopeui::DarkTheme());
+        accent->RefreshThemeResources();
+        NOPEUI_CHECK(accent->Foreground() == 0x60CDFFu);
+        accent->SetTheme(&nopeui::LightTheme());
+    }
+
+    // A style trigger keeps writing while the watched property matches.
+    {
+        auto loaded = nopeui::xaml::Load(LR"XAML(
+<StackPanel xmlns="https://nopeui.local/xaml">
+  <StackPanel.Resources>
+    <Style TargetType="Label">
+      <Setter Property="Foreground" Value="#1B1B1B"/>
+      <Trigger Property="IsEnabled" Value="False">
+        <Setter Property="Foreground" Value="#9A9A9A"/>
+      </Trigger>
+    </Style>
+  </StackPanel.Resources>
+  <Label x:Name="dim" Text="Dim"/>
+</StackPanel>)XAML");
+        NOPEUI_CHECK(loaded.ok());
+        auto* dim = loaded.value().Find(L"dim");
+        NOPEUI_CHECK(dim != nullptr);
+        NOPEUI_CHECK(dim->Foreground() == 0x1B1B1Bu);
+        dim->SetEnabled(false);
+        NOPEUI_CHECK(dim->Foreground() == 0x9A9A9Au);
+        dim->SetEnabled(true);
+        NOPEUI_CHECK(dim->Foreground() == 0x1B1B1Bu);
+    }
+
+    // A template with visual states parses and still applies its parts.
+    {
+        auto loaded = nopeui::xaml::Load(LR"XAML(
+<StackPanel xmlns="https://nopeui.local/xaml">
+  <StackPanel.Resources>
+    <ControlTemplate x:Key="stateful" TargetType="Button">
+      <Part Name="Background" Background="#0067C0" CornerRadius="4"/>
+      <Part Name="Content" Foreground="#FFFFFF"/>
+      <VisualStateGroup Name="CommonStates">
+        <VisualState Name="PointerOver">
+          <StateSetter Part="Background" Background="#005BA8"/>
+        </VisualState>
+        <VisualState Name="Disabled">
+          <StateSetter Part="Background" Background="#F0F0F0"/>
+        </VisualState>
+      </VisualStateGroup>
+    </ControlTemplate>
+  </StackPanel.Resources>
+  <Button x:Name="stateful" Text="Stateful" Template="{StaticResource stateful}"/>
+</StackPanel>)XAML");
+        NOPEUI_CHECK(loaded.ok());
+        NOPEUI_CHECK(loaded.value().Find(L"stateful") != nullptr);
+
+        NOPEUI_CHECK(!nopeui::xaml::Load(LR"XAML(
+<ControlTemplate xmlns="https://nopeui.local/xaml" x:Key="bad" TargetType="Button">
+  <VisualStateGroup Name="CommonStates"/>
+</ControlTemplate>)XAML").ok());
+    }
+
+    // MenuBar markup keeps its titles and opens a menu through the root.
+    {
+        nopeui::xaml::LoadContext context;
+        context.resolve_event = [](std::wstring_view) {
+            return nopeui::xaml::EventHandler([](const nopeui::xaml::EventArgs&) {});
+        };
+        auto loaded = nopeui::xaml::Load(LR"XAML(
+<MenuBar xmlns="https://nopeui.local/xaml">
+  <Menu Title="File">
+    <Item Text="New" Click="New_Click"/>
+    <Item Text="Open"/>
+  </Menu>
+  <Menu Title="Edit">
+    <Item Text="Undo"/>
+  </Menu>
+</MenuBar>)XAML", context);
+        NOPEUI_CHECK(loaded.ok());
+        auto* bar = dynamic_cast<nopeui::MenuBar*>(loaded.value().root.Get());
+        NOPEUI_CHECK(bar != nullptr);
+        NOPEUI_CHECK(bar->MenuCount() == 2);
+
+        nopeui::Ref<nopeui::Element> shown;
+        nopeui::Point anchor{};
+        bar->SetPopupHandler(
+            [&shown, &anchor](nopeui::Ref<nopeui::Element> popup, nopeui::Point point) {
+                shown = std::move(popup);
+                anchor = point;
+            },
+            [] {});
+        NOPEUI_CHECK(static_cast<nopeui::Element*>(bar)->OnKeyDown(0x0D));
+        NOPEUI_CHECK(shown.Get() != nullptr);
+        NOPEUI_CHECK(dynamic_cast<nopeui::ContextMenu*>(shown.Get()) != nullptr);
+        NOPEUI_CHECK(anchor.y >= bar->Bounds().Bottom());
+    }
+
+    // Resources only accept the supported value elements.
+    NOPEUI_CHECK(!nopeui::xaml::Load(LR"XAML(
+<Border xmlns="https://nopeui.local/xaml">
+  <Border.Resources>
+    <Brush Key="Nope">#123456</Brush>
+  </Border.Resources>
+</Border>)XAML").ok());
 
     NOPEUI_CHECK(!nopeui::xaml::Load(L"<Label Unknown=\"value\"/>").ok());
     NOPEUI_CHECK(!nopeui::xaml::Load(L"<Button Text=\"x\" Click=\"Missing\"/>").ok());

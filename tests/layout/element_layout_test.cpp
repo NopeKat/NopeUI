@@ -123,8 +123,11 @@ int main() {
         NOPEUI_CHECK(value.AsInt(&row) && row == 3);
 
         NOPEUI_CHECK(!button->SetAttachedProperty(L"Grid.Row", nopeui::PropertyValue(L"two")));
-        NOPEUI_CHECK(!button->GetAttachedProperty(L"Canvas.Left", &value));
-        NOPEUI_CHECK(!button->SetAttachedProperty(L"Canvas.Left", nopeui::PropertyValue(1.0f)));
+        NOPEUI_CHECK(button->GetAttachedProperty(L"Canvas.Left", &value));
+        float left = -1.0f;
+        NOPEUI_CHECK(value.AsFloat(&left) && Near(left, 0.0f));
+        NOPEUI_CHECK(button->SetAttachedProperty(L"Canvas.Left", nopeui::PropertyValue(1.0f)));
+        NOPEUI_CHECK(!button->GetAttachedProperty(L"Lattice.Row", &value));
     }
 
     // Style values lose to local values in both orders.
