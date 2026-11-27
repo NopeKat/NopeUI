@@ -15,12 +15,22 @@ const AttachedPropertyMetadata kGridRowSpan{
     L"Grid.RowSpan", PropertyValueType::Int, PropertyValue(1)};
 const AttachedPropertyMetadata kGridColumnSpan{
     L"Grid.ColumnSpan", PropertyValueType::Int, PropertyValue(1)};
+const AttachedPropertyMetadata kCanvasLeft{
+    L"Canvas.Left", PropertyValueType::Float, PropertyValue(0.0f)};
+const AttachedPropertyMetadata kCanvasTop{
+    L"Canvas.Top", PropertyValueType::Float, PropertyValue(0.0f)};
+// Zero is Left, matching both the DockSide enum and the XAML default.
+const AttachedPropertyMetadata kDock{
+    L"Dock", PropertyValueType::Int, PropertyValue(0)};
 
 const AttachedPropertyMetadata* const kRegistry[] = {
     &kGridRow,
     &kGridColumn,
     &kGridRowSpan,
     &kGridColumnSpan,
+    &kCanvasLeft,
+    &kCanvasTop,
+    &kDock,
 };
 
 }  // namespace
@@ -52,6 +62,18 @@ const AttachedPropertyMetadata& GridRowSpanProperty() noexcept {
 
 const AttachedPropertyMetadata& GridColumnSpanProperty() noexcept {
     return kGridColumnSpan;
+}
+
+const AttachedPropertyMetadata& CanvasLeftProperty() noexcept {
+    return kCanvasLeft;
+}
+
+const AttachedPropertyMetadata& CanvasTopProperty() noexcept {
+    return kCanvasTop;
+}
+
+const AttachedPropertyMetadata& DockProperty() noexcept {
+    return kDock;
 }
 
 }  // namespace nopeui

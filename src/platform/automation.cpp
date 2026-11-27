@@ -46,6 +46,10 @@ PROPERTYID ControlTypeForRole(AccessibleRole role) noexcept {
             return UIA_GroupControlTypeId;
         case AccessibleRole::Window:
             return UIA_WindowControlTypeId;
+        case AccessibleRole::MenuBar:
+            return UIA_MenuBarControlTypeId;
+        case AccessibleRole::MenuItem:
+            return UIA_MenuItemControlTypeId;
         case AccessibleRole::Pane:
             break;
     }

@@ -6,6 +6,7 @@
 #include <functional>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -15,6 +16,7 @@
 #include "nopeui/base/property_value.h"
 #include "nopeui/base/ref.h"
 #include "nopeui/layout/layout_types.h"
+#include "nopeui/layout/property_trigger.h"
 
 struct ID2D1RenderTarget;
 
@@ -142,6 +144,25 @@ public:
     bool ApplyStyleProperty(std::wstring_view name, const PropertyValue& value) noexcept;
     bool HasLocalProperty(std::wstring_view name) const noexcept;
 
+    // Local resources live on the element that declared them and are visible to
+    // its descendants, matching the XAML Resources scoping rule.
+    void SetResource(std::wstring name, PropertyValue value);
+    const PropertyValue* FindLocalResource(std::wstring_view name) const noexcept;
+
+    // Looks up a resource along the parent chain, then the theme palette
+    // ("Accent", "Text", "SurfaceBorder", ...) which switches with the theme.
+    bool FindResourceValue(std::wstring_view name, PropertyValue* value) const noexcept;
+
+    // {ThemeResource Key} in markup: the value applies now when it resolves and
+    // is re-applied by RefreshThemeResources() after a theme switch.
+    void BindThemeResource(std::wstring property, std::wstring key);
+    void RefreshThemeResources();
+
+    // Triggers come from a style. They re-evaluate whenever the watched property
+    // changes; owner is the style pointer, used to replace a style's triggers.
+    void AddTrigger(const void* owner, const PropertyTrigger& trigger) noexcept;
+    void RefreshTriggers() noexcept;
+
     // Attached properties. Panels own the metadata and children store the
     // value, which is how Grid.Row reaches a child without a Grid field.
     bool SetAttachedProperty(
@@ -199,6 +220,15 @@ public:
         relayout_ = std::move(handler);
     }
     void InvalidateLayout() noexcept;
+
+    // Popup access for controls that own a menu (MenuBar). The root element gets
+    // the handlers from Window; a control calls RequestPopup from anywhere in
+    // the tree and the request walks up to the root.
+    void SetPopupHandler(
+        std::function<void(Ref<Element>, Point)> show,
+        std::function<void()> close) noexcept;
+    void RequestPopup(Ref<Element> popup, Point anchor);
+    void RequestClosePopup();
 
     // Focus and keyboard. IsFocusable() marks participation in the Tab order;
     // CollectFocusable() walks the tree in visual order.
@@ -399,6 +429,11 @@ protected:
     Size desired_{};
 
 private:
+    struct TriggerEntry {
+        const void* owner = nullptr;
+        PropertyTrigger trigger;
+    };
+
     bool SetPropertyCore(
         std::wstring_view name,
         const PropertyValue& value,
@@ -407,11 +442,17 @@ private:
     Size ApplySizeConstraints(Size content) const noexcept;
     Rect ResolveSlot(const Rect& slot) const noexcept;
     void RecordLocalProperty(std::wstring_view name) noexcept;
+    void EvaluateTriggeredProperty(std::wstring_view name) noexcept;
+    void SetTriggerValue(std::wstring_view name, const PropertyValue& value) noexcept;
+    void ClearTriggerValue(std::wstring_view name) noexcept;
+    PropertyValue StyleOrDefault(std::wstring_view name) const noexcept;
 
     Element* parent_ = nullptr;
     const Theme* theme_ = nullptr;
     std::function<void()> invalidate_;
     std::function<void()> relayout_;
+    std::function<void(Ref<Element>, Point)> popup_show_;
+    std::function<void()> popup_close_;
     std::wstring accessibility_name_;
     std::wstring key_;
     Element* context_menu_ = nullptr;
@@ -426,6 +467,13 @@ private:
     float max_height_ = 0.0f;
     Size content_desired_{};
     std::vector<std::pair<const AttachedPropertyMetadata*, PropertyValue>> attached_;
+    std::vector<std::pair<std::wstring, PropertyValue>> resources_;
+    std::vector<std::pair<std::wstring, std::wstring>> theme_bindings_;
+    std::vector<TriggerEntry> triggers_;
+    std::unordered_map<std::wstring, Subscription> trigger_subscriptions_;
+    std::unordered_map<std::wstring, PropertyValue> trigger_values_;
+    std::unordered_map<std::wstring, PropertyValue> style_values_;
+    bool evaluating_trigger_ = false;
     std::vector<std::wstring> local_properties_;
     HorizontalAlignment horizontal_alignment_ = HorizontalAlignment::Stretch;
     VerticalAlignment vertical_alignment_ = VerticalAlignment::Stretch;

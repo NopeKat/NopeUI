@@ -37,8 +37,22 @@ const PropertyMetadata kButtonProperties[] = {
     {L"CornerRadius", PropertyValueType::Float, PropertyFlags::AffectsRender, PropertyValue(4.0f)},
 };
 
-void FillContentPresenters(Element& element, std::wstring_view text) {
-    if (auto* presenter = dynamic_cast<ContentPresenter*>(&element)) {
+// CommonStates names, matching the WPF vocabulary so templates read the same.
+std::wstring StateName(ControlState state) {
+    switch (state) {
+        case ControlState::Pressed:
+            return L"Pressed";
+        case ControlState::Hovered:
+            return L"PointerOver";
+        case ControlState::Disabled:
+            return L"Disabled";
+        case ControlState::Normal:
+            break;
+    }
+    return L"Normal";
+}
+
+void FillContentPresenters(Element& element, std::wstring_view text) {    if (auto* presenter = dynamic_cast<ContentPresenter*>(&element)) {
         if (presenter->Text().empty()) {
             presenter->SetText(std::wstring(text));
         }
@@ -111,6 +125,17 @@ void Button::PaintContent(ID2D1RenderTarget* target) noexcept {
         return;
     }
     const ControlState state = ResolveControlState(IsEnabled(), hovered_, pressed_);
+    const std::wstring state_name = StateName(state);
+    TemplatePart background_part{};
+    TemplatePart content_part{};
+    if (control_template_) {
+        background_part =
+            control_template_->ResolvePart(L"Background", L"CommonStates", state_name);
+        content_part =
+            control_template_->ResolvePart(L"Content", L"CommonStates", state_name);
+    }
+
+    // The template wins when it set a color; otherwise the theme state decides.
     std::uint32_t background = colors.button;
     switch (state) {
         case ControlState::Disabled:
@@ -123,21 +148,23 @@ void Button::PaintContent(ID2D1RenderTarget* target) noexcept {
             background = colors.button_hover;
             break;
         case ControlState::Normal:
-            if (template_background_ != 0) {
-                background = template_background_;
-            }
             break;
     }
-    const std::uint32_t outline_color = template_border_ != 0
-        ? template_border_
+    if (background_part.background != 0) {
+        background = background_part.background;
+    }
+    const std::uint32_t outline_color = background_part.border != 0
+        ? background_part.border
         : (state == ControlState::Disabled
             ? colors.button_disabled_border
             : colors.button_border);
-    const std::uint32_t text_color = state == ControlState::Disabled
-        ? colors.text_disabled
-        : (template_foreground_ != 0 ? template_foreground_ : colors.text);
+    const std::uint32_t text_color = content_part.foreground != 0
+        ? content_part.foreground
+        : (state == ControlState::Disabled ? colors.text_disabled : colors.text);
 
-    const float radius = corner_radius_;
+    const float radius = background_part.corner_radius > 0.0f
+        ? background_part.corner_radius
+        : corner_radius_;
     const D2D1_ROUNDED_RECT rounded = D2D1::RoundedRect(
         D2D1::RectF(bounds_.x, bounds_.y, bounds_.Right(), bounds_.Bottom()),
         radius,
@@ -248,9 +275,13 @@ bool Button::OnKeyUp(unsigned int key) noexcept {
 void Button::ApplyControlTemplate(const ControlTemplate& control_template) noexcept {
     template_bindings_.clear();
     template_root_.Reset();
-    template_background_ = 0;
-    template_border_ = 0;
-    template_foreground_ = 0;
+    if (control_template_ && control_template_.Get() != &control_template) {
+        control_template_.Reset();
+    }
+    if (!control_template_) {
+        const_cast<ControlTemplate&>(control_template).AddRef();
+        control_template_ = Ref<ControlTemplate>(const_cast<ControlTemplate*>(&control_template));
+    }
 
     if (control_template.HasFactory()) {
         TemplateInstance instance = control_template.Instantiate();
@@ -285,14 +316,9 @@ void Button::ApplyControlTemplate(const ControlTemplate& control_template) noexc
     }
 
     if (const TemplatePart* part = control_template.Find(L"Background")) {
-        template_background_ = part->background;
-        template_border_ = part->border;
         if (part->corner_radius > 0.0f) {
             corner_radius_ = part->corner_radius;
         }
-    }
-    if (const TemplatePart* part = control_template.Find(L"Content")) {
-        template_foreground_ = part->foreground;
     }
     InvalidateLayout();
 }

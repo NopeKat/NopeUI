@@ -17,13 +17,16 @@
 #include "nopeui/base/strings.h"
 #include "nopeui/controls/border.h"
 #include "nopeui/controls/button.h"
+#include "nopeui/controls/canvas.h"
 #include "nopeui/controls/check_box.h"
 #include "nopeui/controls/content_presenter.h"
 #include "nopeui/controls/context_menu.h"
+#include "nopeui/controls/dock_panel.h"
 #include "nopeui/controls/flyout.h"
 #include "nopeui/controls/grid.h"
 #include "nopeui/controls/image.h"
 #include "nopeui/controls/label.h"
+#include "nopeui/controls/menu_bar.h"
 #include "nopeui/controls/progress_bar.h"
 #include "nopeui/controls/radio_button.h"
 #include "nopeui/controls/scroll_viewer.h"
@@ -712,8 +715,25 @@ std::wstring ResourceKey(std::wstring_view raw) {
     return value;
 }
 
-bool TemplateBindingKey(std::wstring_view raw, std::wstring* property) {
-    std::wstring value = Trim(raw);
+// {ThemeResource Accent} resolves through the element resource chain first and
+// then the theme palette, which means it follows a theme switch.
+bool ThemeResourceKey(std::wstring_view raw, std::wstring* key) {
+    const std::wstring value = Trim(raw);
+    if (value.size() < 3 || value.front() != L'{' || value.back() != L'}') {
+        return false;
+    }
+    const std::wstring body = Trim(std::wstring_view(value).substr(1, value.size() - 2));
+    const std::wstring_view prefix = L"ThemeResource";
+    if (body.size() <= prefix.size() ||
+        body.compare(0, prefix.size(), prefix) != 0 ||
+        !IsSpace(body[prefix.size()])) {
+        return false;
+    }
+    *key = Trim(std::wstring_view(body).substr(prefix.size()));
+    return !key->empty();
+}
+
+bool TemplateBindingKey(std::wstring_view raw, std::wstring* property) {    std::wstring value = Trim(raw);
     if (value.size() < 3 || value.front() != L'{' || value.back() != L'}') {
         return false;
     }
@@ -740,6 +760,7 @@ struct ResourceScope {
     Ref<StyleSheet> styles;
     std::unordered_map<std::wstring, Ref<ControlTemplate>> templates;
     std::unordered_map<std::wstring, Ref<Style>> styles_by_key;
+    std::unordered_map<std::wstring, PropertyValue> values;
 };
 
 struct DirectTemplate {
@@ -875,6 +896,60 @@ private:
         return {};
     }
 
+    bool FindResourceValue(
+        ResourceScope* scope,
+        std::wstring_view key,
+        PropertyValue* value) const {
+        const std::wstring name(key);
+        for (ResourceScope* current = scope; current != nullptr;
+             current = current->parent) {
+            if (const auto found = current->values.find(name);
+                found != current->values.end()) {
+                *value = found->second;
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // Plain values stored in Resources: <Color Key="AccentBrush">#0067C0</Color>
+    // and the Number, Thickness and String siblings.
+    bool AddValueResource(const Node& node, ResourceScope* scope) {
+        const std::wstring local = LocalName(node.name);
+        PropertyValueType type = PropertyValueType::String;
+        if (local == L"Color") {
+            type = PropertyValueType::Color;
+        } else if (local == L"Number") {
+            type = PropertyValueType::Float;
+        } else if (local == L"Thickness") {
+            type = PropertyValueType::Thickness;
+        } else if (local != L"String") {
+            return Fail(node, "Resources expects Style, ControlTemplate, Color, Number, Thickness or String");
+        }
+        const std::wstring key = AttributeValue(node, L"Key");
+        if (key.empty()) {
+            return Fail(node, "resource requires Key");
+        }
+        std::wstring raw;
+        if (const Attribute* attribute = FindAttribute(node, L"Value"); attribute != nullptr) {
+            raw = attribute->value;
+        } else {
+            raw = Trim(node.text);
+        }
+        if (raw.empty()) {
+            return Fail(node, "resource requires a value");
+        }
+        PropertyValue value;
+        if (!ConvertPropertyValue(type, raw, &value)) {
+            return Fail(node, "invalid resource value");
+        }
+        scope->values[key] = value;
+        if (scope->owner != nullptr) {
+            scope->owner->SetResource(key, value);
+        }
+        return true;
+    }
+
     bool AddTemplate(const Node& node, ResourceScope* scope) {
         const std::wstring key = AttributeValue(node, L"Key");
         if (key.empty()) {
@@ -887,23 +962,32 @@ private:
             LocalName(AttributeValue(node, L"TargetType"));
         bool has_parts = false;
         bool has_visual = false;
+        bool has_states = false;
+        std::vector<const Node*> visual_children;
         for (const Node& child : node.children) {
-            if (LocalName(child.name) == L"Part") {
+            const std::wstring local = LocalName(child.name);
+            if (local == L"Part") {
                 has_parts = true;
+            } else if (local == L"VisualStateGroup") {
+                has_states = true;
             } else {
                 has_visual = true;
+                visual_children.push_back(&child);
             }
         }
         if (has_parts && has_visual) {
             return Fail(node, "ControlTemplate cannot mix Part and visual content");
         }
         if (!has_parts && !has_visual) {
-            return Fail(node, "ControlTemplate requires Part or visual content");
+            return Fail(node, "ControlTemplate requires Part, visual content or VisualStateGroup");
+        }
+        if (has_states && has_visual) {
+            return Fail(node, "visual states are only supported on Part templates");
         }
         if (has_visual && target_type.empty()) {
             return Fail(node, "visual ControlTemplate requires TargetType");
         }
-        if (has_visual && node.children.size() != 1) {
+        if (has_visual && visual_children.size() != 1) {
             return Fail(node, "visual ControlTemplate requires one root element");
         }
 
@@ -911,7 +995,16 @@ private:
         control_template->SetTargetType(target_type);
         if (has_parts) {
             for (const Node& child : node.children) {
+                if (LocalName(child.name) == L"VisualStateGroup") {
+                    continue;
+                }
                 if (!AddPart(child, control_template.Get())) {
+                    return false;
+                }
+            }
+            for (const Node& child : node.children) {
+                if (LocalName(child.name) == L"VisualStateGroup" &&
+                    !AddVisualStates(child, control_template.Get())) {
                     return false;
                 }
             }
@@ -921,7 +1014,7 @@ private:
                 return Fail(node, "unknown ControlTemplate TargetType");
             }
             std::shared_ptr<Node> root_node =
-                std::make_shared<Node>(node.children.front());
+                std::make_shared<Node>(*visual_children.front());
             TemplateInstance prototype =
                 BuildTemplateInstance(*root_node, source_probe.Get());
             if (!prototype.root) {
@@ -936,40 +1029,80 @@ private:
         return true;
     }
 
+    bool ParsePartAttributes(const Node& node, TemplatePart* part) {
+        for (const Attribute& attribute : node.attributes) {
+            const std::wstring local = LocalName(attribute.name);
+            if (local == L"Name" || local == L"Part" || local == L"xmlns") {
+                continue;
+            }
+            if (local == L"Background") {
+                if (!ParseColor(attribute.value, &part->background)) {
+                    return Fail(node, "invalid Part Background");
+                }
+            } else if (local == L"Foreground") {
+                if (!ParseColor(attribute.value, &part->foreground)) {
+                    return Fail(node, "invalid Part Foreground");
+                }
+            } else if (local == L"Border") {
+                if (!ParseColor(attribute.value, &part->border)) {
+                    return Fail(node, "invalid Part Border");
+                }
+            } else if (local == L"CornerRadius") {
+                if (!ParseFloat(attribute.value, &part->corner_radius)) {
+                    return Fail(node, "invalid Part CornerRadius");
+                }
+            } else if (local == L"Padding") {
+                if (!ParseThickness(attribute.value, &part->padding)) {
+                    return Fail(node, "invalid Part Padding");
+                }
+            } else {
+                return Fail(node, "unknown Part attribute");
+            }
+        }
+        return true;
+    }
+
+    // <VisualStateGroup Name="CommonStates"><VisualState Name="PointerOver">
+    //   <StateSetter Part="Background" Background="#005BA8"/>
+    bool AddVisualStates(const Node& node, ControlTemplate* control_template) {
+        const std::wstring group = AttributeValue(node, L"Name");
+        if (group.empty()) {
+            return Fail(node, "VisualStateGroup requires Name");
+        }
+        for (const Node& state : node.children) {
+            if (LocalName(state.name) != L"VisualState") {
+                return Fail(state, "VisualStateGroup expects VisualState elements");
+            }
+            const std::wstring name = AttributeValue(state, L"Name");
+            if (name.empty()) {
+                return Fail(state, "VisualState requires Name");
+            }
+            for (const Node& setter : state.children) {
+                if (LocalName(setter.name) != L"StateSetter") {
+                    return Fail(setter, "VisualState expects StateSetter elements");
+                }
+                const std::wstring part = AttributeValue(setter, L"Part");
+                if (part.empty()) {
+                    return Fail(setter, "StateSetter requires Part");
+                }
+                TemplatePart patch;
+                if (!ParsePartAttributes(setter, &patch)) {
+                    return false;
+                }
+                control_template->SetStatePart(group, name, part, patch);
+            }
+        }
+        return true;
+    }
+
     bool AddPart(const Node& node, ControlTemplate* control_template) {
         const std::wstring name = AttributeValue(node, L"Name");
         if (name.empty()) {
             return Fail(node, "Part requires Name");
         }
         TemplatePart part;
-        for (const Attribute& attribute : node.attributes) {
-            const std::wstring local = LocalName(attribute.name);
-            if (local == L"Name" || local == L"xmlns") {
-                continue;
-            }
-            if (local == L"Background") {
-                if (!ParseColor(attribute.value, &part.background)) {
-                    return Fail(node, "invalid Part Background");
-                }
-            } else if (local == L"Foreground") {
-                if (!ParseColor(attribute.value, &part.foreground)) {
-                    return Fail(node, "invalid Part Foreground");
-                }
-            } else if (local == L"Border") {
-                if (!ParseColor(attribute.value, &part.border)) {
-                    return Fail(node, "invalid Part Border");
-                }
-            } else if (local == L"CornerRadius") {
-                if (!ParseFloat(attribute.value, &part.corner_radius)) {
-                    return Fail(node, "invalid Part CornerRadius");
-                }
-            } else if (local == L"Padding") {
-                if (!ParseThickness(attribute.value, &part.padding)) {
-                    return Fail(node, "invalid Part Padding");
-                }
-            } else {
-                return Fail(node, "unknown Part attribute");
-            }
+        if (!ParsePartAttributes(node, &part)) {
+            return false;
         }
         control_template->SetPart(name, part);
         return true;
@@ -1132,10 +1265,13 @@ private:
                 if (local == L"ControlTemplate") {
                     continue;
                 }
-                if (local != L"Style") {
-                    return Fail(child, "only Style and ControlTemplate belong in Resources");
+                if (local == L"Style") {
+                    if (!BuildStyle(child, &scope)) {
+                        return false;
+                    }
+                    continue;
                 }
-                if (!BuildStyle(child, &scope)) {
+                if (!AddValueResource(child, &scope)) {
                     return false;
                 }
             }
@@ -1176,11 +1312,17 @@ private:
             return Fail(node, "unknown Style TargetType");
         }
         for (const Node& child : node.children) {
-            if (LocalName(child.name) != L"Setter") {
-                return Fail(child, "Style expects Setter elements");
-            }
-            if (!AddSetter(child, *probe, style.Get(), scope)) {
-                return false;
+            const std::wstring local = LocalName(child.name);
+            if (local == L"Setter") {
+                if (!AddSetter(child, *probe, style.Get(), scope)) {
+                    return false;
+                }
+            } else if (local == L"Trigger") {
+                if (!AddTrigger(child, *probe, style.Get())) {
+                    return false;
+                }
+            } else {
+                return Fail(child, "Style expects Setter or Trigger elements");
             }
         }
         scope->styles->Add(style);
@@ -1220,6 +1362,46 @@ private:
             return Fail(node, "invalid Style value");
         }
         style->Set(property, std::move(value));
+        return true;
+    }
+
+    // <Trigger Property="IsEnabled" Value="False">
+    //   <Setter Property="Foreground" Value="#9A9A9A"/>
+    bool AddTrigger(const Node& node, Element& probe, Style* style) {
+        const std::wstring property = AttributeValue(node, L"Property");
+        const std::wstring raw = AttributeValue(node, L"Value");
+        if (property.empty() || raw.empty()) {
+            return Fail(node, "Trigger requires Property and Value");
+        }
+        PropertyValueType type = PropertyValueType::String;
+        if (!PropertyTypeFor(probe, property, &type)) {
+            return Fail(node, "unknown Trigger property");
+        }
+        PropertyTrigger trigger;
+        trigger.property = property;
+        if (!ConvertPropertyValue(type, raw, &trigger.value)) {
+            return Fail(node, "invalid Trigger value");
+        }
+        if (node.children.empty()) {
+            return Fail(node, "Trigger requires Setter elements");
+        }
+        for (const Node& child : node.children) {
+            if (LocalName(child.name) != L"Setter") {
+                return Fail(child, "Trigger expects Setter elements");
+            }
+            const std::wstring target = AttributeValue(child, L"Property");
+            const std::wstring target_raw = AttributeValue(child, L"Value");
+            PropertyValueType target_type = PropertyValueType::String;
+            if (target.empty() || !PropertyTypeFor(probe, target, &target_type)) {
+                return Fail(child, "unknown Trigger Setter property");
+            }
+            PropertyValue value;
+            if (!ConvertPropertyValue(target_type, target_raw, &value)) {
+                return Fail(child, "invalid Trigger Setter value");
+            }
+            trigger.setters.emplace_back(target, std::move(value));
+        }
+        style->AddTrigger(std::move(trigger));
         return true;
     }
 
@@ -1319,6 +1501,9 @@ private:
 
     bool AttachChildren(const Node& node, Element& element) {
         const std::wstring tag = LocalName(node.name);
+        if (tag == L"MenuBar") {
+            return BuildMenuBar(node, element);
+        }
         std::vector<Ref<Element>> children;
         for (const Node& child : node.children) {
             const std::wstring local = LocalName(child.name);
@@ -1386,6 +1571,26 @@ private:
             }
             return true;
         }
+        if (tag == L"Canvas") {
+            auto* canvas = dynamic_cast<Canvas*>(&element);
+            if (canvas == nullptr) {
+                return Fail(node, "internal Canvas mismatch");
+            }
+            for (Ref<Element>& child : children) {
+                canvas->Add(std::move(child));
+            }
+            return true;
+        }
+        if (tag == L"DockPanel") {
+            auto* panel = dynamic_cast<DockPanel*>(&element);
+            if (panel == nullptr) {
+                return Fail(node, "internal DockPanel mismatch");
+            }
+            for (Ref<Element>& child : children) {
+                panel->Add(std::move(child));
+            }
+            return true;
+        }
         if (children.empty()) {
             return true;
         }
@@ -1443,6 +1648,15 @@ private:
         const std::wstring text = DefaultText(node);
         if (tag == L"Grid") {
             return Grid::Create();
+        }
+        if (tag == L"MenuBar") {
+            return MenuBar::Create();
+        }
+        if (tag == L"Canvas") {
+            return Canvas::Create();
+        }
+        if (tag == L"DockPanel") {
+            return DockPanel::Create();
         }
         if (tag == L"Border") {
             return Border::Create();
@@ -1580,6 +1794,44 @@ private:
             return BindEvent(element, node, tag, name, raw);
         }
         if (ReadOnlyTextProperty(tag, name)) {
+            return true;
+        }
+        std::wstring theme_key;
+        if (ThemeResourceKey(raw, &theme_key)) {
+            PropertyValue resolved;
+            if (FindResourceValue(current_scope_, theme_key, &resolved)) {
+                if (!element.SetProperty(name, resolved)) {
+                    return Fail(node, "resource type does not match the property");
+                }
+                return true;
+            }
+            PropertyValueType type = PropertyValueType::String;
+            if (!PropertyTypeFor(element, name, &type)) {
+                return Fail(node, "unknown property");
+            }
+            if (type != PropertyValueType::Color) {
+                return Fail(node, "ThemeResource only resolves color properties");
+            }
+            element.BindThemeResource(std::wstring(name), std::move(theme_key));
+            return true;
+        }
+        if (name == L"Dock") {
+            const std::wstring value = Trim(raw);
+            int side = 0;
+            if (value == L"Left") {
+                side = 0;
+            } else if (value == L"Top") {
+                side = 1;
+            } else if (value == L"Right") {
+                side = 2;
+            } else if (value == L"Bottom") {
+                side = 3;
+            } else {
+                return Fail(node, "invalid Dock value");
+            }
+            if (!element.SetAttachedProperty(DockProperty(), PropertyValue(side))) {
+                return Fail(node, "Dock rejected the value");
+            }
             return true;
         }
         if (IsAttachedPropertyName(name)) {
@@ -1795,8 +2047,60 @@ private:
         return true;
     }
 
-    bool AddMenuItem(const Node& node, ContextMenu* menu) {
-        if (LocalName(node.name) != L"Item") {
+    // <MenuBar><Menu Title="File"><Item Text="New" Click="OnNew"/></Menu></MenuBar>
+    bool BuildMenuBar(const Node& node, Element& element) {
+        auto* bar = dynamic_cast<MenuBar*>(&element);
+        if (bar == nullptr) {
+            return Fail(node, "internal MenuBar mismatch");
+        }
+        for (const Node& menu_node : node.children) {
+            if (LocalName(menu_node.name) != L"Menu") {
+                return Fail(menu_node, "MenuBar expects Menu elements");
+            }
+            const std::wstring title = AttributeValue(menu_node, L"Title");
+            if (title.empty()) {
+                return Fail(menu_node, "Menu requires Title");
+            }
+            std::vector<MenuCommand> commands;
+            for (const Node& item_node : menu_node.children) {
+                if (LocalName(item_node.name) != L"Item") {
+                    return Fail(item_node, "Menu expects Item elements");
+                }
+                MenuCommand command;
+                command.text = Trim(item_node.text);
+                if (const Attribute* attribute = FindAttribute(item_node, L"Text");
+                    attribute != nullptr) {
+                    command.text = attribute->value;
+                }
+                if (command.text.empty()) {
+                    return Fail(item_node, "Menu Item requires Text");
+                }
+                if (const Attribute* attribute = FindAttribute(item_node, L"Click");
+                    attribute != nullptr) {
+                    if (!context_.resolve_event) {
+                        return Fail(item_node, "Click requires a handler resolver");
+                    }
+                    EventHandler resolved = context_.resolve_event(attribute->value);
+                    if (!resolved) {
+                        return Fail(item_node, "event handler was not found");
+                    }
+                    const std::wstring handler_name(attribute->value);
+                    command.handler = [resolved, handler_name] {
+                        EventArgs args;
+                        args.event = L"Click";
+                        args.handler = handler_name;
+                        args.sender = nullptr;
+                        resolved(args);
+                    };
+                }
+                commands.push_back(std::move(command));
+            }
+            bar->AddMenu(title, std::move(commands));
+        }
+        return true;
+    }
+
+    bool AddMenuItem(const Node& node, ContextMenu* menu) {        if (LocalName(node.name) != L"Item") {
             return Fail(node, "ContextMenu expects Item elements");
         }
         std::wstring text = Trim(node.text);

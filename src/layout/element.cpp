@@ -326,6 +326,11 @@ bool Element::ApplyStyleProperty(std::wstring_view name, const PropertyValue& va
     if (HasLocalProperty(name)) {
         return true;
     }
+    style_values_[std::wstring(name)] = value;
+    if (trigger_values_.find(std::wstring(name)) != trigger_values_.end()) {
+        // A matching trigger keeps the property until it stops matching.
+        return true;
+    }
     return SetPropertyCore(name, value, false);
 }
 
@@ -345,6 +350,176 @@ void Element::RecordLocalProperty(std::wstring_view name) noexcept {
     local_properties_.emplace_back(name);
 }
 
+void Element::SetResource(std::wstring name, PropertyValue value) {
+    for (auto& entry : resources_) {
+        if (entry.first == name) {
+            entry.second = std::move(value);
+            return;
+        }
+    }
+    resources_.emplace_back(std::move(name), std::move(value));
+}
+
+const PropertyValue* Element::FindLocalResource(std::wstring_view name) const noexcept {
+    for (const auto& entry : resources_) {
+        if (std::wstring_view(entry.first) == name) {
+            return &entry.second;
+        }
+    }
+    return nullptr;
+}
+
+bool Element::FindResourceValue(std::wstring_view name, PropertyValue* value) const noexcept {
+    for (const Element* node = this; node != nullptr; node = node->parent_) {
+        if (const PropertyValue* found = node->FindLocalResource(name)) {
+            *value = *found;
+            return true;
+        }
+    }
+    return Colors().FindThemeResource(name, value);
+}
+
+void Element::BindThemeResource(std::wstring property, std::wstring key) {
+    bool known = false;
+    for (const auto& entry : theme_bindings_) {
+        if (entry.first == property && entry.second == key) {
+            known = true;
+            break;
+        }
+    }
+    if (!known) {
+        theme_bindings_.emplace_back(property, key);
+    }
+    PropertyValue value;
+    if (FindResourceValue(key, &value)) {
+        SetProperty(property, value);
+    }
+}
+
+void Element::RefreshThemeResources() {
+    for (const auto& entry : theme_bindings_) {
+        PropertyValue value;
+        if (FindResourceValue(entry.second, &value)) {
+            SetProperty(entry.first, value);
+        }
+    }
+    std::vector<Element*> children;
+    CollectChildren(children);
+    for (Element* child : children) {
+        if (child != nullptr) {
+            child->RefreshThemeResources();
+        }
+    }
+}
+
+void Element::AddTrigger(const void* owner, const PropertyTrigger& trigger) noexcept {
+    for (const TriggerEntry& entry : triggers_) {
+        if (entry.owner == owner && entry.trigger.property == trigger.property &&
+            entry.trigger.value.Equals(trigger.value)) {
+            return;
+        }
+    }
+    triggers_.push_back(TriggerEntry{owner, trigger});
+
+    const std::wstring watched = trigger.property;
+    if (trigger_subscriptions_.find(watched) != trigger_subscriptions_.end()) {
+        return;
+    }
+    auto subscription = SubscribePropertyChanged(
+        [this, watched](
+            const PropertyMetadata& metadata,
+            const PropertyValue&,
+            const PropertyValue&) {
+            if (std::wstring_view(metadata.name) == watched) {
+                EvaluateTriggeredProperty(watched);
+            }
+        });
+    trigger_subscriptions_.emplace(watched, std::move(subscription));
+}
+
+void Element::RefreshTriggers() noexcept {
+    std::vector<std::wstring> watched;
+    for (const TriggerEntry& entry : triggers_) {
+        bool known = false;
+        for (const std::wstring& name : watched) {
+            if (name == entry.trigger.property) {
+                known = true;
+                break;
+            }
+        }
+        if (!known) {
+            watched.push_back(entry.trigger.property);
+        }
+    }
+    for (const std::wstring& name : watched) {
+        EvaluateTriggeredProperty(name);
+    }
+}
+
+void Element::EvaluateTriggeredProperty(std::wstring_view name) noexcept {
+    if (evaluating_trigger_) {
+        return;
+    }
+    evaluating_trigger_ = true;
+    for (const TriggerEntry& entry : triggers_) {
+        if (std::wstring_view(entry.trigger.property) != name) {
+            continue;
+        }
+        PropertyValue current;
+        const bool match =
+            GetProperty(name, &current) && current.Equals(entry.trigger.value);
+        for (const auto& setter : entry.trigger.setters) {
+            if (HasLocalProperty(setter.first)) {
+                continue;
+            }
+            if (match) {
+                SetTriggerValue(setter.first, setter.second);
+            } else {
+                ClearTriggerValue(setter.first);
+            }
+        }
+    }
+    evaluating_trigger_ = false;
+}
+
+void Element::SetTriggerValue(std::wstring_view name, const PropertyValue& value) noexcept {
+    if (HasLocalProperty(name)) {
+        return;
+    }
+    const std::wstring key(name);
+    const auto found = trigger_values_.find(key);
+    if (found != trigger_values_.end() && found->second.Equals(value)) {
+        return;
+    }
+    trigger_values_[key] = value;
+    SetPropertyCore(name, value, false);
+}
+
+void Element::ClearTriggerValue(std::wstring_view name) noexcept {
+    auto found = trigger_values_.find(std::wstring(name));
+    if (found == trigger_values_.end()) {
+        return;
+    }
+    trigger_values_.erase(found);
+    SetPropertyCore(name, StyleOrDefault(name), false);
+}
+
+PropertyValue Element::StyleOrDefault(std::wstring_view name) const noexcept {
+    const auto found = style_values_.find(std::wstring(name));
+    if (found != style_values_.end()) {
+        return found->second;
+    }
+    if (const PropertyMetadata* metadata = FindBaseMetadata(name)) {
+        return metadata->default_value;
+    }
+    std::size_t count = 0;
+    const PropertyMetadata* table = ControlPropertyTable(&count);
+    if (const PropertyMetadata* metadata = FindMetadata(table, count, name)) {
+        return metadata->default_value;
+    }
+    return PropertyValue();
+}
+
 bool Element::SetPropertyCore(
     std::wstring_view name,
     const PropertyValue& value,
@@ -354,14 +529,9 @@ bool Element::SetPropertyCore(
         if (!value.AsBool(&enabled)) {
             return false;
         }
-        const bool old = enabled_;
         SetEnabled(enabled);
         if (local) {
             RecordLocalProperty(name);
-        }
-        if (old != enabled_) {
-            property_changed_.Raise(
-                kIsEnabledProperty, PropertyValue(old), PropertyValue(enabled_));
         }
         return true;
     }
@@ -658,8 +828,34 @@ void Element::InvalidateLayout() noexcept {
     }
 }
 
-void Element::CollectFocusable(std::vector<Element*>& elements) noexcept {
-    if (!enabled_) {
+void Element::SetPopupHandler(
+    std::function<void(Ref<Element>, Point)> show,
+    std::function<void()> close) noexcept {
+    popup_show_ = std::move(show);
+    popup_close_ = std::move(close);
+}
+
+void Element::RequestPopup(Ref<Element> popup, Point anchor) {
+    Element* root = this;
+    while (root->parent_ != nullptr) {
+        root = root->parent_;
+    }
+    if (root->popup_show_) {
+        root->popup_show_(std::move(popup), anchor);
+    }
+}
+
+void Element::RequestClosePopup() {
+    Element* root = this;
+    while (root->parent_ != nullptr) {
+        root = root->parent_;
+    }
+    if (root->popup_close_) {
+        root->popup_close_();
+    }
+}
+
+void Element::CollectFocusable(std::vector<Element*>& elements) noexcept {    if (!enabled_) {
         return;
     }
     if (IsFocusable()) {
@@ -671,8 +867,11 @@ void Element::SetEnabled(bool enabled) noexcept {
     if (enabled_ == enabled) {
         return;
     }
+    const bool old = enabled_;
     enabled_ = enabled;
     Invalidate();
+    // Triggers and bindings watch this property, so report it like SetProperty.
+    property_changed_.Raise(kIsEnabledProperty, PropertyValue(old), PropertyValue(enabled_));
 }
 
 bool Element::BubbleWheel(int delta) noexcept {

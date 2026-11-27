@@ -26,6 +26,11 @@ const AttachedPropertyMetadata& GridColumnProperty() noexcept;
 const AttachedPropertyMetadata& GridRowSpanProperty() noexcept;
 const AttachedPropertyMetadata& GridColumnSpanProperty() noexcept;
 
+// Canvas positions a child by these, DockPanel claims an edge by Dock.
+const AttachedPropertyMetadata& CanvasLeftProperty() noexcept;
+const AttachedPropertyMetadata& CanvasTopProperty() noexcept;
+const AttachedPropertyMetadata& DockProperty() noexcept;
+
 }  // namespace nopeui
 
 #endif  // NOPEUI_LAYOUT_ATTACHED_H_

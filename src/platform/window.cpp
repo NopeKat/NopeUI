@@ -1921,8 +1921,14 @@ void Window::SetContent(Ref<Element> content) noexcept {
                 LayoutContent(client_width_, client_height_);
                 RenderFrame();
             });
+            root_->SetPopupHandler(
+                [this](Ref<Element> popup, Point anchor) {
+                    ShowPopup(std::move(popup), anchor);
+                },
+                [this] { ClosePopup(); });
         }
         root_->SetPrimaryContent(content_);
+        content_->RefreshThemeResources();
     } else if (root_ != nullptr) {
         root_->Release();
         root_ = nullptr;
@@ -1954,6 +1960,11 @@ void Window::ShowPopup(Ref<Element> popup, Point anchor) noexcept {
             LayoutContent(client_width_, client_height_);
             RenderFrame();
         });
+        root_->SetPopupHandler(
+            [this](Ref<Element> popup, Point anchor) {
+                ShowPopup(std::move(popup), anchor);
+            },
+            [this] { ClosePopup(); });
         root_->SetPrimaryContent(content_);
         if (graphics_ != nullptr) {
             graphics_->SetContent(root_);
@@ -2016,6 +2027,8 @@ void Window::SetTheme(Theme theme) noexcept {
     theme_ = std::move(theme);
     if (root_) {
         root_->SetTheme(&theme_);
+        root_->RefreshThemeResources();
+        LayoutContent(client_width_, client_height_);
     }
     if (graphics_ != nullptr) {
         graphics_->SetPalette(PaletteFromTheme(theme_));
@@ -2533,6 +2546,7 @@ void Window::ReleaseGraphics() noexcept {
     if (root_) {
         root_->SetInvalidateHandler(nullptr);
         root_->SetRelayoutHandler(nullptr);
+        root_->SetPopupHandler(nullptr, nullptr);
     }
     live_resizing_ = false;
     graphics_.reset();

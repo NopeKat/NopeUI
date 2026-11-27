@@ -67,13 +67,16 @@ target_compile_features(nopeui_graphics PUBLIC cxx_std_20)
 add_library(nopeui_controls STATIC
     src/controls/border.cpp
     src/controls/button.cpp
+    src/controls/canvas.cpp
     src/controls/check_box.cpp
     src/controls/content_presenter.cpp
     src/controls/context_menu.cpp
+    src/controls/dock_panel.cpp
     src/controls/flyout.cpp
     src/controls/grid.cpp
     src/controls/image.cpp
     src/controls/label.cpp
+    src/controls/menu_bar.cpp
     src/controls/progress_bar.cpp
     src/controls/radio_button.cpp
     src/controls/scroll_viewer.cpp

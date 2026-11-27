@@ -51,6 +51,15 @@ inline GridLength StarLength(float weight = 1.0f) noexcept {
     return GridLength{weight, GridUnitType::Star};
 }
 
+// Edge a DockPanel child claims through the attached Dock property. The int
+// order is also the markup order used by XAML.
+enum class DockSide {
+    Left,
+    Top,
+    Right,
+    Bottom,
+};
+
 }  // namespace nopeui
 
 #endif  // NOPEUI_LAYOUT_LAYOUT_TYPES_H_

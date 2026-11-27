@@ -10,6 +10,7 @@
 #include "nopeui/base/event.h"
 #include "nopeui/base/ref.h"
 #include "nopeui/layout/element.h"
+#include "nopeui/theme/control_template.h"
 
 namespace nopeui {
 namespace graphics {
@@ -69,10 +70,8 @@ private:
     Event<> click_;
     Subscription click_subscription_;
     Ref<Element> template_root_;
+    Ref<ControlTemplate> control_template_;
     std::vector<Subscription> template_bindings_;
-    std::uint32_t template_background_ = 0;
-    std::uint32_t template_border_ = 0;
-    std::uint32_t template_foreground_ = 0;
     float corner_radius_ = 4.0f;
     bool hovered_ = false;
     bool pressed_ = false;

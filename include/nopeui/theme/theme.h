@@ -2,6 +2,9 @@
 #define NOPEUI_THEME_THEME_H_
 
 #include <cstdint>
+#include <string_view>
+
+#include "nopeui/base/property_value.h"
 
 namespace nopeui {
 
@@ -22,6 +25,11 @@ struct Theme {
     std::uint32_t button_disabled_border = 0xDFDFDF;
     std::uint32_t scrollbar_track = 0xE8E8E8;
     std::uint32_t scrollbar_thumb = 0xC0C0C0;
+
+    // Theme-owned resources. Keys are the palette names ("Accent", "Text",
+    // "SurfaceBorder", ...) and the value is always a color, so markup can say
+    // {ThemeResource Accent} and keep following theme switches.
+    bool FindThemeResource(std::wstring_view key, PropertyValue* value) const noexcept;
 };
 
 const Theme& LightTheme() noexcept;

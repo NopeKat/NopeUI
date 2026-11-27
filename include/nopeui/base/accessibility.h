@@ -14,6 +14,8 @@ enum class AccessibleRole {
     ProgressBar,
     Group,
     Window,
+    MenuBar,
+    MenuItem,
 };
 
 }  // namespace nopeui

@@ -9,7 +9,49 @@
 
 #include <Windows.h>
 
+#include <string_view>
+#include <unordered_map>
+
 namespace nopeui {
+
+namespace {
+
+using ResourceLookup = std::uint32_t (*)(const Theme&);
+using ResourceTable = std::unordered_map<std::wstring, ResourceLookup>;
+
+const ResourceTable& Palette() {
+    static const ResourceTable table = {
+        {L"Background", +[](const Theme& theme) { return theme.background; }},
+        {L"Surface", +[](const Theme& theme) { return theme.surface; }},
+        {L"SurfaceBorder", +[](const Theme& theme) { return theme.surface_border; }},
+        {L"Text", +[](const Theme& theme) { return theme.text; }},
+        {L"TextSecondary", +[](const Theme& theme) { return theme.text_secondary; }},
+        {L"Accent", +[](const Theme& theme) { return theme.accent; }},
+        {L"Button", +[](const Theme& theme) { return theme.button; }},
+        {L"ButtonHover", +[](const Theme& theme) { return theme.button_hover; }},
+        {L"ButtonPressed", +[](const Theme& theme) { return theme.button_pressed; }},
+        {L"ButtonBorder", +[](const Theme& theme) { return theme.button_border; }},
+        {L"TextDisabled", +[](const Theme& theme) { return theme.text_disabled; }},
+        {L"ButtonDisabled", +[](const Theme& theme) { return theme.button_disabled; }},
+        {L"ButtonDisabledBorder",
+         +[](const Theme& theme) { return theme.button_disabled_border; }},
+        {L"ScrollbarTrack", +[](const Theme& theme) { return theme.scrollbar_track; }},
+        {L"ScrollbarThumb", +[](const Theme& theme) { return theme.scrollbar_thumb; }},
+    };
+    return table;
+}
+
+}  // namespace
+
+bool Theme::FindThemeResource(std::wstring_view key, PropertyValue* value) const noexcept {
+    const ResourceTable& table = Palette();
+    const auto found = table.find(std::wstring(key));
+    if (found == table.end()) {
+        return false;
+    }
+    *value = PropertyValue(found->second(*this));
+    return true;
+}
 
 const Theme& LightTheme() noexcept {
     static const Theme theme{};

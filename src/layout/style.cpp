@@ -34,6 +34,11 @@ Style& Style::SetTemplate(Ref<ControlTemplate> control_template) noexcept {
     return *this;
 }
 
+Style& Style::AddTrigger(PropertyTrigger trigger) noexcept {
+    triggers_.push_back(std::move(trigger));
+    return *this;
+}
+
 bool Style::Matches(const Element& element) const noexcept {
     if (!target_type_.empty() && target_type_ != element.TypeName()) {
         return false;
@@ -50,6 +55,12 @@ void Style::Apply(Element& element) const noexcept {
     }
     if (control_template_) {
         element.ApplyControlTemplate(*control_template_);
+    }
+    for (const PropertyTrigger& trigger : triggers_) {
+        element.AddTrigger(this, trigger);
+    }
+    if (!triggers_.empty()) {
+        element.RefreshTriggers();
     }
 }
 

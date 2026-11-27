@@ -79,11 +79,75 @@ public:
         return factory_ ? factory_() : TemplateInstance{};
     }
 
+    // Visual states patch the named parts while a state is active. A patch only
+    // overwrites the fields it actually sets: zero colors and a non-positive
+    // corner radius keep the base part, and an all-zero padding does the same.
+    ControlTemplate& SetStatePart(
+        std::wstring group,
+        std::wstring state,
+        std::wstring part,
+        TemplatePart patch) noexcept {
+        states_[std::move(group)][std::move(state)][std::move(part)] = patch;
+        return *this;
+    }
+
+    bool HasState(std::wstring_view group) const noexcept {
+        return states_.find(std::wstring(group)) != states_.end();
+    }
+
+    // Base part merged with the patch of the given group/state, if any.
+    TemplatePart ResolvePart(
+        std::wstring_view part,
+        std::wstring_view group,
+        std::wstring_view state) const noexcept {
+        TemplatePart resolved{};
+        if (const TemplatePart* base = Find(part)) {
+            resolved = *base;
+        }
+        const auto group_it = states_.find(std::wstring(group));
+        if (group_it == states_.end()) {
+            return resolved;
+        }
+        const auto state_it = group_it->second.find(std::wstring(state));
+        if (state_it == group_it->second.end()) {
+            return resolved;
+        }
+        const auto part_it = state_it->second.find(std::wstring(part));
+        if (part_it == state_it->second.end()) {
+            return resolved;
+        }
+        const TemplatePart& patch = part_it->second;
+        if (patch.background != 0) {
+            resolved.background = patch.background;
+        }
+        if (patch.foreground != 0) {
+            resolved.foreground = patch.foreground;
+        }
+        if (patch.border != 0) {
+            resolved.border = patch.border;
+        }
+        if (patch.corner_radius > 0.0f) {
+            resolved.corner_radius = patch.corner_radius;
+        }
+        if (patch.padding.left != 0.0f || patch.padding.top != 0.0f ||
+            patch.padding.right != 0.0f || patch.padding.bottom != 0.0f) {
+            resolved.padding = patch.padding;
+        }
+        return resolved;
+    }
+
 private:
     ControlTemplate() noexcept = default;
 
     std::wstring target_type_;
     std::unordered_map<std::wstring, TemplatePart> parts_;
+    // group -> state -> part -> patch
+    std::unordered_map<
+        std::wstring,
+        std::unordered_map<
+            std::wstring,
+            std::unordered_map<std::wstring, TemplatePart>>>
+        states_;
     TemplateFactory factory_;
 };
 

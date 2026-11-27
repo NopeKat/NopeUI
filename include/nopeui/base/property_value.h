@@ -128,6 +128,14 @@ public:
         return true;
     }
 
+    // Trigger matching needs value comparison, including the type.
+    bool Equals(const PropertyValue& other) const noexcept {
+        if (value_.index() != other.value_.index()) {
+            return false;
+        }
+        return value_ == other.value_;
+    }
+
 private:
     std::variant<bool, int, float, double, std::uint32_t, std::wstring, Thickness> value_;
 };
