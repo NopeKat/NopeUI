@@ -4,3 +4,6 @@ target_link_libraries(nopeui_golden PRIVATE nopeui_graphics nopeui_controls nope
 
 add_executable(nopeui_image_diff imagediff/main.cpp)
 target_link_libraries(nopeui_image_diff PRIVATE nopeui_graphics)
+
+add_executable(nopeui_xaml_fuzz xaml_fuzz/main.cpp)
+target_link_libraries(nopeui_xaml_fuzz PRIVATE nopeui_markup nopeui_controls)
