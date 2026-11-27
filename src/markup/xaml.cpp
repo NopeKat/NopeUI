@@ -822,7 +822,10 @@ public:
 
         // Bindings recorded before their resource existed resolve here, once the
         // whole tree and every Resources block are in place.
-        element->RefreshThemeResources();
+        if (!element->RefreshThemeResources()) {
+            Fail(root_, "ThemeResource key is unknown or its type does not match");
+            return Failure();
+        }
 
         LoadResult result;
         result.root = std::move(element);
@@ -2112,11 +2115,11 @@ private:
                         return Fail(item_node, "event handler was not found");
                     }
                     const std::wstring handler_name(attribute->value);
-                    command.handler = [resolved, handler_name] {
+                    command.handler = [resolved, handler_name, bar] {
                         EventArgs args;
                         args.event = L"Click";
                         args.handler = handler_name;
-                        args.sender = nullptr;
+                        args.sender = bar;
                         resolved(args);
                     };
                 }

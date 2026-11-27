@@ -552,6 +552,10 @@ int main() {
         CornerRadius="{ThemeResource Accent}"/>)XAML").ok());
     }
 
+    // A typo in a theme resource key is rejected once the tree is complete.
+    NOPEUI_CHECK(!nopeui::xaml::Load(LR"XAML(
+<Label xmlns="https://nopeui.local/xaml" Foreground="{ThemeResource Accentt}"/>)XAML").ok());
+
     // Resources only accept the supported value elements.
     NOPEUI_CHECK(!nopeui::xaml::Load(LR"XAML(
 <Border xmlns="https://nopeui.local/xaml">
