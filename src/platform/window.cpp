@@ -48,6 +48,10 @@ constexpr std::size_t kMaxQueuedCommits = 1;
 constexpr int kMaxAsyncSurfaces = 3;
 constexpr int kMinAsyncSurfaces = 2;
 constexpr int kFlipBufferCount = 2;
+// D3D11 flip-model presentation keeps buffer 0 as the back buffer. D2D can
+// create a target bitmap for that buffer, but not for buffer 1; rotating the
+// target index makes every frame after the first fail before Present.
+constexpr int kFlipTargetCount = 1;
 
 double MillisecondsToNextVblank(LONGLONG submit_qpc) noexcept {
     DWM_TIMING_INFO timing{};
@@ -309,7 +313,6 @@ public:
             state.width = width;
             state.height = height;
         }
-        flip_buffer_index_ = 0;
         first_flip_present_ = true;
         full_redraw_required_ = true;
         return Result<void>::Ok();
@@ -600,13 +603,8 @@ public:
     void Render(const RECT* dirty_rect = nullptr, bool force_commit = false) noexcept {
         const auto start = std::chrono::steady_clock::now();
         const auto sequence = ++frame_sequence_;
-        UINT flip_buffer_index = 0;
         if (flip_model_) {
             if (swap_chain_ == nullptr) {
-                return;
-            }
-            flip_buffer_index = flip_buffer_index_;
-            if (flip_buffer_index >= static_cast<UINT>(kFlipBufferCount)) {
                 return;
             }
         } else if (async_commit_) {
@@ -619,7 +617,7 @@ public:
             return;
         }
 
-        auto& surface_state = flip_model_ ? flip_states_[flip_buffer_index] : surfaces_[draw_index_];
+        auto& surface_state = flip_model_ ? flip_states_[0] : surfaces_[draw_index_];
         if (!flip_model_ && surface_state.surface == nullptr) {
             return;
         }
@@ -662,7 +660,7 @@ public:
         HRESULT result = E_FAIL;
         if (flip_model_) {
             result = swap_chain_->GetBuffer(
-                flip_buffer_index,
+                0,
                 __uuidof(IDXGISurface),
                 reinterpret_cast<void**>(dxgi_surface.GetAddressOf()));
         } else {
@@ -881,7 +879,6 @@ public:
             first_flip_present_ = false;
             last_commit_ms_ =
                 std::chrono::duration<double, std::milli>(present_end - present_start).count();
-            flip_buffer_index_ = (flip_buffer_index_ + 1) % kFlipBufferCount;
             if (dcomp_device_ != nullptr) {
                 dcomp_device_->Commit();
             }
@@ -1542,7 +1539,6 @@ private:
             state.height = 0;
         }
         swap_chain_.Reset();
-        flip_buffer_index_ = 0;
         for (auto& state : surfaces_) {
             state.target_bitmap.Reset();
             state.surface.Reset();
@@ -1562,8 +1558,7 @@ private:
     ComPtr<IDCompositionVisual> visual_;
     SurfaceState surfaces_[kMaxAsyncSurfaces];
     ComPtr<IDXGISwapChain1> swap_chain_;
-    SurfaceState flip_states_[kFlipBufferCount];
-    UINT flip_buffer_index_ = 0;
+    SurfaceState flip_states_[kFlipTargetCount];
     bool first_flip_present_ = true;
     bool flip_model_ = false;
     ComPtr<ID2D1Factory1> d2d_factory_;
