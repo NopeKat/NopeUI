@@ -1,9 +1,21 @@
 #include "../test_check.h"
 
+#include <cmath>
+
+#include "nopeui/controls/border.h"
+#include "nopeui/controls/button.h"
 #include "nopeui/controls/label.h"
 #include "nopeui/controls/stack_panel.h"
 #include "nopeui/layout/element.h"
 #include "nopeui/theme/theme.h"
+
+namespace {
+
+bool Near(float left, float right) {
+    return std::fabs(left - right) < 0.5f;
+}
+
+}  // namespace
 
 int main() {
     // A resource declared on a parent is visible to its descendants only.
@@ -58,6 +70,34 @@ int main() {
         auto label = nopeui::Label::Create(L"Missing");
         nopeui::PropertyValue found;
         NOPEUI_CHECK(!label->FindResourceValue(L"NothingHere", &found));
+    }
+
+    // Numeric resources drive non-color targets, and a switch refreshes them.
+    {
+        auto holder = nopeui::Border::Create();
+        auto button = nopeui::Button::Create(L"Rounded");
+        holder->SetChild(button);
+        holder->SetResource(L"Radius", nopeui::PropertyValue(7.0f));
+
+        NOPEUI_CHECK(button->BindThemeResource(L"CornerRadius", L"Radius"));
+        nopeui::PropertyValue value;
+        float radius = 0.0f;
+        NOPEUI_CHECK(button->GetProperty(L"CornerRadius", &value));
+        NOPEUI_CHECK(value.AsFloat(&radius) && Near(radius, 7.0f));
+
+        holder->SetResource(L"Radius", nopeui::PropertyValue(3.0f));
+        holder->RefreshThemeResources();
+        NOPEUI_CHECK(button->GetProperty(L"CornerRadius", &value));
+        NOPEUI_CHECK(value.AsFloat(&radius) && Near(radius, 3.0f));
+
+        // A color key cannot feed a float property, while an unknown key waits
+        // for its resource to show up later.
+        NOPEUI_CHECK(!button->BindThemeResource(L"CornerRadius", L"Accent"));
+        NOPEUI_CHECK(button->BindThemeResource(L"CornerRadius", L"Later"));
+        holder->SetResource(L"Later", nopeui::PropertyValue(5.0f));
+        holder->RefreshThemeResources();
+        NOPEUI_CHECK(button->GetProperty(L"CornerRadius", &value));
+        NOPEUI_CHECK(value.AsFloat(&radius) && Near(radius, 5.0f));
     }
 
     return 0;

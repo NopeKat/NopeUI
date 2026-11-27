@@ -114,5 +114,24 @@ int main() {
         NOPEUI_CHECK(label->Foreground() == 0x9A9A9A);
     }
 
+    // ClearValue hands the property back to a matching trigger, then the style.
+    {
+        auto style = nopeui::Style::Create();
+        style->SetTargetType(L"Label");
+        style->Set(L"Foreground", nopeui::PropertyValue(0x1B1B1Bu));
+        style->AddTrigger(DisabledForeground());
+
+        auto label = nopeui::Label::Create(L"Cleared");
+        label->SetProperty(L"Foreground", nopeui::PropertyValue(0x123456u));
+        style->Apply(*label);
+        label->SetEnabled(false);
+        NOPEUI_CHECK(label->Foreground() == 0x123456);
+
+        NOPEUI_CHECK(label->ClearValue(L"Foreground"));
+        NOPEUI_CHECK(label->Foreground() == 0x9A9A9A);
+        label->SetEnabled(true);
+        NOPEUI_CHECK(label->Foreground() == 0x1B1B1B);
+    }
+
     return 0;
 }

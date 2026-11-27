@@ -172,5 +172,28 @@ int main() {
         NOPEUI_CHECK(Near(label->Margin().left, 4.0f));
     }
 
+    // ClearValue drops a local value and hands the property to the style.
+    {
+        auto sheet = nopeui::StyleSheet::Create();
+        auto style = nopeui::Style::Create();
+        style->SetTargetType(L"Button");
+        style->Set(L"CornerRadius", nopeui::PropertyValue(9.0f));
+        sheet->Add(style);
+
+        auto button = nopeui::Button::Create(L"Clearable");
+        NOPEUI_CHECK(button->SetProperty(L"CornerRadius", nopeui::PropertyValue(3.0f)));
+        sheet->ApplyTo(*button);
+        NOPEUI_CHECK(button->HasLocalProperty(L"CornerRadius"));
+
+        NOPEUI_CHECK(button->ClearValue(L"CornerRadius"));
+        NOPEUI_CHECK(!button->HasLocalProperty(L"CornerRadius"));
+        nopeui::PropertyValue value;
+        float radius = 0.0f;
+        NOPEUI_CHECK(button->GetProperty(L"CornerRadius", &value));
+        NOPEUI_CHECK(value.AsFloat(&radius) && Near(radius, 9.0f));
+
+        NOPEUI_CHECK(!button->ClearValue(L"Missing"));
+    }
+
     return 0;
 }

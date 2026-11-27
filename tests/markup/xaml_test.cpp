@@ -14,6 +14,7 @@
 #include "nopeui/controls/content_presenter.h"
 #include "nopeui/controls/context_menu.h"
 #include "nopeui/controls/dock_panel.h"
+#include "nopeui/controls/flex_panel.h"
 #include "nopeui/controls/label.h"
 #include "nopeui/controls/menu_bar.h"
 #include "nopeui/controls/stack_panel.h"
@@ -22,6 +23,10 @@
 #include "nopeui/theme/theme.h"
 
 namespace {
+
+bool near(float left, float right) {
+    return std::fabs(left - right) < 0.5f;
+}
 
 nopeui::xaml::LoadResult LoadPage(std::vector<std::wstring>* events) {
     auto source = LR"XAML(
@@ -499,6 +504,52 @@ int main() {
         NOPEUI_CHECK(shown.Get() != nullptr);
         NOPEUI_CHECK(dynamic_cast<nopeui::ContextMenu*>(shown.Get()) != nullptr);
         NOPEUI_CHECK(anchor.y >= bar->Bounds().Bottom());
+    }
+
+    // FlexPanel markup carries direction, gap, wrap and per-child grow.
+    {
+        auto loaded = nopeui::xaml::Load(LR"XAML(
+<FlexPanel xmlns="https://nopeui.local/xaml" Direction="Column" Gap="4" Wrap="True">
+  <Label Text="A" FlexGrow="1"/>
+  <Label Text="B"/>
+</FlexPanel>)XAML");
+        NOPEUI_CHECK(loaded.ok());
+        auto* flex = dynamic_cast<nopeui::FlexPanel*>(loaded.value().root.Get());
+        NOPEUI_CHECK(flex != nullptr);
+        NOPEUI_CHECK(flex->GetDirection() == nopeui::FlexDirection::Column);
+        NOPEUI_CHECK(near(flex->Gap(), 4.0f));
+        NOPEUI_CHECK(flex->Wrap());
+        const auto& children = flex->Children();
+        NOPEUI_CHECK(children.size() == 2);
+        nopeui::PropertyValue grow;
+        NOPEUI_CHECK(children[0]->GetAttachedProperty(L"FlexGrow", &grow));
+        float weight = 0.0f;
+        NOPEUI_CHECK(grow.AsFloat(&weight) && near(weight, 1.0f));
+
+        NOPEUI_CHECK(!nopeui::xaml::Load(LR"XAML(
+<FlexPanel xmlns="https://nopeui.local/xaml" Direction="Diagonal"/>)XAML").ok());
+    }
+
+    // A numeric resource drives a float property, resolved after the load.
+    {
+        auto loaded = nopeui::xaml::Load(LR"XAML(
+<Border xmlns="https://nopeui.local/xaml" Padding="8">
+  <Border.Resources>
+    <Number Key="Radius">6</Number>
+  </Border.Resources>
+  <Button x:Name="rounded" CornerRadius="{ThemeResource Radius}" Text="Rounded"/>
+</Border>)XAML");
+        NOPEUI_CHECK(loaded.ok());
+        auto* rounded = loaded.value().Find(L"rounded");
+        NOPEUI_CHECK(rounded != nullptr);
+        nopeui::PropertyValue corner;
+        float corner_value = 0.0f;
+        NOPEUI_CHECK(rounded->GetProperty(L"CornerRadius", &corner));
+        NOPEUI_CHECK(corner.AsFloat(&corner_value) && near(corner_value, 6.0f));
+
+        NOPEUI_CHECK(!nopeui::xaml::Load(LR"XAML(
+<Button xmlns="https://nopeui.local/xaml" Text="Wrong"
+        CornerRadius="{ThemeResource Accent}"/>)XAML").ok());
     }
 
     // Resources only accept the supported value elements.
