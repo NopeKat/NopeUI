@@ -34,6 +34,9 @@ struct Theme {
 
 const Theme& LightTheme() noexcept;
 const Theme& DarkTheme() noexcept;
+// System high contrast palette: black canvas, white text and a yellow accent,
+// matching the classic Windows contrast scheme more closely than dark does.
+const Theme& HighContrastTheme() noexcept;
 
 // Follows the Windows "app mode" preference; falls back to light.
 Theme SystemTheme() noexcept;

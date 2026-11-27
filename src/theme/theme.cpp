@@ -81,6 +81,29 @@ const Theme& DarkTheme() noexcept {
     return theme;
 }
 
+const Theme& HighContrastTheme() noexcept {
+    static const Theme theme{[] {
+        Theme contrast;
+        contrast.background = 0x000000;
+        contrast.surface = 0x000000;
+        contrast.surface_border = 0xFFFFFF;
+        contrast.text = 0xFFFFFF;
+        contrast.text_secondary = 0xFFFFFF;
+        contrast.accent = 0xFFFF00;
+        contrast.button = 0x000000;
+        contrast.button_hover = 0x1A1A1A;
+        contrast.button_pressed = 0x333333;
+        contrast.button_border = 0xFFFFFF;
+        contrast.text_disabled = 0x00FF00;
+        contrast.button_disabled = 0x000000;
+        contrast.button_disabled_border = 0x00FF00;
+        contrast.scrollbar_track = 0x000000;
+        contrast.scrollbar_thumb = 0xFFFFFF;
+        return contrast;
+    }()};
+    return theme;
+}
+
 Theme SystemTheme() noexcept {
     DWORD light = 1;
     DWORD size = sizeof(light);
