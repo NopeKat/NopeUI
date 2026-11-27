@@ -13,6 +13,7 @@
 #include "nopeui/controls/check_box.h"
 #include "nopeui/controls/grid.h"
 #include "nopeui/controls/label.h"
+#include "nopeui/controls/menu_bar.h"
 #include "nopeui/controls/progress_bar.h"
 #include "nopeui/controls/radio_button.h"
 #include "nopeui/controls/slider.h"
@@ -155,7 +156,26 @@ inline Ref<Element> BuildFormPage(std::function<void(bool dark)> on_theme = {}) 
     grid->Add(actions);
 
     card->SetChild(grid);
-    page->SetChild(card);
+
+    auto body = StackPanel::Create(0.0f);
+
+    // The menu strip sits above the card so the popup layer gets a real anchor
+    // in the running app; every command closes the menu before it runs.
+    auto menu = MenuBar::Create();
+    menu->AddMenu(L"File", {MenuCommand{L"New", {}}, MenuCommand{L"Open", {}}});
+    menu->AddMenu(L"Edit", {MenuCommand{L"Undo", {}}, MenuCommand{L"Redo", {}}});
+    if (on_theme) {
+        menu->AddMenu(L"View", {
+            MenuCommand{L"Light theme", [on_theme] { on_theme(false); }},
+            MenuCommand{L"Dark theme", [on_theme] { on_theme(true); }},
+        });
+    } else {
+        menu->AddMenu(L"View", {MenuCommand{L"Theme", {}}});
+    }
+    body->Add(menu);
+    body->Add(card);
+
+    page->SetChild(body);
     return page;
 }
 
