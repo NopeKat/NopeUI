@@ -1910,7 +1910,13 @@ bool HandleAutomationGetObject(
     WPARAM wparam,
     LPARAM lparam,
     LRESULT* result) noexcept {
-    if (window == nullptr || result == nullptr || lparam != OBJID_CLIENT) {
+    if (window == nullptr || result == nullptr) {
+        return false;
+    }
+    // UI Automation asks for the root provider with UiaRootObjectId. MSAA's
+    // OBJID_CLIENT request is left to DefWindowProc because this window does
+    // not expose an IAccessible object.
+    if (static_cast<LONG>(lparam) != UiaRootObjectId) {
         return false;
     }
     WindowProvider* provider = EnsureWindowProvider(window);
