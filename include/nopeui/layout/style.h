@@ -1,6 +1,7 @@
 #ifndef NOPEUI_LAYOUT_STYLE_H_
 #define NOPEUI_LAYOUT_STYLE_H_
 
+#include <cstddef>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -28,6 +29,10 @@ public:
     Style& Set(std::wstring name, PropertyValue value) noexcept;
     Style& SetTemplate(Ref<ControlTemplate> control_template) noexcept;
     Style& AddTrigger(PropertyTrigger trigger) noexcept;
+
+    // Removal entry: a style can be edited after it was applied, so a trigger
+    // can be dropped by index. Returns false when the index is out of range.
+    bool RemoveTrigger(std::size_t index) noexcept;
 
     bool Matches(const Element& element) const noexcept;
     void Apply(Element& element) const noexcept;

@@ -37,6 +37,12 @@ public:
         return L"MenuBar";
     }
 
+    int ActiveMenuIndex() const noexcept {
+        return active_;
+    }
+
+    void CollectAccessibleMenuItems(std::vector<std::wstring>& items) const noexcept override;
+
 protected:
     Size MeasureOverride(Size available) noexcept override;
     Size ArrangeOverride(Size final_size) noexcept override;

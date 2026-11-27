@@ -2584,6 +2584,7 @@ LRESULT CALLBACK Window::WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM 
                     window->ClearFocus();
                 }
                 window->root_->ClearPopup();
+                window->root_->NotifyPopupClosed();
                 if (!was_tooltip && window->previous_focus_ != nullptr &&
                     window->previous_focus_ != focused) {
                     window->FocusElement(window->previous_focus_);

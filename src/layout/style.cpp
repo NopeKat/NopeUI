@@ -64,6 +64,14 @@ void Style::Apply(Element& element) const noexcept {
     }
 }
 
+bool Style::RemoveTrigger(std::size_t index) noexcept {
+    if (index >= triggers_.size()) {
+        return false;
+    }
+    triggers_.erase(triggers_.begin() + static_cast<std::ptrdiff_t>(index));
+    return true;
+}
+
 Ref<StyleSheet> StyleSheet::Create() noexcept {
     return Ref<StyleSheet>(new StyleSheet());
 }

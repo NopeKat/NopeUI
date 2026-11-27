@@ -150,6 +150,20 @@ void MenuBar::PaintContent(ID2D1RenderTarget* target) noexcept {
         }
         x += width;
     }
+
+    if (IsFocused() && IsEnabled()) {
+        ComPtr<ID2D1SolidColorBrush> focus;
+        if (SUCCEEDED(target->CreateSolidColorBrush(
+                D2D1::ColorF(colors.accent), focus.GetAddressOf()))) {
+            target->DrawRectangle(
+                D2D1::RectF(
+                    bounds_.x + 2.5f,
+                    bounds_.y + 2.5f,
+                    bounds_.Right() - 2.5f,
+                    bounds_.Bottom() - 2.5f),
+                focus.Get());
+        }
+    }
 }
 
 void MenuBar::OnPointerMove(Point point) noexcept {
@@ -209,6 +223,11 @@ void MenuBar::OpenMenu(std::size_t index) noexcept {
         x += text_width + kPaddingX * 2.0f;
     }
 
+    SetPopupClosedHandler([this] {
+        active_ = -1;
+        Invalidate();
+    });
+
     auto menu = ContextMenu::Create();
     for (const MenuCommand& command : items_[index].commands) {
         menu->AddItem(command.text, command.handler);
@@ -252,6 +271,13 @@ AccessibleRole MenuBar::AccessibilityRole() const noexcept {
 
 std::wstring MenuBar::AccessibilityName() const {
     return L"Menu bar";
+}
+
+void MenuBar::CollectAccessibleMenuItems(
+    std::vector<std::wstring>& items) const noexcept {
+    for (const Item& item : items_) {
+        items.push_back(item.title);
+    }
 }
 
 }  // namespace nopeui

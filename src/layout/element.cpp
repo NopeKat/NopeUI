@@ -108,6 +108,10 @@ Element::~Element() {
         context_menu_->Release();
         context_menu_ = nullptr;
     }
+    if (popup_requester_ != nullptr) {
+        popup_requester_->Release();
+        popup_requester_ = nullptr;
+    }
 }
 
 void Element::SetForeground(std::uint32_t color) noexcept {
@@ -207,20 +211,34 @@ void Element::SetVerticalAlignment(VerticalAlignment alignment) noexcept {
     InvalidateLayout();
 }
 
-bool Element::SetAttachedProperty(
+bool Element::SetAttachedValue(
     const AttachedPropertyMetadata& metadata,
-    const PropertyValue& value) noexcept {
+    const PropertyValue& value,
+    bool local) noexcept {
     if (!TypeMatches(metadata.type, value)) {
         return false;
     }
     for (auto& entry : attached_) {
-        if (entry.first == &metadata) {
-            entry.second = value;
+        if (entry.metadata == &metadata) {
+            entry.value = value;
+            if (local) {
+                entry.local = true;
+                RecordLocalProperty(metadata.name);
+            }
             return true;
         }
     }
-    attached_.emplace_back(&metadata, value);
+    attached_.push_back(AttachedEntry{&metadata, value, local});
+    if (local) {
+        RecordLocalProperty(metadata.name);
+    }
     return true;
+}
+
+bool Element::SetAttachedProperty(
+    const AttachedPropertyMetadata& metadata,
+    const PropertyValue& value) noexcept {
+    return SetAttachedValue(metadata, value, true);
 }
 
 bool Element::SetAttachedProperty(
@@ -249,8 +267,8 @@ bool Element::GetAttachedProperty(std::wstring_view name, PropertyValue* value) 
 const PropertyValue* Element::FindAttachedProperty(
     const AttachedPropertyMetadata& metadata) const noexcept {
     for (const auto& entry : attached_) {
-        if (entry.first == &metadata) {
-            return &entry.second;
+        if (entry.metadata == &metadata) {
+            return &entry.value;
         }
     }
     return nullptr;
@@ -347,6 +365,15 @@ bool Element::ClearValue(std::wstring_view name) noexcept {
             break;
         }
     }
+    if (const AttachedPropertyMetadata* metadata = nopeui::FindAttachedProperty(name)) {
+        for (auto it = attached_.begin(); it != attached_.end(); ++it) {
+            if (it->metadata == metadata && it->local) {
+                attached_.erase(it);
+                removed = true;
+                break;
+            }
+        }
+    }
     if (!removed) {
         return true;
     }
@@ -431,20 +458,23 @@ bool Element::BindThemeResource(std::wstring property, std::wstring key) {
     return true;
 }
 
-void Element::RefreshThemeResources() {
+bool Element::RefreshThemeResources() {
+    bool resolved = true;
     for (const auto& entry : theme_bindings_) {
         PropertyValue value;
-        if (FindResourceValue(entry.second, &value)) {
-            SetProperty(entry.first, value);
+        if (!FindResourceValue(entry.second, &value) ||
+            !SetProperty(entry.first, value)) {
+            resolved = false;
         }
     }
     std::vector<Element*> children;
     CollectChildren(children);
     for (Element* child : children) {
-        if (child != nullptr) {
-            child->RefreshThemeResources();
+        if (child != nullptr && !child->RefreshThemeResources()) {
+            resolved = false;
         }
     }
+    return resolved;
 }
 
 void Element::AddTrigger(const void* owner, const PropertyTrigger& trigger) noexcept {
@@ -539,13 +569,72 @@ void Element::ClearTriggerValue(std::wstring_view name) noexcept {
     SetPropertyCore(name, StyleOrDefault(name), false);
 }
 
-PropertyValue Element::StyleOrDefault(std::wstring_view name) const noexcept {
-    const auto found = style_values_.find(std::wstring(name));
+void Element::ClearStyleValues() noexcept {
+    std::vector<std::wstring> names;
+    names.reserve(style_values_.size());
+    for (const auto& entry : style_values_) {
+        names.push_back(entry.first);
+    }
+    style_values_.clear();
+    for (const std::wstring& name : names) {
+        if (HasLocalProperty(name) || trigger_values_.count(name) != 0) {
+            continue;
+        }
+        SetPropertyCore(name, StyleOrDefault(name), false);
+    }
+}
+
+void Element::RemoveTriggers(const void* owner) noexcept {
+    std::vector<std::wstring> affected;
+    for (auto it = triggers_.begin(); it != triggers_.end();) {
+        if (it->owner != owner) {
+            ++it;
+            continue;
+        }
+        for (const auto& setter : it->trigger.setters) {
+            bool known = false;
+            for (const std::wstring& name : affected) {
+                if (name == setter.first) {
+                    known = true;
+                    break;
+                }
+            }
+            if (!known) {
+                affected.push_back(setter.first);
+            }
+        }
+        it = triggers_.erase(it);
+    }
+    for (const std::wstring& name : affected) {
+        bool stillWritten = false;
+        for (const TriggerEntry& entry : triggers_) {
+            for (const auto& setter : entry.trigger.setters) {
+                if (setter.first == name) {
+                    stillWritten = true;
+                    break;
+                }
+            }
+            if (stillWritten) {
+                break;
+            }
+        }
+        if (stillWritten) {
+            EvaluateTriggeredProperty(name);
+        } else {
+            ClearTriggerValue(name);
+        }
+    }
+}
+
+PropertyValue Element::StyleOrDefault(std::wstring_view name) const noexcept {    const auto found = style_values_.find(std::wstring(name));
     if (found != style_values_.end()) {
         return found->second;
     }
     if (const PropertyMetadata* metadata = FindBaseMetadata(name)) {
         return metadata->default_value;
+    }
+    if (const AttachedPropertyMetadata* attached = nopeui::FindAttachedProperty(name)) {
+        return attached->default_value;
     }
     std::size_t count = 0;
     const PropertyMetadata* table = ControlPropertyTable(&count);
@@ -639,14 +728,8 @@ bool Element::SetPropertyCore(
     }
 
     if (IsAttachedPropertyName(name)) {
-        if (!TypeMatches(nopeui::FindAttachedProperty(name)->type, value)) {
-            return false;
-        }
-        const bool applied = SetAttachedProperty(name, value);
-        if (applied && local) {
-            RecordLocalProperty(name);
-        }
-        return applied;
+        const AttachedPropertyMetadata* metadata = nopeui::FindAttachedProperty(name);
+        return SetAttachedValue(*metadata, value, local);
     }
 
     std::size_t count = 0;
@@ -870,10 +953,41 @@ void Element::SetPopupHandler(
     popup_close_ = std::move(close);
 }
 
+void Element::SetPopupClosedHandler(std::function<void()> handler) noexcept {
+    popup_closed_ = std::move(handler);
+}
+
+void Element::NotifyPopupClosed() {
+    // Take the recorded requester by raw pointer: the member is a raw pointer
+    // because Ref<Element> would need a complete Element inside Element itself.
+    Element* requester = popup_requester_;
+    popup_requester_ = nullptr;
+    if (requester == nullptr) {
+        // The root itself may be the control that owns the popup.
+        if (popup_closed_) {
+            const std::function<void()> own = popup_closed_;
+            own();
+        }
+        return;
+    }
+    if (requester->popup_closed_) {
+        const std::function<void()> handler = requester->popup_closed_;
+        handler();
+    }
+    requester->Release();
+}
+
 void Element::RequestPopup(Ref<Element> popup, Point anchor) {
     Element* root = this;
     while (root->parent_ != nullptr) {
         root = root->parent_;
+    }
+    if (root != this) {
+        if (root->popup_requester_ != nullptr) {
+            root->popup_requester_->Release();
+        }
+        this->AddRef();
+        root->popup_requester_ = this;
     }
     if (root->popup_show_) {
         root->popup_show_(std::move(popup), anchor);

@@ -161,12 +161,20 @@ public:
     // is re-applied by RefreshThemeResources() after a theme switch. Returns
     // false when the key is unknown or its type does not fit the property.
     bool BindThemeResource(std::wstring property, std::wstring key);
-    void RefreshThemeResources();
+    // Re-applies every binding in the subtree; returns false when one of them
+    // could not resolve, which lets the loader reject a typo in the key.
+    bool RefreshThemeResources();
 
     // Triggers come from a style. They re-evaluate whenever the watched property
     // changes; owner is the style pointer, used to replace a style's triggers.
     void AddTrigger(const void* owner, const PropertyTrigger& trigger) noexcept;
     void RefreshTriggers() noexcept;
+
+    // Removal entry for unapplying a style: style-sourced values and the
+    // triggers that owner contributed are dropped, then each touched property
+    // falls back to its local value, its remaining trigger, or the default.
+    void ClearStyleValues() noexcept;
+    void RemoveTriggers(const void* owner) noexcept;
 
     // Attached properties. Panels own the metadata and children store the
     // value, which is how Grid.Row reaches a child without a Grid field.
@@ -234,6 +242,11 @@ public:
         std::function<void()> close) noexcept;
     void RequestPopup(Ref<Element> popup, Point anchor);
     void RequestClosePopup();
+    // The control that opened the current popup gets this callback when the
+    // layer closes it, including closes triggered from outside the control.
+    void SetPopupClosedHandler(std::function<void()> handler) noexcept;
+    // Called on the root element by the window once the popup is gone.
+    void NotifyPopupClosed();
 
     // Focus and keyboard. IsFocusable() marks participation in the Tab order;
     // CollectFocusable() walks the tree in visual order.
@@ -358,6 +371,10 @@ public:
     // Child order for the automation tree.
     virtual void CollectChildren(std::vector<Element*>&) noexcept {}
 
+    // Menu-like controls paint their rows as text, not elements, so they report
+    // the row names here and the automation provider exposes them as menu items.
+    virtual void CollectAccessibleMenuItems(std::vector<std::wstring>&) const noexcept {}
+
     bool IsFocused() const noexcept {
         return focused_;
     }
@@ -452,12 +469,27 @@ private:
     void ClearTriggerValue(std::wstring_view name) noexcept;
     PropertyValue StyleOrDefault(std::wstring_view name) const noexcept;
 
+    struct AttachedEntry {
+        const AttachedPropertyMetadata* metadata = nullptr;
+        PropertyValue value;
+        // A local value is cleared by ClearValue; a style value is not.
+        bool local = false;
+    };
+
+    bool SetAttachedValue(
+        const AttachedPropertyMetadata& metadata,
+        const PropertyValue& value,
+        bool local) noexcept;
+
     Element* parent_ = nullptr;
     const Theme* theme_ = nullptr;
     std::function<void()> invalidate_;
     std::function<void()> relayout_;
     std::function<void(Ref<Element>, Point)> popup_show_;
     std::function<void()> popup_close_;
+    std::function<void()> popup_closed_;
+    // Kept alive through the popup lifetime so a close can still reach it.
+    Element* popup_requester_ = nullptr;
     std::wstring accessibility_name_;
     std::wstring key_;
     Element* context_menu_ = nullptr;
@@ -471,7 +503,7 @@ private:
     float max_width_ = 0.0f;
     float max_height_ = 0.0f;
     Size content_desired_{};
-    std::vector<std::pair<const AttachedPropertyMetadata*, PropertyValue>> attached_;
+    std::vector<AttachedEntry> attached_;
     std::vector<std::pair<std::wstring, PropertyValue>> resources_;
     std::vector<std::pair<std::wstring, std::wstring>> theme_bindings_;
     std::vector<TriggerEntry> triggers_;

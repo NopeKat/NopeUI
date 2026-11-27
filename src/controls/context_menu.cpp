@@ -199,4 +199,11 @@ std::wstring ContextMenu::AccessibilityName() const {
     return L"Context menu";
 }
 
+void ContextMenu::CollectAccessibleMenuItems(
+    std::vector<std::wstring>& items) const noexcept {
+    for (const Item& item : items_) {
+        items.push_back(item.text);
+    }
+}
+
 }  // namespace nopeui

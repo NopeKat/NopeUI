@@ -25,6 +25,8 @@ public:
         return L"ContextMenu";
     }
 
+    void CollectAccessibleMenuItems(std::vector<std::wstring>& items) const noexcept override;
+
 protected:
     Size MeasureOverride(Size available) noexcept override;
     void PaintContent(ID2D1RenderTarget* target) noexcept override;

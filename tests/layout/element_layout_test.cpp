@@ -193,6 +193,13 @@ int main() {
         NOPEUI_CHECK(value.AsFloat(&radius) && Near(radius, 9.0f));
 
         NOPEUI_CHECK(!button->ClearValue(L"Missing"));
+
+        // ClearValue also resets attached properties to their defaults.
+        NOPEUI_CHECK(button->SetAttachedProperty(L"Canvas.Left", nopeui::PropertyValue(7.0f)));
+        NOPEUI_CHECK(button->ClearValue(L"Canvas.Left"));
+        NOPEUI_CHECK(button->GetAttachedProperty(L"Canvas.Left", &value));
+        float left = -1.0f;
+        NOPEUI_CHECK(value.AsFloat(&left) && Near(left, 0.0f));
     }
 
     return 0;

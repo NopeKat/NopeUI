@@ -79,5 +79,40 @@ int main() {
     NOPEUI_CHECK(plain->GetProperty(L"CornerRadius", &value));
     NOPEUI_CHECK(value.AsFloat(&radius) && radius == 4.0f);
 
+    // Removal entry: dropping a style's values and triggers must bring the
+    // element back to its own state instead of leaving stale style values.
+    plain->SetKey(L"plain");
+    auto removal_style = nopeui::Style::Create();
+    removal_style->SetTargetType(L"Button");
+    removal_style->SetTargetKey(L"plain");
+    removal_style->Set(L"CornerRadius", nopeui::PropertyValue(6.0f));
+    nopeui::PropertyTrigger trigger;
+    trigger.property = L"Foreground";
+    trigger.value = nopeui::PropertyValue(0x0000ff00u);
+    trigger.setters.push_back(
+        std::make_pair(L"CornerRadius", nopeui::PropertyValue(12.0f)));
+    removal_style->AddTrigger(trigger);
+    sheet->Add(removal_style);
+    sheet->ApplyTo(*panel);
+
+    NOPEUI_CHECK(plain->GetProperty(L"CornerRadius", &value));
+    NOPEUI_CHECK(value.AsFloat(&radius) && radius == 6.0f);
+
+    NOPEUI_CHECK(plain->SetProperty(
+        L"Foreground", nopeui::PropertyValue(0x0000ff00u)));
+    NOPEUI_CHECK(plain->GetProperty(L"CornerRadius", &value));
+    NOPEUI_CHECK(value.AsFloat(&radius) && radius == 12.0f);
+
+    plain->RemoveTriggers(removal_style.Get());
+    NOPEUI_CHECK(plain->GetProperty(L"CornerRadius", &value));
+    NOPEUI_CHECK(value.AsFloat(&radius) && radius == 6.0f);
+
+    plain->ClearStyleValues();
+    NOPEUI_CHECK(plain->GetProperty(L"CornerRadius", &value));
+    NOPEUI_CHECK(value.AsFloat(&radius) && radius == 4.0f);
+
+    NOPEUI_CHECK(removal_style->RemoveTrigger(0));
+    NOPEUI_CHECK(!removal_style->RemoveTrigger(9));
+
     return 0;
 }
