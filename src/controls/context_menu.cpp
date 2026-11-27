@@ -186,6 +186,13 @@ bool ContextMenu::IsFocusable() const noexcept {
     return IsEnabled();
 }
 
+void ContextMenu::OnPopupOpened() noexcept {
+    scroll_ = 0.0f;
+    hovered_ = kNoItem;
+    pressed_ = false;
+    Invalidate();
+}
+
 bool ContextMenu::OnKeyDown(unsigned int key) noexcept {
     if (!IsEnabled()) {
         return false;

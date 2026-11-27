@@ -396,6 +396,10 @@ public:
     // Lets a scrollable ancestor adjust its offset when focus moves.
     virtual void BringChildIntoView(const Element*) noexcept {}
 
+    // Called when this element becomes the active popup, so transient
+    // interaction state can start from a clean slate.
+    virtual void OnPopupOpened() noexcept {}
+
     virtual bool OnKeyDown(unsigned int) noexcept {
         return false;
     }

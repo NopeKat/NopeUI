@@ -37,6 +37,7 @@ protected:
     void OnPointerUp(Point point) noexcept override;
     bool OnKeyDown(unsigned int key) noexcept override;
     bool OnWheel(int delta) noexcept override;
+    void OnPopupOpened() noexcept override;
     bool IsFocusable() const noexcept override;
     AccessibleRole AccessibilityRole() const noexcept override;
     std::wstring AccessibilityName() const override;

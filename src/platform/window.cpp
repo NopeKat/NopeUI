@@ -2094,6 +2094,9 @@ void Window::ShowPopup(Ref<Element> popup, Point anchor) noexcept {
         tooltip_timer_active_ = false;
     }
     root_->SetPopup(std::move(popup), anchor);
+    if (root_->Popup() != nullptr) {
+        root_->Popup()->OnPopupOpened();
+    }
     LayoutContent(client_width_, client_height_);
     if (root_->HasPopup() && root_->Popup() != nullptr && root_->Popup()->IsFocusable()) {
         FocusElement(root_->Popup());
