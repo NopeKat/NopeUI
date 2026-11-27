@@ -580,7 +580,9 @@ public:
             state.height = target_height;
             state.target_bitmap.Reset();
         }
-        for (int index = needed_surfaces; index < surface_count_; ++index) {
+        const int stale_from = std::min(needed_surfaces, kMaxAsyncSurfaces);
+        const int stale_end = std::min(surface_count_, kMaxAsyncSurfaces);
+        for (int index = stale_from; index < stale_end; ++index) {
             auto& state = surfaces_[index];
             state.surface.Reset();
             state.target_bitmap.Reset();

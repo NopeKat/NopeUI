@@ -25,7 +25,7 @@ std::wstring ErrorText(const nopeui::Error& error) {
 
 }  // namespace
 
-int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
+int WINAPI wWinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ PWSTR, _In_ int) {
     auto created = nopeui::Window::Create(720, 480, u"NopeUI XAML Smoke");
     if (!created.ok()) {
         return 1;

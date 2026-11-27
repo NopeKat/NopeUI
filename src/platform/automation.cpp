@@ -97,7 +97,10 @@ void VariantRect(VARIANT* value, const UiaRect& rect) {
         rect.width,
         rect.height};
     for (LONG index = 0; index < 4; ++index) {
-        SafeArrayPutElement(array, &index, &coordinates[index]);
+        if (FAILED(SafeArrayPutElement(array, &index, &coordinates[index]))) {
+            SafeArrayDestroy(array);
+            return;
+        }
     }
     value->vt = VT_ARRAY | VT_R8;
     value->parray = array;
@@ -164,7 +167,10 @@ SAFEARRAY* CreateRuntimeId(int identifier) {
     }
     int values[2] = {UiaAppendRuntimeId, identifier};
     for (LONG index = 0; index < 2; ++index) {
-        SafeArrayPutElement(array, &index, &values[index]);
+        if (FAILED(SafeArrayPutElement(array, &index, &values[index]))) {
+            SafeArrayDestroy(array);
+            return nullptr;
+        }
     }
     return array;
 }
@@ -528,7 +534,11 @@ public:
         }
         double values[4] = {bounds.left, bounds.top, bounds.width, bounds.height};
         for (LONG index = 0; index < 4; ++index) {
-            SafeArrayPutElement(*rectangles, &index, &values[index]);
+            if (FAILED(SafeArrayPutElement(*rectangles, &index, &values[index]))) {
+                SafeArrayDestroy(*rectangles);
+                *rectangles = nullptr;
+                return E_FAIL;
+            }
         }
         return S_OK;
     }

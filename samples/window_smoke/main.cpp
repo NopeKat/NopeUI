@@ -45,7 +45,7 @@ std::wstring FindTracePath(std::wstring_view command_line) {
 
 }  // namespace
 
-int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR command_line_ptr, int) {
+int WINAPI wWinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ PWSTR command_line_ptr, _In_ int) {
     auto result = nopeui::Window::Create(900, 640, u"NopeUI Window Smoke");
     if (!result.ok()) {
         return 1;

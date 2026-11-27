@@ -193,8 +193,9 @@ std::size_t TextRun::IndexFromX(float x) const noexcept {
         return 0;
     }
     BOOL trailing = FALSE;
+    BOOL inside = FALSE;
     DWRITE_HIT_TEST_METRICS metrics{};
-    if (FAILED(impl_->layout->HitTestPoint(x, 0.0f, FALSE, &trailing, &metrics))) {
+    if (FAILED(impl_->layout->HitTestPoint(x, 0.0f, &trailing, &inside, &metrics))) {
         return 0;
     }
     std::size_t position = metrics.textPosition;

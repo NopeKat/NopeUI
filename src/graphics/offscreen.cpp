@@ -172,6 +172,10 @@ Result<void> OffscreenSurface::SavePng(std::string_view utf8_path) const noexcep
 
     const int width = Width();
     const int height = Height();
+    if (width <= 0 || height <= 0) {
+        return Result<void>::Fail(
+            Error{ErrorCode::InvalidState, "offscreen surface has no pixels"});
+    }
     WICRect rect{0, 0, width, height};
     IWICBitmapLock* raw_lock = nullptr;
     HRESULT result = impl_->bitmap->Lock(&rect, WICBitmapLockRead, &raw_lock);
@@ -195,18 +199,45 @@ Result<void> OffscreenSurface::SavePng(std::string_view utf8_path) const noexcep
         return Result<void>::Fail(
             Error{ErrorCode::PlatformFailure, HResultMessage("GetDataPointer", result)});
     }
+    if (data == nullptr) {
+        return Result<void>::Fail(
+            Error{ErrorCode::InvalidState, "WIC lock returned no pixels"});
+    }
 
     std::vector<std::uint32_t> pixels(
         static_cast<std::size_t>(width) * static_cast<std::size_t>(height));
     const std::size_t row_bytes = static_cast<std::size_t>(width) * sizeof(std::uint32_t);
+    const std::size_t last_row = static_cast<std::size_t>(height - 1) * stride + row_bytes;
+    if (buffer_size < last_row) {
+        return Result<void>::Fail(
+            Error{ErrorCode::InvalidState, "WIC buffer is smaller than the pixel rows"});
+    }
     if (stride == row_bytes) {
         std::memcpy(pixels.data(), data, row_bytes * static_cast<std::size_t>(height));
     } else {
         for (int row = 0; row < height; ++row) {
+            const std::size_t offset = static_cast<std::size_t>(row) * stride;
+            if (offset > buffer_size) {
+                return Result<void>::Fail(
+                    Error{ErrorCode::InvalidState, "WIC buffer is smaller than the pixel rows"});
+            }
+            // Never copy more than what the lock reports; a short row is a
+            // failure, not a truncated image.
+            const std::size_t available = buffer_size - offset;
+            const std::size_t copied = (std::min)(row_bytes, available);
+            // The copy length is clamped to the lock above, but the analyzer
+            // cannot follow the min() into memcpy, so the finding is muted.
+#pragma warning(push)
+#pragma warning(suppress : 6385)
             std::memcpy(
                 pixels.data() + static_cast<std::size_t>(row) * static_cast<std::size_t>(width),
-                data + static_cast<std::size_t>(row) * stride,
-                row_bytes);
+                data + offset,
+                copied);
+#pragma warning(pop)
+            if (copied != row_bytes) {
+                return Result<void>::Fail(
+                    Error{ErrorCode::InvalidState, "WIC buffer is smaller than the pixel rows"});
+            }
         }
     }
     return ::nopeui::graphics::SavePng(utf8_path, width, height, pixels);
