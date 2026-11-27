@@ -170,6 +170,13 @@ IRawElementProviderFragment* MakeElementProvider(
     Element* element,
     IRawElementProviderFragmentRoot* root);
 
+IRawElementProviderFragment* MakeMenuItemProvider(
+    Window* window,
+    Element* owner,
+    std::size_t index,
+    std::wstring name,
+    IRawElementProviderFragmentRoot* root);
+
 bool IsWordCharacter(wchar_t character) noexcept {
     return character != L' ' && character != L'\t' &&
            character != L'\n' && character != L'\r';
@@ -1183,6 +1190,16 @@ public:
                     ? children.front()
                     : children.back();
                 *provider = MakeElementProvider(window_, child, root_);
+            } else {
+                std::vector<std::wstring> items;
+                element_->CollectAccessibleMenuItems(items);
+                if (!items.empty()) {
+                    const std::size_t index = direction == NavigateDirection_FirstChild
+                        ? 0
+                        : items.size() - 1;
+                    *provider = MakeMenuItemProvider(
+                        window_, element_, index, items[index], root_);
+                }
             }
         }
         return S_OK;
@@ -1563,12 +1580,231 @@ public:
     IRawElementProviderFragmentRoot* root_ = nullptr;
 };
 
+// Menu rows are painted text rather than elements, so each row gets a small
+// read-only provider: a name, the menu item role and the owner's rectangle.
+class MenuItemProvider final : public IRawElementProviderSimple,
+                               public IRawElementProviderFragment {
+public:
+    MenuItemProvider(
+        Window* window,
+        Element* owner,
+        std::size_t index,
+        std::wstring name,
+        IRawElementProviderFragmentRoot* root) noexcept
+        : window_(window), owner_(owner), index_(index),
+          name_(std::move(name)), root_(root) {}
+
+    HRESULT STDMETHODCALLTYPE QueryInterface(REFIID iid, void** object) override {
+        if (object == nullptr) {
+            return E_INVALIDARG;
+        }
+        *object = nullptr;
+        if (iid == __uuidof(IRawElementProviderSimple) || iid == __uuidof(IUnknown)) {
+            *object = static_cast<IRawElementProviderSimple*>(this);
+        } else if (iid == __uuidof(IRawElementProviderFragment)) {
+            *object = static_cast<IRawElementProviderFragment*>(this);
+        } else {
+            return E_NOINTERFACE;
+        }
+        AddRef();
+        return S_OK;
+    }
+
+    ULONG STDMETHODCALLTYPE AddRef() override {
+        return ++references_;
+    }
+
+    ULONG STDMETHODCALLTYPE Release() override {
+        const ULONG remaining = --references_;
+        if (remaining == 0) {
+            delete this;
+        }
+        return remaining;
+    }
+
+    HRESULT STDMETHODCALLTYPE get_ProviderOptions(ProviderOptions* options) override {
+        if (options == nullptr) {
+            return E_INVALIDARG;
+        }
+        *options = ProviderOptions_ServerSideProvider;
+        return S_OK;
+    }
+
+    HRESULT STDMETHODCALLTYPE GetPatternProvider(PATTERNID, IUnknown** provider) override {
+        if (provider == nullptr) {
+            return E_INVALIDARG;
+        }
+        *provider = nullptr;
+        return S_OK;
+    }
+
+    HRESULT STDMETHODCALLTYPE GetPropertyValue(PROPERTYID property, VARIANT* value) override {
+        if (value == nullptr) {
+            return E_INVALIDARG;
+        }
+        VariantInit(value);
+        switch (property) {
+            case UIA_ControlTypePropertyId:
+                VariantInt(value, UIA_MenuItemControlTypeId);
+                break;
+            case UIA_NamePropertyId:
+                VariantString(value, name_);
+                break;
+            case UIA_IsEnabledPropertyId:
+                VariantBool(value, owner_ != nullptr && owner_->IsEnabled());
+                break;
+            case UIA_IsOffscreenPropertyId:
+                VariantBool(value, false);
+                break;
+            case UIA_IsKeyboardFocusablePropertyId:
+                VariantBool(value, false);
+                break;
+            case UIA_BoundingRectanglePropertyId: {
+                UiaRect rect{};
+                if (ElementScreenRect(window_, owner_, &rect)) {
+                    VariantRect(value, rect);
+                }
+                break;
+            }
+            case UIA_ClassNamePropertyId:
+                VariantString(value, L"NopeUI.MenuItem");
+                break;
+            case UIA_FrameworkIdPropertyId:
+                VariantString(value, L"NopeUI");
+                break;
+            case UIA_ProcessIdPropertyId:
+                VariantInt(value, static_cast<int>(GetCurrentProcessId()));
+                break;
+            default:
+                break;
+        }
+        return S_OK;
+    }
+
+    HRESULT STDMETHODCALLTYPE get_HostRawElementProvider(
+        IRawElementProviderSimple** provider) override {
+        if (provider == nullptr) {
+            return E_INVALIDARG;
+        }
+        *provider = nullptr;
+        return S_OK;
+    }
+
+    HRESULT STDMETHODCALLTYPE Navigate(
+        NavigateDirection direction,
+        IRawElementProviderFragment** provider) override {
+        if (provider == nullptr) {
+            return E_INVALIDARG;
+        }
+        *provider = nullptr;
+        const std::size_t count = ItemCount();
+        if (direction == NavigateDirection_Parent) {
+            if (owner_ != nullptr) {
+                *provider = MakeElementProvider(window_, owner_, root_);
+            }
+            return S_OK;
+        }
+        if (count == 0) {
+            return S_OK;
+        }
+        if (direction == NavigateDirection_NextSibling && index_ + 1 < count) {
+            *provider = MakeMenuItemProvider(
+                window_, owner_, index_ + 1, ItemName(index_ + 1), root_);
+        } else if (direction == NavigateDirection_PreviousSibling && index_ > 0) {
+            *provider = MakeMenuItemProvider(
+                window_, owner_, index_ - 1, ItemName(index_ - 1), root_);
+        }
+        return S_OK;
+    }
+
+    HRESULT STDMETHODCALLTYPE GetRuntimeId(SAFEARRAY** runtime_id) override {
+        if (runtime_id == nullptr) {
+            return E_INVALIDARG;
+        }
+        const int identifier =
+            (RuntimeIdFor(owner_) ^ ((static_cast<int>(index_) + 1) * 7919)) & 0x7fffffff;
+        *runtime_id = CreateRuntimeId(identifier);
+        return *runtime_id != nullptr ? S_OK : E_OUTOFMEMORY;
+    }
+
+    HRESULT STDMETHODCALLTYPE get_BoundingRectangle(UiaRect* rect) override {
+        if (rect == nullptr) {
+            return E_INVALIDARG;
+        }
+        UiaRect bounds{};
+        ElementScreenRect(window_, owner_, &bounds);
+        *rect = bounds;
+        return S_OK;
+    }
+
+    HRESULT STDMETHODCALLTYPE GetEmbeddedFragmentRoots(SAFEARRAY** roots) override {
+        if (roots == nullptr) {
+            return E_INVALIDARG;
+        }
+        *roots = nullptr;
+        return S_OK;
+    }
+
+    HRESULT STDMETHODCALLTYPE SetFocus() override {
+        if (window_ != nullptr && owner_ != nullptr && owner_->IsFocusable()) {
+            window_->FocusFromAccessibility(owner_);
+        }
+        return S_OK;
+    }
+
+    HRESULT STDMETHODCALLTYPE get_FragmentRoot(
+        IRawElementProviderFragmentRoot** root) override {
+        if (root == nullptr) {
+            return E_INVALIDARG;
+        }
+        *root = root_;
+        if (root_ != nullptr) {
+            root_->AddRef();
+        }
+        return S_OK;
+    }
+
+private:
+    std::size_t ItemCount() const {
+        std::vector<std::wstring> items;
+        if (owner_ != nullptr) {
+            owner_->CollectAccessibleMenuItems(items);
+        }
+        return items.size();
+    }
+
+    std::wstring ItemName(std::size_t index) const {
+        std::vector<std::wstring> items;
+        if (owner_ != nullptr) {
+            owner_->CollectAccessibleMenuItems(items);
+        }
+        return index < items.size() ? items[index] : std::wstring();
+    }
+
+    LONG references_ = 1;
+    Window* window_ = nullptr;
+    Element* owner_ = nullptr;
+    std::size_t index_ = 0;
+    std::wstring name_;
+    IRawElementProviderFragmentRoot* root_ = nullptr;
+};
+
 IRawElementProviderFragment* MakeElementProvider(
     Window* window,
     Element* element,
     IRawElementProviderFragmentRoot* root) {
     return static_cast<IRawElementProviderFragment*>(
         new ElementProvider(window, element, root));
+}
+
+IRawElementProviderFragment* MakeMenuItemProvider(
+    Window* window,
+    Element* owner,
+    std::size_t index,
+    std::wstring name,
+    IRawElementProviderFragmentRoot* root) {
+    return static_cast<IRawElementProviderFragment*>(
+        new MenuItemProvider(window, owner, index, std::move(name), root));
 }
 
 std::unordered_map<Window*, WindowProvider*>& WindowProviders() {
