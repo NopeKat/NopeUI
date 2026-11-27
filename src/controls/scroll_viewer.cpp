@@ -46,7 +46,7 @@ float ThumbSize(float track, float content, float viewport) noexcept {
     if (content <= viewport || track <= 0.0f) {
         return 0.0f;
     }
-    return std::max(kMinThumbSize, track * viewport / content);
+    return std::min(track, std::max(kMinThumbSize, track * viewport / content));
 }
 
 }  // namespace
