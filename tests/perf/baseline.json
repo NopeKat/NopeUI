@@ -1,0 +1,20 @@
+{
+  "date": "2026-11-27",
+  "preset": "x64-release",
+  "render": "hardware",
+  "startup": {
+    "runs": 5,
+    "min": 266.7,
+    "median": 288.3,
+    "max": 291.8,
+    "average": 281.58,
+    "ws_peak": 48.0
+  },
+  "theme": {
+    "switches": 200,
+    "average": 9.647,
+    "p99": 26.288,
+    "max": 28.031,
+    "ws_peak": 47.9
+  }
+}

@@ -100,11 +100,14 @@ NopeUI 是一个仅面向 Windows 的开源 C++ 桌面 UI 框架。外观参考 
 ```powershell
 .\eng\perf.ps1                                          # 构建并跑一组，打印汇总
 .\eng\perf.ps1 -Runs 5 -Switches 200 -Out tests\perf\baseline.md
+.\eng\perf.ps1 -SkipBuild -Compare                      # 与基线比，超预算即 exit 1
 .\.build\x64-release\samples\Release\nopeui_startup_benchmark.exe --no-content
 .\.build\x64-release\samples\Release\nopeui_theme_benchmark.exe --switches 200 --contrast
 ```
 
 启动的 `total` 含进程创建与加载器；`--no-content` 换成占位场景，`--sync` 与 `--software` 分别覆盖同步提交和软件光栅。第一组基线在 `tests/perf/baseline.md`：900×640 表单页启动 256 到 344 毫秒，工作集峰值约 48 MB；主题切换平均 8.9 毫秒、P99 25.4 毫秒。
+
+`-Out` 同时写一份同名 `baseline.json`，`-Compare` 只读它，`-Baseline` 可换路径。比对先核对预设与渲染路径，不一致直接判失败，然后按两条线卡：启动中位数不超过基线的 1.25 倍且不超过 800 毫秒，最大不超过 1.5 倍；主题切换与 P99 各不超过 1.5 倍且不超过 50 毫秒；两侧工作集峰值都按 1.2 倍、上限 80 MB。任何一条越线就逐条打印 `FAIL` 并 `exit 1`，全过则打印 `PASS: performance stayed within budget`。
 
 ## 布局与控件
 
@@ -118,7 +121,7 @@ NopeUI 是一个仅面向 Windows 的开源 C++ 桌面 UI 框架。外观参考 
 
 无障碍走 UI Automation 的服务端 Provider：窗口响应 `WM_GETOBJECT`，根节点是 Window，控件按元素树暴露 Name、ControlType、BoundingRectangle、IsEnabled 和焦点状态。`Button`、`ToggleButton`、`CheckBox`、`RadioButton` 提供 Invoke 或 Toggle 模式，`TextBox` 提供 Value 与 Text 模式，`Slider` 和 `ProgressBar` 提供 RangeValue，`ScrollViewer` 提供 Scroll 模式，焦点变化时发出 UIA 焦点事件。`MenuBar` 与 `ContextMenu` 的菜单行是绘制出来的数据行，UIA 侧按 `MenuItem` 角色单独补一层子 Provider，挂在菜单元素的第一个子元素位置，可上下翻兄弟，名字就是菜单标题或菜单项文字。
 
-`eng/uia.ps1` 是一次手动走查：启动 `nopeui_window_smoke`，用 UIA 遍历整棵名为 `NopeUI Window Smoke` 的树，检查菜单条与 `File`、`Edit`、`View` 三个菜单项是否出现，失败返回非零。`eng/coverage.ps1` 用 OpenCppCoverage 跑 `ctest` 并输出 HTML 与 Cobertura；工具不入库，找不到时脚本直接说明安装方式，不会自行下载。两个脚本都不进任何自动化流水线。
+`eng/uia.ps1` 是一次手动走查：启动 `nopeui_window_smoke`，用 UIA 遍历整棵树，核对控件类型、标签与菜单项，再逐项读写 Value、Toggle、RangeValue、Invoke 与 ExpandCollapse 模式；菜单要能展开、菜单项能触发并关闭，任一项失败返回非零。`eng/coverage.ps1` 用 OpenCppCoverage 跑 `ctest` 并输出 HTML 与 Cobertura；工具不入库，找不到时脚本直接说明安装方式，不会自行下载。两个脚本都不进任何自动化流水线。
 
 颜色不再写死在控件里：`Theme` 有浅色、深色与高对比三套值，`Window::SetTheme` 把主题指针交给内容树，子元素沿父链找到它；`Property<T>` 是带变更检测的最小属性槽，`Set` 返回是否真的变化，控件据此调用 `Invalidate` 触发重绘。窗口默认读系统应用深浅色偏好，`nopeui_window_smoke --light` 与 `--dark` 可强制指定；高对比调色板由 `HighContrastTheme()` 显式取得，黑底白字配黄色强调，黄金工具用 `--theme contrast` 覆盖它。
 
