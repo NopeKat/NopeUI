@@ -72,6 +72,7 @@ add_library(nopeui_controls STATIC
     src/controls/content_presenter.cpp
     src/controls/context_menu.cpp
     src/controls/dock_panel.cpp
+    src/controls/flex_panel.cpp
     src/controls/flyout.cpp
     src/controls/grid.cpp
     src/controls/image.cpp

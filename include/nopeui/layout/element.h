@@ -137,12 +137,16 @@ public:
         return property_changed_.Subscribe(std::move(handler));
     }
 
-    // Style-sourced value: it is ignored once the name has a local value, so a
-    // style can never override what the app set directly. There is no
-    // ClearValue() yet, which means a style applied after a local value simply
-    // does not win.
+    // Style-sourced value: it gives way to a local value, so a style can never
+    // override what the app set directly. The value is remembered even when a
+    // local value wins, so ClearValue() falls back to the style rather than to
+    // the metadata default.
     bool ApplyStyleProperty(std::wstring_view name, const PropertyValue& value) noexcept;
     bool HasLocalProperty(std::wstring_view name) const noexcept;
+
+    // Drops a local value and falls back to the active trigger value, then the
+    // style value, then the metadata default. Returns false for unknown names.
+    bool ClearValue(std::wstring_view name) noexcept;
 
     // Local resources live on the element that declared them and are visible to
     // its descendants, matching the XAML Resources scoping rule.
@@ -154,8 +158,9 @@ public:
     bool FindResourceValue(std::wstring_view name, PropertyValue* value) const noexcept;
 
     // {ThemeResource Key} in markup: the value applies now when it resolves and
-    // is re-applied by RefreshThemeResources() after a theme switch.
-    void BindThemeResource(std::wstring property, std::wstring key);
+    // is re-applied by RefreshThemeResources() after a theme switch. Returns
+    // false when the key is unknown or its type does not fit the property.
+    bool BindThemeResource(std::wstring property, std::wstring key);
     void RefreshThemeResources();
 
     // Triggers come from a style. They re-evaluate whenever the watched property

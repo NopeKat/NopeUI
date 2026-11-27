@@ -323,15 +323,42 @@ bool Element::SetProperty(std::wstring_view name, const PropertyValue& value) no
 }
 
 bool Element::ApplyStyleProperty(std::wstring_view name, const PropertyValue& value) noexcept {
+    style_values_[std::wstring(name)] = value;
     if (HasLocalProperty(name)) {
         return true;
     }
-    style_values_[std::wstring(name)] = value;
     if (trigger_values_.find(std::wstring(name)) != trigger_values_.end()) {
         // A matching trigger keeps the property until it stops matching.
         return true;
     }
     return SetPropertyCore(name, value, false);
+}
+
+bool Element::ClearValue(std::wstring_view name) noexcept {
+    PropertyValue probe;
+    if (!GetProperty(name, &probe)) {
+        return false;
+    }
+    bool removed = false;
+    for (auto it = local_properties_.begin(); it != local_properties_.end(); ++it) {
+        if (std::wstring_view(*it) == name) {
+            local_properties_.erase(it);
+            removed = true;
+            break;
+        }
+    }
+    if (!removed) {
+        return true;
+    }
+    const auto active = trigger_values_.find(std::wstring(name));
+    if (active != trigger_values_.end()) {
+        SetPropertyCore(name, active->second, false);
+    } else {
+        SetPropertyCore(name, StyleOrDefault(name), false);
+        // A trigger that lost to the local value gets another chance.
+        RefreshTriggers();
+    }
+    return true;
 }
 
 bool Element::HasLocalProperty(std::wstring_view name) const noexcept {
@@ -379,21 +406,29 @@ bool Element::FindResourceValue(std::wstring_view name, PropertyValue* value) co
     return Colors().FindThemeResource(name, value);
 }
 
-void Element::BindThemeResource(std::wstring property, std::wstring key) {
-    bool known = false;
-    for (const auto& entry : theme_bindings_) {
-        if (entry.first == property && entry.second == key) {
-            known = true;
-            break;
-        }
-    }
-    if (!known) {
-        theme_bindings_.emplace_back(property, key);
-    }
+bool Element::BindThemeResource(std::wstring property, std::wstring key) {
     PropertyValue value;
     if (FindResourceValue(key, &value)) {
-        SetProperty(property, value);
+        if (!SetProperty(property, value)) {
+            return false;
+        }
+        for (const auto& entry : theme_bindings_) {
+            if (entry.first == property && entry.second == key) {
+                return true;
+            }
+        }
+        theme_bindings_.emplace_back(std::move(property), std::move(key));
+        return true;
     }
+    // The resource may be declared later in the load, so the binding waits for
+    // RefreshThemeResources() instead of failing now.
+    for (const auto& entry : theme_bindings_) {
+        if (entry.first == property && entry.second == key) {
+            return true;
+        }
+    }
+    theme_bindings_.emplace_back(std::move(property), std::move(key));
+    return true;
 }
 
 void Element::RefreshThemeResources() {

@@ -22,6 +22,8 @@ const AttachedPropertyMetadata kCanvasTop{
 // Zero is Left, matching both the DockSide enum and the XAML default.
 const AttachedPropertyMetadata kDock{
     L"Dock", PropertyValueType::Int, PropertyValue(0)};
+const AttachedPropertyMetadata kFlexGrow{
+    L"FlexGrow", PropertyValueType::Float, PropertyValue(0.0f)};
 
 const AttachedPropertyMetadata* const kRegistry[] = {
     &kGridRow,
@@ -31,6 +33,7 @@ const AttachedPropertyMetadata* const kRegistry[] = {
     &kCanvasLeft,
     &kCanvasTop,
     &kDock,
+    &kFlexGrow,
 };
 
 }  // namespace
@@ -74,6 +77,10 @@ const AttachedPropertyMetadata& CanvasTopProperty() noexcept {
 
 const AttachedPropertyMetadata& DockProperty() noexcept {
     return kDock;
+}
+
+const AttachedPropertyMetadata& FlexGrowProperty() noexcept {
+    return kFlexGrow;
 }
 
 }  // namespace nopeui

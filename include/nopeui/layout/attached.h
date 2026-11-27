@@ -31,6 +31,9 @@ const AttachedPropertyMetadata& CanvasLeftProperty() noexcept;
 const AttachedPropertyMetadata& CanvasTopProperty() noexcept;
 const AttachedPropertyMetadata& DockProperty() noexcept;
 
+// FlexGrow is the share of leftover main-axis space a FlexPanel child asks for.
+const AttachedPropertyMetadata& FlexGrowProperty() noexcept;
+
 }  // namespace nopeui
 
 #endif  // NOPEUI_LAYOUT_ATTACHED_H_
