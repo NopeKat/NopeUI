@@ -72,7 +72,7 @@ foreach ($case in $cases) {
 
     $baselinePath = Join-Path $baselineDir "$($case.Name).png"
     $sharedBaselinePath = Join-Path $sharedBaselineDir "$($case.Name).png"
-    if (-not (Test-Path -LiteralPath $baselinePath) -and (Test-Path -LiteralPath $sharedBaselinePath)) {
+    if (-not (Test-Path -LiteralPath $baselinePath)) {
         $baselinePath = $sharedBaselinePath
     }
     if ($Update) {
