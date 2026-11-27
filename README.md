@@ -2,7 +2,7 @@
 
 NopeUI 是一个仅面向 Windows 的开源 C++ 桌面 UI 框架。外观参考 Fluent，交互与性能优先；API 与控件命名独立，不追求 WinUI 兼容。
 
-目标平台是 Windows 10 1809 及以上，支持 x64 与 ARM64。窗口与呈现使用 DWM 和 DirectComposition，文本使用 DirectWrite，输入法使用 Win32；布局、绘制、控件、外壳、XAML 与设计器由框架自建。`Window::Create` 的宽高按逻辑 DIP 解释，窗口像素尺寸随所在显示器 DPI 缩放。
+目标平台是 Windows 10 1809 及以上，支持 x64 与 ARM64。窗口与呈现使用 DWM 和 DirectComposition，文本使用 DirectWrite，输入法使用 Win32；布局、绘制、控件、外壳、XAML 与设计器由框架自建。`Window::Create` 的宽高按逻辑 DIP 解释，窗口像素尺寸随所在显示器 DPI 缩放；`WM_DPICHANGED` 带来的新 DPI 会立即重建表面并重绘，不等待移动完成后的显示器查询。
 
 ## 当前状态
 
