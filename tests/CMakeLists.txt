@@ -24,6 +24,10 @@ add_executable(nopeui_platform_popup_test platform/popup_test.cpp)
 target_link_libraries(nopeui_platform_popup_test PRIVATE nopeui_platform nopeui_controls)
 add_test(NAME nopeui_platform.popup_test COMMAND nopeui_platform_popup_test)
 
+add_executable(nopeui_platform_dpi_test platform/dpi_test.cpp)
+target_link_libraries(nopeui_platform_dpi_test PRIVATE nopeui_platform)
+add_test(NAME nopeui_platform.dpi_test COMMAND nopeui_platform_dpi_test)
+
 add_executable(nopeui_layout_property_style_test layout/property_style_test.cpp)
 target_link_libraries(nopeui_layout_property_style_test PRIVATE nopeui_controls nopeui_layout)
 add_test(NAME nopeui_layout.property_style_test COMMAND nopeui_layout_property_style_test)
