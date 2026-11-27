@@ -39,7 +39,7 @@ NopeUI 是一个仅面向 Windows 的开源 C++ 桌面 UI 框架。外观参考 
 
 `-Preset` 可选 `x64-debug` 或 `x64-release`。脚本优先使用 PATH 中的 CMake；找不到时会自动定位 winget 安装的 CMake 4.4.4。也可以用 `NOPEUI_CMAKE` 指向指定的 `cmake.exe`。
 
-在一台干净机器上从零复现的完整步骤写在 `docs/REPRODUCE.md`，包含工具链安装、构建、冒烟运行与各道检查命令。
+在一台干净机器上从零复现的完整步骤写在 `docs/REPRODUCE.md`，包含工具链安装、构建、冒烟运行与各道检查命令。预览包用 `.\eng\package.ps1` 打，输出 `.build\package\NopeUI-<版本>-win-x64.zip` 与对应的校验和文件。
 
 帧基准默认按 120Hz 固定节拍运行，只统计真正 `Commit` 的帧；`--unpaced` 关闭节拍，`--full` 改跑全帧，`--no-throttle` 关闭提交节流，`--async-commit` 打开异步提交。`--rects N` 与 `--text N` 生成合成重内容；默认是同一小区域反复绘制，`--virtual` 改成按行展开的虚拟长列表，只绘制当前内容区域内的行，`--scroll N` 让该列表每帧下移 N 像素，用来验证滚动时的裁剪路径。基准默认关闭异步提交以便与同步路径对比；窗口运行时默认是异步提交。输出新增 `queue`、`present` 与 `submitted/completed/dropped/waits` 统计，其中 `present` 是按 DWM vblank 估算的提交到上屏延迟：
 

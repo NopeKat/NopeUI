@@ -90,6 +90,34 @@ Debug 配置把 `-Preset` 换成 `x64-debug` 即可，两条预设的目录互�
 - **黄金图逐像素失败但肉眼看不出**：多半是显示器缩放或驱动抗锯齿差异，用 `nopeui_image_diff` 看差异区域再决定是否重建基线。
 - **UIA 脚本报找不到窗口**：确认桌面会话可交互，且没有别的同名进程占着。
 
-## 7. 还没覆盖的部分
+## 7. 打包预览
 
-预览包的组装还没有脚本，目前只能按第 3 步构建、按第 4 步运行。打包命令与包内清单会在 `eng/` 下补上后补进这份文档，预览 0.1 发布前必须补齐。
+```powershell
+.\eng\package.ps1                     # 构建并打包
+.\eng\package.ps1 -SkipBuild -Smoke   # 复用现有构建，并启动样例做 3 秒冒烟
+```
+
+脚本要求工作区干净：包内的源码包取自 `HEAD`，源码必须和二进制对得上。本地试验可以加 `-AllowDirty`，它会明显提示源码包来自 HEAD。
+
+产物在 `.build\package`：
+
+- `NopeUI-<版本>-win-x64.zip`：便携包，解压即用。
+- `NopeUI-<版本>-win-x64.sha256`：包与两个样例 exe 的校验和。
+
+包内结构：
+
+```
+NopeUI-0.0.0.0-win-x64/
+├─ include/nopeui/          公共头文件
+├─ lib/x64/static/md/       七个静态库，动态 CRT 构建
+├─ bin/x64/                 两个样例 exe 与 page.xaml
+├─ docs/REPRODUCE.md
+├─ source/nopeui-<版本>-source.zip   对应 HEAD 的源码包
+├─ package-info.txt         版本、构建日期、变体与工具链
+├─ LICENSE
+└─ README.md
+```
+
+版本号从 `src/base/version.cpp` 读，不单独传参。`bin\x64` 里的 `page.xaml` 必须和 exe 放在一起，`nopeui_xaml_smoke` 会在同目录找它。
+
+这一版预览只发 x64 静态库 `/MD` 变体；动态库、静态 CRT 与 ARM64 属于季度全变体 SDK，还没做。
