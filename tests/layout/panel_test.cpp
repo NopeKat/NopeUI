@@ -49,6 +49,24 @@ int main() {
         NOPEUI_CHECK(Near(canvas->DesiredSize().height, 30.0f));
     }
 
+    // A canvas nested away from the origin adds its own bounds, so offsets stay
+    // relative to the panel instead of the window.
+    {
+        auto canvas = nopeui::Canvas::Create();
+        auto box = Box(40.0f, 20.0f);
+        box->SetAttachedProperty(
+            nopeui::CanvasLeftProperty(), nopeui::PropertyValue(30.0f));
+        box->SetAttachedProperty(
+            nopeui::CanvasTopProperty(), nopeui::PropertyValue(10.0f));
+        canvas->Add(box);
+
+        canvas->Measure(nopeui::Size{200.0f, 100.0f});
+        canvas->Arrange(nopeui::Rect{25.0f, 40.0f, 200.0f, 100.0f});
+
+        NOPEUI_CHECK(Near(box->Bounds().x, 55.0f));
+        NOPEUI_CHECK(Near(box->Bounds().y, 50.0f));
+    }
+
     // Overlapping children stack in paint order, so the last one wins a hit.
     {
         auto canvas = nopeui::Canvas::Create();

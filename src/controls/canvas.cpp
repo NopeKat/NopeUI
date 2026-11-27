@@ -70,7 +70,13 @@ Size Canvas::ArrangeOverride(Size final_size) noexcept {
         const float left = ReadFloat(*child, CanvasLeftProperty());
         const float top = ReadFloat(*child, CanvasTopProperty());
         const Size desired = child->DesiredSize();
-        child->Arrange(Rect{left, top, desired.width, desired.height});
+        // Children are stored in absolute coordinates, like every other panel,
+        // so the canvas origin has to be added to the attached offsets.
+        child->Arrange(Rect{
+            bounds_.x + left,
+            bounds_.y + top,
+            desired.width,
+            desired.height});
     }
     return final_size;
 }
