@@ -77,7 +77,7 @@ Debug 配置把 `-Preset` 换成 `x64-debug` 即可，两条预设的目录互�
 几点说明：
 
 - 黄金图基线在 `tests/golden/baseline`，当前图与差异图写到 `.build/golden`。换了显卡或缩放比例出现差异时先看差异图，别直接 `-Update`。
-- 四张基线不在仓库里：占位场景的硬件浅色/深色、controls 的浅色/深色，都放在工作区 `assets/golden`；单独克隆内层仓库时用 `NOPEUI_GOLDEN_ASSETS` 指向它，否则这几项会报缺基线。
+- 八张基线不在仓库里：占位场景的硬件浅色/深色、controls 的浅色/深色、media 的浅色/深色与两张硬件，都放在工作区 `assets/golden`；单独克隆内层仓库时用 `NOPEUI_GOLDEN_ASSETS` 指向它，否则这几项会报缺基线。
 - `tools/scripts/uia.ps1` 会自己起 `nopeui_window_smoke` 并要求一个可交互的桌面会话；远程或纯虚拟显示器上把 `-TimeoutSeconds` 调大。
 - `tools/scripts/perf.ps1 -Compare` 只有在 `tests/perf/baseline.json` 的预设与渲染路径都一致时才比数字；换机器要重新用 `-Out` 生成基线。
 - `tools/scripts/analyze.ps1` 默认失败也不返回非零，要当门禁用加 `-MaxWarnings 0`。
