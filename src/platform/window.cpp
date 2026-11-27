@@ -48,6 +48,9 @@ constexpr std::size_t kMaxQueuedCommits = 1;
 constexpr int kMaxAsyncSurfaces = 3;
 constexpr int kMinAsyncSurfaces = 2;
 constexpr int kFlipBufferCount = 2;
+// Two queued frames keep the pipeline fed; the waitable object is what stops
+// Present from blocking when the compositor is behind.
+constexpr UINT kFlipMaxFrameLatency = 2;
 // D3D11 flip-model presentation keeps buffer 0 as the back buffer. D2D can
 // create a target bitmap for that buffer, but not for buffer 1; rotating the
 // target index makes every frame after the first fail before Present.
@@ -296,6 +299,7 @@ public:
             desc.Scaling = DXGI_SCALING_STRETCH;
             desc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL;
             desc.AlphaMode = DXGI_ALPHA_MODE_PREMULTIPLIED;
+            desc.Flags = DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT;
             result = factory->CreateSwapChainForComposition(
                 d3d_device_.Get(), &desc, nullptr, swap_chain_.GetAddressOf());
             if (FAILED(result)) {
@@ -306,6 +310,13 @@ public:
             if (FAILED(result)) {
                 return Result<void>::Fail(
                     Error{ErrorCode::PlatformFailure, PlatformError("SetContent(swap chain)", result)});
+            }
+            ComPtr<IDXGISwapChain2> swap_chain2;
+            if (SUCCEEDED(swap_chain_->QueryInterface(IID_PPV_ARGS(swap_chain2.GetAddressOf())))) {
+                if (FAILED(swap_chain2->SetMaximumFrameLatency(kFlipMaxFrameLatency))) {
+                    swap_chain2->SetMaximumFrameLatency(1);
+                }
+                frame_latency_waitable_ = swap_chain2->GetFrameLatencyWaitableObject();
             }
         }
         for (auto& state : flip_states_) {
@@ -609,6 +620,15 @@ public:
             if (swap_chain_ == nullptr) {
                 return;
             }
+            // Present blocks the caller when the compositor still holds both
+            // buffers. Waiting with a zero timeout turns that stall into a
+            // skipped frame, which keeps input handling responsive.
+            if (frame_latency_waitable_ != nullptr &&
+                WaitForSingleObjectEx(frame_latency_waitable_, 0, FALSE) != WAIT_OBJECT_0) {
+                std::lock_guard<std::mutex> lock(commit_mutex_);
+                ++queue_stats_.dropped;
+                return;
+            }
         } else if (async_commit_) {
             WaitForSurface(draw_index_);
             if (FAILED(EnsureSurfaceSize(draw_index_))) {
@@ -871,6 +891,11 @@ public:
             const UINT present_interval = first_flip_present_ ? 1u : 0u;
             HRESULT present_result = swap_chain_->Present(present_interval, 0);
             const auto present_end = std::chrono::steady_clock::now();
+            if (present_result == DXGI_ERROR_WAS_STILL_DRAWING) {
+                std::lock_guard<std::mutex> lock(commit_mutex_);
+                ++queue_stats_.dropped;
+                return;
+            }
             if (FAILED(present_result)) {
                 if (present_result == DXGI_ERROR_DEVICE_REMOVED ||
                     present_result == DXGI_ERROR_DEVICE_RESET) {
@@ -1540,6 +1565,10 @@ private:
             state.width = 0;
             state.height = 0;
         }
+        if (frame_latency_waitable_ != nullptr) {
+            CloseHandle(frame_latency_waitable_);
+            frame_latency_waitable_ = nullptr;
+        }
         swap_chain_.Reset();
         for (auto& state : surfaces_) {
             state.target_bitmap.Reset();
@@ -1560,6 +1589,8 @@ private:
     ComPtr<IDCompositionVisual> visual_;
     SurfaceState surfaces_[kMaxAsyncSurfaces];
     ComPtr<IDXGISwapChain1> swap_chain_;
+    // Owned by the swap chain; only the handle has to be closed here.
+    HANDLE frame_latency_waitable_ = nullptr;
     SurfaceState flip_states_[kFlipTargetCount];
     bool first_flip_present_ = true;
     bool flip_model_ = false;
@@ -2720,8 +2751,18 @@ void Window::EndLiveResize() noexcept {
     if (hwnd_ != nullptr) {
         KillTimer(hwnd_, kLiveResizeTimerId);
     }
-    RenderLiveResize();
     live_resizing_ = false;
+    if (resize_pending_) {
+        resize_pending_ = false;
+        UpdateClientMetrics(pending_width_, pending_height_);
+        ApplyResize(pending_width_, pending_height_);
+        return;
+    }
+    if (resize_deferred_) {
+        CompactResize();
+        return;
+    }
+    RenderLiveResize();
 }
 
 void Window::RenderLiveResize() noexcept {
@@ -2758,6 +2799,21 @@ void Window::RenderPendingResize() noexcept {
     const int width = pending_width_;
     const int height = pending_height_;
     UpdateClientMetrics(width, height);
+
+    // A drag fires WM_SIZE every few milliseconds and each buffer rebuild
+    // costs more than a frame, which is what stalls the UI thread. The
+    // compositor stretches the last frame instead and the buffers are rebuilt
+    // once the drag settles.
+    if (graphics_->IsFlipModel() && (live_resizing_ || GetCapture() == hwnd_)) {
+        resize_deferred_ = true;
+        ScheduleResizeSettle();
+        return;
+    }
+
+    ApplyResize(width, height);
+}
+
+void Window::ApplyResize(int width, int height) noexcept {
     const auto resize_start = std::chrono::steady_clock::now();
     auto resized = graphics_->Resize(width, height);
     last_resize_ms_ = std::chrono::duration<double, std::milli>(
@@ -2767,6 +2823,7 @@ void Window::RenderPendingResize() noexcept {
         return;
     }
 
+    resize_deferred_ = false;
     LayoutContent(client_width_, client_height_);
     graphics_->Render(nullptr, !graphics_->IsAsyncCommitEnabled());
     ScheduleResizeSettle();
@@ -2793,6 +2850,12 @@ void Window::CompactResize() noexcept {
     last_resize_ms_ = std::chrono::duration<double, std::milli>(
         std::chrono::steady_clock::now() - resize_start).count();
     if (resized.ok()) {
+        if (resize_deferred_) {
+            // The drag skipped layout together with the buffer rebuild, so the
+            // tree has to be laid out against the settled size before painting.
+            LayoutContent(client_width_, client_height_);
+            resize_deferred_ = false;
+        }
         graphics_->Render(nullptr, true);
     }
 }

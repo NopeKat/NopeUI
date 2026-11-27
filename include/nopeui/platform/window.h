@@ -164,6 +164,7 @@ private:
     void EndLiveResize() noexcept;
     void RenderLiveResize() noexcept;
     void RenderPendingResize() noexcept;
+    void ApplyResize(int width, int height) noexcept;
     void ScheduleResizeSettle() noexcept;
     void CompactResize() noexcept;
     void ReleaseGraphics() noexcept;
@@ -218,6 +219,9 @@ private:
     int pending_width_ = 0;
     int pending_height_ = 0;
     bool resize_pending_ = false;
+    // Interactive drags stretch the last frame and rebuild the swap chain
+    // buffers once the drag settles, instead of on every mouse move.
+    bool resize_deferred_ = false;
     bool live_resizing_ = false;
     bool recreate_pending_ = false;
     bool dpi_change_active_ = false;
