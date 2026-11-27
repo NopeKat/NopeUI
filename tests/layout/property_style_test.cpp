@@ -51,6 +51,12 @@ int main() {
     child->SetForeground(0x0000ff00u);
     NOPEUI_CHECK(child->Foreground() == 0x0000ff00u);
 
+    // Zero is a legal explicit color; it must not fall back to the parent.
+    child->SetForeground(0u);
+    NOPEUI_CHECK(child->HasForeground());
+    NOPEUI_CHECK(child->Foreground() == 0u);
+    NOPEUI_CHECK(child->ForegroundOr(0x00abcdefu) == 0u);
+
     auto panel = nopeui::StackPanel::Create(4.0f);
     auto primary = nopeui::Button::Create(L"Primary");
     primary->SetKey(L"primary");

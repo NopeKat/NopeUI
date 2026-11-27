@@ -23,31 +23,66 @@ if (-not (Test-Path -LiteralPath $smokeExe)) {
 }
 
 try {
-    $uia = New-Object -ComObject UIAutomationClient.CUIAutomation
+    # Use the .NET UIAutomation client assemblies. The CUIAutomation COM
+    # ProgID is not registered on every Windows install.
+    Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
+    $root = [System.Windows.Automation.AutomationElement]::RootElement
 }
 catch {
-    throw "UIAutomation COM object is unavailable; run this script on Windows with the desktop automation components installed."
+    throw "UIAutomation client is unavailable; run this script on Windows with the desktop automation components installed."
 }
 
 $process = Start-Process -FilePath $smokeExe -PassThru
 try {
-    $root = $uia.GetRootElement()
     $window = $null
     $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
     while ($window -eq $null -and (Get-Date) -lt $deadline) {
         Start-Sleep -Milliseconds 500
-        $condition = $uia.CreatePropertyCondition(0x30007, "NopeUI Window Smoke")
-        $window = $root.FindFirst(0x4, $condition)
+        $condition = New-Object System.Windows.Automation.PropertyCondition(
+            [System.Windows.Automation.AutomationElement]::ProcessIdProperty,
+            $process.Id)
+        $window = $root.FindFirst(
+            [System.Windows.Automation.TreeScope]::Children,
+            $condition)
     }
     if ($window -eq $null) {
         throw "window 'NopeUI Window Smoke' did not appear within $TimeoutSeconds seconds"
     }
 
+    # UIA can hand out the plain HWND provider on the first query while the
+    # custom root is still attaching; re-open by handle until a NopeUI child
+    # appears next to the native window chrome.
+    $hwnd = [IntPtr]$window.Current.NativeWindowHandle
+    $walker = [System.Windows.Automation.TreeWalker]::RawViewWalker
+    $deadline = (Get-Date).AddSeconds(10)
+    $has_custom = $false
+    while (-not $has_custom -and (Get-Date) -lt $deadline) {
+        $children = $window.FindAll(
+            [System.Windows.Automation.TreeScope]::Children,
+            [System.Windows.Automation.Condition]::TrueCondition)
+        foreach ($candidate in $children) {
+            if ($candidate.Current.FrameworkId -eq "NopeUI") {
+                $has_custom = $true
+                break
+            }
+        }
+        if (-not $has_custom) {
+            Start-Sleep -Milliseconds 200
+            $window = [System.Windows.Automation.AutomationElement]::FromHandle($hwnd)
+        }
+    }
+    if (-not $has_custom) {
+        throw "NopeUI automation provider did not attach to the window"
+    }
+
     $names = New-Object System.Collections.Generic.List[string]
     $types = New-Object System.Collections.Generic.List[int]
-    $walker = $uia.RawViewWalker
     $pending = New-Object System.Collections.Queue
-    $pending.Enqueue($walker.GetFirstChildElement($window))
+    $child = $walker.GetFirstChild($window)
+    while ($child -ne $null) {
+        $pending.Enqueue($child)
+        $child = $walker.GetNextSibling($child)
+    }
     $walked = 0
     while ($pending.Count -gt 0 -and $walked -lt 200) {
         $element = $pending.Dequeue()
@@ -55,16 +90,16 @@ try {
             continue
         }
         ++$walked
-        $name = $element.CurrentName
-        $type = $element.CurrentControlType
+        $name = $element.Current.Name
+        $type = $element.Current.ControlType
         if ($name) {
             $names.Add([string]$name)
         }
-        $types.Add([int]$type)
-        $child = $walker.GetFirstChildElement($element)
+        $types.Add([int]$type.Id)
+        $child = $walker.GetFirstChild($element)
         while ($child -ne $null) {
             $pending.Enqueue($child)
-            $child = $walker.GetNextSiblingElement($child)
+            $child = $walker.GetNextSibling($child)
         }
     }
 

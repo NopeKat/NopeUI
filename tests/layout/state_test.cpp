@@ -1,6 +1,7 @@
 #include "../test_check.h"
 
 #include "nopeui/controls/button.h"
+#include "nopeui/controls/check_box.h"
 #include "nopeui/controls/label.h"
 #include "nopeui/layout/style.h"
 #include "nopeui/theme/control_template.h"
@@ -131,6 +132,30 @@ int main() {
         NOPEUI_CHECK(label->Foreground() == 0x9A9A9A);
         label->SetEnabled(true);
         NOPEUI_CHECK(label->Foreground() == 0x1B1B1B);
+    }
+
+    // IsChecked changes raise a property notification, so triggers run when a
+    // toggle control changes state through the setter or Toggle().
+    {
+        auto style = nopeui::Style::Create();
+        style->SetTargetType(L"CheckBox");
+        style->Set(L"Foreground", nopeui::PropertyValue(0x1B1B1Bu));
+        nopeui::PropertyTrigger checked;
+        checked.property = L"IsChecked";
+        checked.value = nopeui::PropertyValue(true);
+        checked.setters.emplace_back(
+            L"Foreground", nopeui::PropertyValue(0x00FF00u));
+        style->AddTrigger(checked);
+
+        auto box = nopeui::CheckBox::Create(L"Toggle me");
+        style->Apply(*box);
+        NOPEUI_CHECK(box->Foreground() == 0x1B1B1B);
+
+        box->SetChecked(true);
+        NOPEUI_CHECK(box->Foreground() == 0x00FF00);
+
+        box->SetChecked(false);
+        NOPEUI_CHECK(box->Foreground() == 0x1B1B1B);
     }
 
     return 0;

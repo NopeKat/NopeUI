@@ -19,6 +19,7 @@
 #include "nopeui/controls/menu_bar.h"
 #include "nopeui/controls/stack_panel.h"
 #include "nopeui/controls/text_box.h"
+#include "nopeui/layout/style.h"
 #include "nopeui/markup/xaml.h"
 #include "nopeui/theme/theme.h"
 
@@ -563,6 +564,34 @@ int main() {
     <Brush Key="Nope">#123456</Brush>
   </Border.Resources>
 </Border>)XAML").ok());
+
+    // Border properties set in markup are local values and outrank a style.
+    {
+        auto loaded = nopeui::xaml::Load(LR"XAML(
+<Border xmlns="https://nopeui.local/xaml" x:Name="local"
+        Background="#00FF00" BorderColor="#0000FF"/>)XAML");
+        NOPEUI_CHECK(loaded.ok());
+        auto* local = dynamic_cast<nopeui::Border*>(
+            loaded.value().Find(L"local"));
+        NOPEUI_CHECK(local != nullptr);
+
+        auto style = nopeui::Style::Create();
+        style->SetTargetType(L"Border");
+        style->Set(L"Background", nopeui::PropertyValue(0x00FF0000u));
+        style->Set(L"BorderColor", nopeui::PropertyValue(0x00FF0000u));
+        style->Apply(*local);
+
+        nopeui::PropertyValue local_background;
+        nopeui::PropertyValue local_border;
+        std::uint32_t local_background_color = 0;
+        std::uint32_t local_border_color = 0;
+        NOPEUI_CHECK(local->GetProperty(L"Background", &local_background));
+        NOPEUI_CHECK(local->GetProperty(L"BorderColor", &local_border));
+        NOPEUI_CHECK(local_background.AsColor(&local_background_color) &&
+                     local_background_color == 0x00FF00u);
+        NOPEUI_CHECK(local_border.AsColor(&local_border_color) &&
+                     local_border_color == 0x0000FFu);
+    }
 
     NOPEUI_CHECK(!nopeui::xaml::Load(L"<Label Unknown=\"value\"/>").ok());
     NOPEUI_CHECK(!nopeui::xaml::Load(L"<Button Text=\"x\" Click=\"Missing\"/>").ok());

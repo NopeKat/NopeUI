@@ -51,3 +51,7 @@ add_test(NAME nopeui_layout.state_test COMMAND nopeui_layout_state_test)
 add_executable(nopeui_markup_xaml_test markup/xaml_test.cpp)
 target_link_libraries(nopeui_markup_xaml_test PRIVATE nopeui_markup nopeui_controls)
 add_test(NAME nopeui_markup.xaml_test COMMAND nopeui_markup_xaml_test)
+
+add_executable(nopeui_controls_text_box_test controls/text_box_test.cpp)
+target_link_libraries(nopeui_controls_text_box_test PRIVATE nopeui_controls)
+add_test(NAME nopeui_controls.text_box_test COMMAND nopeui_controls_text_box_test)

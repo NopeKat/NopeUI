@@ -122,6 +122,21 @@ int main() {
         NOPEUI_CHECK(grid->DesiredSize().height < 200.0f);
     }
 
+    // An auto column measures its child without a width cap, so a long label
+    // still sizes the column on a narrow grid.
+    {
+        auto grid = nopeui::Grid::Create();
+        grid->SetColumns({nopeui::AutoLength()});
+        grid->SetRows({nopeui::AutoLength()});
+        auto label = nopeui::Label::Create(
+            L"A long label that is wider than the narrow grid slot");
+        grid->Add(label);
+
+        grid->Measure(nopeui::Size{100.0f, 100.0f});
+        grid->Arrange(nopeui::Rect{0.0f, 0.0f, 100.0f, 100.0f});
+        NOPEUI_CHECK(label->Bounds().width > 100.0f);
+    }
+
     // Margins inside a cell inset the child, not the cell.
     {
         auto grid = nopeui::Grid::Create();

@@ -1,4 +1,5 @@
 #include "../test_check.h"
+#include <cmath>
 #include <utility>
 
 #include <Windows.h>
@@ -12,6 +13,17 @@ int main() {
     }
 
     auto window = std::move(result).value();
+
+    // Create sizes the native window from logical DIPs at the monitor scale.
+    const float dpi_scale = window->DpiScale();
+    NOPEUI_CHECK(dpi_scale >= 1.0f);
+    RECT created_rect{};
+    NOPEUI_CHECK(GetWindowRect(window->Handle(), &created_rect) != FALSE);
+    const int created_width = static_cast<int>(created_rect.right - created_rect.left);
+    NOPEUI_CHECK(
+        std::abs(created_width -
+                 static_cast<int>(std::lround(320.0f * dpi_scale))) <= 2);
+
     NOPEUI_CHECK(window->IsAsyncCommitEnabled());
     window->SetAsyncCommit(false);
     NOPEUI_CHECK(static_cast<bool>(window));

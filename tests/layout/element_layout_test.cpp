@@ -81,6 +81,13 @@ int main() {
         label->Arrange(nopeui::Rect{0.0f, 0.0f, 300.0f, 100.0f});
         NOPEUI_CHECK(Near(label->Bounds().x, 0.0f));
 
+        // Stretch with an explicit width keeps that width and stays at the
+        // slot start instead of drifting to the middle.
+        label->SetHorizontalAlignment(nopeui::HorizontalAlignment::Stretch);
+        label->Arrange(nopeui::Rect{0.0f, 0.0f, 300.0f, 100.0f});
+        NOPEUI_CHECK(Near(label->Bounds().x, 0.0f));
+        NOPEUI_CHECK(Near(label->Bounds().width, 100.0f));
+
         label->SetWidth(0.0f);
         label->Measure(nopeui::Size{300.0f, 100.0f});
         label->SetHorizontalAlignment(nopeui::HorizontalAlignment::Stretch);
@@ -105,6 +112,11 @@ int main() {
         label->SetVerticalAlignment(nopeui::VerticalAlignment::Center);
         label->Arrange(nopeui::Rect{0.0f, 0.0f, 300.0f, 200.0f});
         NOPEUI_CHECK(Near(label->Bounds().y, 80.0f));
+
+        label->SetVerticalAlignment(nopeui::VerticalAlignment::Stretch);
+        label->Arrange(nopeui::Rect{0.0f, 0.0f, 300.0f, 200.0f});
+        NOPEUI_CHECK(Near(label->Bounds().y, 0.0f));
+        NOPEUI_CHECK(Near(label->Bounds().height, 40.0f));
     }
 
     // Attached properties: defaults, storage and unknown names.
