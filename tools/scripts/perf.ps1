@@ -12,7 +12,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$repoRoot = Split-Path -Parent $PSScriptRoot
+$repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $configuration = if ($Preset -like "*debug") { "Debug" } else { "Release" }
 $sampleDir = Join-Path $repoRoot ".build\$Preset\samples\$configuration"
 $startupExe = Join-Path $sampleDir "nopeui_startup_benchmark.exe"

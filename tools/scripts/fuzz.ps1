@@ -10,7 +10,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$repoRoot = Split-Path -Parent $PSScriptRoot
+$repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $configuration = if ($Preset -like "*debug") { "Debug" } else { "Release" }
 $fuzzer = Join-Path $repoRoot ".build\$Preset\tools\$configuration\nopeui_xaml_fuzz.exe"
 $logPath = if ([System.IO.Path]::IsPathRooted($Log)) { $Log } else { Join-Path $repoRoot $Log }

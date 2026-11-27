@@ -11,7 +11,7 @@ param(
 # pattern the providers advertise. Manual script: it is not part of CI and it
 # does not run with the golden pass. Point -TimeoutSeconds higher on slow VMs.
 $ErrorActionPreference = "Stop"
-$repoRoot = Split-Path -Parent $PSScriptRoot
+$repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $configuration = if ($Preset -like "*debug") { "Debug" } else { "Release" }
 $smokeExe = Join-Path $repoRoot ".build\$Preset\samples\$configuration\nopeui_window_smoke.exe"
 

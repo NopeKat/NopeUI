@@ -16,7 +16,7 @@ param(
 # so the source archive matches the binaries that were just built.
 
 $ErrorActionPreference = "Stop"
-$repoRoot = Split-Path -Parent $PSScriptRoot
+$repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $buildDir = Join-Path $repoRoot ".build\$Preset"
 $outDir = if ([System.IO.Path]::IsPathRooted($Out)) { $Out } else { Join-Path $repoRoot $Out }
 

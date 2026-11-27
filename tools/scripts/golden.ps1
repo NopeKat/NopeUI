@@ -7,7 +7,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$repoRoot = Split-Path -Parent $PSScriptRoot
+$repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $configuration = if ($Preset -like "*debug") { "Debug" } else { "Release" }
 $toolDir = Join-Path $repoRoot ".build\$Preset\tools\$configuration"
 $goldenExe = Join-Path $toolDir "nopeui_golden.exe"

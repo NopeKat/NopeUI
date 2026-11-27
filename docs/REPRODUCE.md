@@ -10,7 +10,7 @@
 - Windows SDK 10.0.26100.0（在 VS 安装器里勾选「Windows 11 SDK (10.0.26100.0)」）。
 - CMake 4.4.4。生成器固定为 `Visual Studio 18 2026`，不使用 Ninja。
 
-工具链版本是硬约束：`eng/toolchain.ps1` 会检查 `cmake --version` 是否为 4.4.4，不符直接报错，不会自动降级或下载。
+工具链版本是硬约束：`tools/scripts/toolchain.ps1` 会检查 `cmake --version` 是否为 4.4.4，不符直接报错，不会自动降级或下载。
 
 安装 CMake 可以走 winget：
 
@@ -37,7 +37,7 @@ git checkout main
 ## 3. 构建
 
 ```powershell
-.\eng\build.ps1 -Preset x64-release
+.\tools\scripts\build.ps1 -Preset x64-release
 ```
 
 脚本会用 `CMakePresets.json` 里的 `x64-release` 预设配置到 `.build/x64-release`，再编译 Release 配置。编译选项是 `/W4 /WX /permissive- /utf-8`，任何警告都会中断构建，这是刻意设计。
@@ -67,20 +67,20 @@ Debug 配置把 `-Preset` 换成 `x64-debug` 即可，两条预设的目录互�
 按顺序跑，全部要在报告里留下输出。
 
 ```powershell
-.\eng\test.ps1 -Preset x64-release        # 18 个单元测试
-.\eng\golden.ps1 -Preset x64-release      # 24 张黄金图与基线比对
-.\eng\uia.ps1 -Preset x64-release         # UIA 全量走查，44 项检查
-.\eng\perf.ps1 -SkipBuild -Compare        # 启动与主题切换对照基线
-.\eng\analyze.ps1                          # MSVC /analyze，默认只报告
+.\tools\scripts\test.ps1 -Preset x64-release        # 18 个单元测试
+.\tools\scripts\golden.ps1 -Preset x64-release      # 28 张黄金图与基线比对
+.\tools\scripts\uia.ps1 -Preset x64-release         # UIA 全量走查，44 项检查
+.\tools\scripts\perf.ps1 -SkipBuild -Compare        # 启动与主题切换对照基线
+.\tools\scripts\analyze.ps1                          # MSVC /analyze，默认只报告
 ```
 
 几点说明：
 
 - 黄金图基线在 `tests/golden/baseline`，当前图与差异图写到 `.build/golden`。换了显卡或缩放比例出现差异时先看差异图，别直接 `-Update`。
-- `eng/uia.ps1` 会自己起 `nopeui_window_smoke` 并要求一个可交互的桌面会话；远程或纯虚拟显示器上把 `-TimeoutSeconds` 调大。
-- `eng/perf.ps1 -Compare` 只有在 `tests/perf/baseline.json` 的预设与渲染路径都一致时才比数字；换机器要重新用 `-Out` 生成基线。
-- `eng/analyze.ps1` 默认失败也不返回非零，要当门禁用加 `-MaxWarnings 0`。
-- 模糊测试：`.\eng\fuzz.ps1 -SkipBuild -Hours 0.05` 先跑三分钟确认工具可用，正式回归用 `-Hours 24`，崩溃样本落在 `.build/fuzz/crash.xaml`。
+- `tools/scripts/uia.ps1` 会自己起 `nopeui_window_smoke` 并要求一个可交互的桌面会话；远程或纯虚拟显示器上把 `-TimeoutSeconds` 调大。
+- `tools/scripts/perf.ps1 -Compare` 只有在 `tests/perf/baseline.json` 的预设与渲染路径都一致时才比数字；换机器要重新用 `-Out` 生成基线。
+- `tools/scripts/analyze.ps1` 默认失败也不返回非零，要当门禁用加 `-MaxWarnings 0`。
+- 模糊测试：`.\tools\scripts\fuzz.ps1 -SkipBuild -Hours 0.05` 先跑三分钟确认工具可用，正式回归用 `-Hours 24`，崩溃样本落在 `.build/fuzz/crash.xaml`。
 - 覆盖率需要外部安装 OpenCppCoverage，脚本不代为下载，缺工具时会说明安装方式。
 
 ## 6. 常见问题
@@ -93,8 +93,8 @@ Debug 配置把 `-Preset` 换成 `x64-debug` 即可，两条预设的目录互�
 ## 7. 打包预览
 
 ```powershell
-.\eng\package.ps1                     # 构建并打包
-.\eng\package.ps1 -SkipBuild -Smoke   # 复用现有构建，并启动样例做 3 秒冒烟
+.\tools\scripts\package.ps1                     # 构建并打包
+.\tools\scripts\package.ps1 -SkipBuild -Smoke   # 复用现有构建，并启动样例做 3 秒冒烟
 ```
 
 脚本要求工作区干净：包内的源码包取自 `HEAD`，源码必须和二进制对得上。本地试验可以加 `-AllowDirty`，它会明显提示源码包来自 HEAD。

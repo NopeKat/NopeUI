@@ -11,7 +11,7 @@ param(
 # manual script: it needs a coverage tool that is not vendored, so it stops with
 # instructions instead of downloading anything by itself.
 $ErrorActionPreference = "Stop"
-$repoRoot = Split-Path -Parent $PSScriptRoot
+$repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $configuration = if ($Preset -like "*debug") { "Debug" } else { "Release" }
 $buildDir = Join-Path $repoRoot ".build\$Preset"
 if (-not $OutputDir) {
