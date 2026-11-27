@@ -12,6 +12,14 @@ else()
     add_compile_options(-Wall -Wextra -Wpedantic -Werror)
 endif()
 
+# Code analysis is a separate build: /analyze is slow and its findings are
+# reported as warnings, so -WX is turned off to collect the whole set in one
+# pass instead of stopping at the first hit.
+option(NOPEUI_ANALYZE "Run the MSVC code analysis pass" OFF)
+if(NOPEUI_ANALYZE AND MSVC)
+    add_compile_options(/analyze /WX-)
+endif()
+
 add_library(nopeui_base STATIC
     src/base/strings.cpp
     src/base/version.cpp
