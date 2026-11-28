@@ -12,6 +12,8 @@
 #include <windowsx.h>
 #include <wrl/client.h>
 
+#include "nopeui/base/diagnostic.h"
+#include "nopeui/base/strings.h"
 #include "nopeui/controls/tooltip.h"
 #include "nopeui/graphics/offscreen.h"
 #include "nopeui/graphics/scene.h"
@@ -128,6 +130,48 @@ std::wstring ToWideString(std::u16string_view text) {
         result.push_back(static_cast<wchar_t>(character));
     }
     return result;
+}
+
+std::string ToUtf8String(const std::wstring& text) {
+    std::u16string utf16;
+    utf16.reserve(text.size());
+    for (const wchar_t character : text) {
+        utf16.push_back(static_cast<char16_t>(character));
+    }
+    auto converted = nopeui::Utf16ToUtf8(utf16);
+    return converted.ok() ? converted.value() : std::string();
+}
+
+// One line at the first window: which GPU backs the Direct2D device, or WARP
+// when the hardware device was unavailable right after WARP fallback.
+void LogAdapterOnce(IDXGIDevice* device) {
+    static std::once_flag once;
+    std::call_once(once, [device] {
+        if (device == nullptr) {
+            return;
+        }
+        Microsoft::WRL::ComPtr<IDXGIAdapter> adapter;
+        if (FAILED(device->GetAdapter(adapter.GetAddressOf()))) {
+            return;
+        }
+        DXGI_ADAPTER_DESC description{};
+        if (FAILED(adapter->GetDesc(&description))) {
+            return;
+        }
+
+        std::string text = "gpu: ";
+        text += ToUtf8String(description.Description);
+        char numbers[128]{};
+        std::snprintf(
+            numbers,
+            sizeof(numbers),
+            ", vendor 0x%04X, device 0x%04X, video %llu MB",
+            static_cast<unsigned>(description.VendorId),
+            static_cast<unsigned>(description.DeviceId),
+            static_cast<unsigned long long>(
+                description.DedicatedVideoMemory / (1024ull * 1024ull)));
+        nopeui::LogMessage(nopeui::LogLevel::Info, text + numbers);
+    });
 }
 
 std::string PlatformError(const char* operation, HRESULT result) {
@@ -1434,6 +1478,7 @@ private:
             return Result<void>::Fail(
                 Error{ErrorCode::PlatformFailure, PlatformError("QueryInterface IDXGIDevice", result)});
         }
+        LogAdapterOnce(dxgi_device_.Get());
 
         result = DCompositionCreateDevice(
             dxgi_device_.Get(),
@@ -1928,6 +1973,12 @@ Result<Ref<Window>> Window::Create(int width, int height, std::u16string_view ti
     window->graphics_->SetDpi(static_cast<float>(dpi));
     window->graphics_->SetPalette(PaletteFromTheme(window->theme_));
     window->UpdateClientMetrics(client.right - client.left, client.bottom - client.top);
+    LogMessage(
+        LogLevel::Info,
+        "window created: " + std::to_string(width) + "x" + std::to_string(height) +
+            " dip, dpi " + std::to_string(dpi) +
+            (window->graphics_->IsSoftwareRender() ? ", software render path"
+                                                   : ", hardware render path"));
     return Result<Ref<Window>>::Ok(std::move(window));
 }
 
