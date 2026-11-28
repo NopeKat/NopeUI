@@ -27,6 +27,10 @@ All values are frames per second. The 100000 row case holds a median of 98.6 fps
 above the 60 fps floor. The p99 frame time of about 25 ms comes from single frames waiting
 on a commit, not from a sustained drop.
 
+The three medians above are recorded in `baseline.json` under `scroll_frames`. A rerun on
+the same day on a 24 Hz output produced no committed frames in unpaced mode, so these
+numbers stay the reference until a 144 Hz display is available again.
+
 This record is not gated by `perf.ps1`; it sits beside `baseline.json`, which covers
 startup, theme switching and the fixed 120 Hz frame path.
 

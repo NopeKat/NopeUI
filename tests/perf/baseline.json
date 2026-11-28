@@ -23,6 +23,15 @@
     "p99": 2.836,
     "fps": 626.2
   },
+  "scroll_frames": {
+    "tiers": [
+      { "rows": 10000, "runs": 3, "median_fps": 100.2, "p99_ms": 25.8 },
+      { "rows": 50000, "runs": 3, "median_fps": 116.2, "p99_ms": 25.2 },
+      { "rows": 100000, "runs": 3, "median_fps": 98.6, "p99_ms": 25.3 }
+    ],
+    "budget_fps": 60,
+    "note": "virtual list, unpaced, 300 whole frames per run; measured while the fuzz run held one core, so a quiet machine can only be faster. Raw runs in scroll.md"
+  },
   "frame": {
     "hz": 120,
     "average": 5.217,

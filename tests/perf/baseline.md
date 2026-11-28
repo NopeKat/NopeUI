@@ -6,6 +6,7 @@
 - Startup: 5 runs, 900x640 form page, min 244.2 ms / median 272.9 ms / max 282.6 ms
 - Theme switching: 200 cycles, alternating light and dark
 - Scroll: 100000 rows, 8 px steps, avg 1.6 ms / p99 2.8 ms / 626.2 fps
+- Scroll frames: virtual list, 10000 / 50000 / 100000 rows, median 100.2 / 116.2 / 98.6 fps, p99 25.8 / 25.2 / 25.3 ms
 - Frame: 120 Hz target, avg 5.22 ms / p99 11.83 ms / max 12.66 ms, dropped 0
 
 Startup total includes process creation and loader time; theme switching was measured with commit throttling off and excludes vblank waits. Scroll numbers are render time from nopeui_text_list_benchmark, and frame numbers are dirty-rect frames paced at 120 Hz.
