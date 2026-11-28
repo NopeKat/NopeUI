@@ -18,12 +18,14 @@
 #include <utility>
 #include <vector>
 
+#include "nopeui/base/diagnostic.h"
 #include "nopeui/markup/xaml.h"
 
 namespace {
 
 const std::wstring* g_current_input = nullptr;
 std::string g_crash_path = "fuzz-crash.xaml";
+LONG g_crash_written = 0;
 
 std::string Utf8(const std::wstring& text) {
     if (text.empty()) {
@@ -41,21 +43,40 @@ std::string Utf8(const std::wstring& text) {
     return out;
 }
 
+void SaveCrashInput(DWORD code) noexcept {
+    if (::InterlockedCompareExchange(&g_crash_written, 1, 0) != 0) {
+        return;
+    }
+    if (g_current_input == nullptr) {
+        return;
+    }
+    std::ofstream out(g_crash_path, std::ios::binary | std::ios::trunc);
+    if (out) {
+        out << "exception 0x" << std::hex << code << "\n";
+        out << Utf8(*g_current_input);
+        out << "\n";
+    }
+    std::fprintf(stderr, "crash 0x%08lx, input saved to %s\n",
+        static_cast<unsigned long>(code), g_crash_path.c_str());
+}
+
+// Windows 11 does not always call the top-level filter for an access
+// violation, so the sample is also saved on the first-chance path. Diagnostics
+// installs an earlier vector handler that writes the minidump; this one runs
+// after it and only saves the offending input.
+LONG WINAPI OnFatalVector(EXCEPTION_POINTERS* pointers) {
+    const DWORD code = pointers != nullptr && pointers->ExceptionRecord != nullptr
+        ? pointers->ExceptionRecord->ExceptionCode
+        : 0;
+    SaveCrashInput(code);
+    return EXCEPTION_CONTINUE_SEARCH;
+}
+
 LONG WINAPI OnFatalException(EXCEPTION_POINTERS* pointers) {
     const DWORD code = pointers != nullptr && pointers->ExceptionRecord != nullptr
         ? pointers->ExceptionRecord->ExceptionCode
         : 0;
-    if (g_current_input != nullptr) {
-        std::ofstream out(g_crash_path, std::ios::binary | std::ios::trunc);
-        if (out) {
-            out << "exception 0x" << std::hex << code << "\n";
-            out << Utf8(*g_current_input);
-            out << "\n";
-        }
-        std::fprintf(stderr, "crash 0x%08lx, input saved to %s\n",
-            static_cast<unsigned long>(code), g_crash_path.c_str());
-    }
-    ::TerminateProcess(::GetCurrentProcess(), 3);
+    SaveCrashInput(code);
     return EXCEPTION_EXECUTE_HANDLER;
 }
 
@@ -210,6 +231,7 @@ int main(int argc, char** argv) {
     double max_iterations = 0.0;
     std::uint64_t seed = 1;
     std::string seed_dir;
+    std::string diagnostics_dir = ".build/fuzz/diagnostics";
 
     for (int index = 1; index < argc; ++index) {
         const std::string_view argument = argv[index];
@@ -223,13 +245,35 @@ int main(int argc, char** argv) {
             seed_dir = argv[++index];
         } else if (argument == "--crash" && index + 1 < argc) {
             g_crash_path = argv[++index];
+        } else if (argument == "--diagnostics-dir" && index + 1 < argc) {
+            diagnostics_dir = argv[++index];
         } else {
             std::printf("unknown argument: %s\n", argv[index]);
             return 2;
         }
     }
 
+    nopeui::DiagnosticOptions diagnostic_options;
+    diagnostic_options.directory = diagnostics_dir;
+    diagnostic_options.max_file_bytes = 8u * 1024u * 1024u;
+    diagnostic_options.max_files = 5;
+    diagnostic_options.detect_hangs = false;
+    diagnostic_options.resource_interval_seconds = 300;
+    if (!nopeui::StartDiagnostics(diagnostic_options).ok()) {
+        std::fprintf(stderr, "warning: diagnostics unavailable, continuing without a log\n");
+    }
+
+    ::AddVectoredExceptionHandler(1, OnFatalVector);
     ::SetUnhandledExceptionFilter(OnFatalException);
+
+    {
+        char line[256] = {};
+        std::snprintf(line, sizeof(line),
+            "xaml fuzz start: seconds=%.1f iterations=%.0f seed=%llu seed_dir=%s",
+            seconds, max_iterations, static_cast<unsigned long long>(seed),
+            seed_dir.empty() ? "(builtin)" : seed_dir.c_str());
+        nopeui::LogMessage(nopeui::LogLevel::Info, line);
+    }
 
     std::vector<std::wstring> seeds = SeedCorpus();
     if (!seed_dir.empty() && !LoadSeedFiles(seed_dir, &seeds)) {
@@ -273,6 +317,13 @@ int main(int argc, char** argv) {
                 static_cast<unsigned long long>(loaded),
                 elapsed > 0.0 ? static_cast<double>(iterations) / elapsed : 0.0);
             std::fflush(stdout);
+            char line[160] = {};
+            std::snprintf(line, sizeof(line),
+                "progress: iterations=%llu parse_ok=%llu load_ok=%llu",
+                static_cast<unsigned long long>(iterations),
+                static_cast<unsigned long long>(parsed),
+                static_cast<unsigned long long>(loaded));
+            nopeui::LogMessage(nopeui::LogLevel::Info, line);
             next_report = now + std::chrono::seconds(5);
         }
 
@@ -287,5 +338,25 @@ int main(int argc, char** argv) {
         static_cast<unsigned long long>(parsed),
         static_cast<unsigned long long>(loaded),
         elapsed);
+
+    {
+        char line[192] = {};
+        std::snprintf(line, sizeof(line),
+            "xaml fuzz done: iterations=%llu parse_ok=%llu load_ok=%llu elapsed=%.1fs",
+            static_cast<unsigned long long>(iterations),
+            static_cast<unsigned long long>(parsed),
+            static_cast<unsigned long long>(loaded),
+            elapsed);
+        nopeui::LogMessage(nopeui::LogLevel::Info, line);
+    }
+    if (!nopeui::DiagnosticsDirectory().empty()) {
+        auto package = nopeui::ExportDiagnostics("xaml fuzz run");
+        if (package.ok()) {
+            std::printf("diagnostics package: %s\n", package.value().c_str());
+        } else {
+            std::fprintf(stderr, "warning: could not export the diagnostics package\n");
+        }
+        nopeui::StopDiagnostics();
+    }
     return 0;
 }

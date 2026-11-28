@@ -878,6 +878,9 @@ void StopDiagnostics() noexcept {
         }
         WriteLineLocked(LogLevel::Info, "diagnostics stopped");
         CloseLogFile();
+        // The header promises an empty directory once diagnostics are stopped.
+        g_state.directory_utf8.clear();
+        g_state.directory_wide.clear();
         if (g_state.capture_crashes) {
             g_state.capture_crashes = false;
             ::SetUnhandledExceptionFilter(nullptr);

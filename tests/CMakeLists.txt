@@ -11,6 +11,7 @@ add_nopeui_base_test(ref_test base/ref_test.cpp)
 add_nopeui_base_test(result_test base/result_test.cpp)
 add_nopeui_base_test(strings_test base/strings_test.cpp)
 add_nopeui_base_test(version_test base/version_test.cpp)
+add_nopeui_base_test(diagnostic_test base/diagnostic_test.cpp)
 
 add_executable(nopeui_platform_window_test platform/window_test.cpp)
 target_link_libraries(nopeui_platform_window_test PRIVATE nopeui_platform)
@@ -55,6 +56,10 @@ add_test(NAME nopeui_layout.state_test COMMAND nopeui_layout_state_test)
 add_executable(nopeui_markup_xaml_test markup/xaml_test.cpp)
 target_link_libraries(nopeui_markup_xaml_test PRIVATE nopeui_markup nopeui_controls)
 add_test(NAME nopeui_markup.xaml_test COMMAND nopeui_markup_xaml_test)
+
+add_executable(nopeui_markup_fuzz_test markup/fuzz_test.cpp)
+target_link_libraries(nopeui_markup_fuzz_test PRIVATE nopeui_markup nopeui_controls nopeui_base)
+add_test(NAME nopeui_markup.fuzz_test COMMAND nopeui_markup_fuzz_test)
 
 add_executable(nopeui_controls_text_box_test controls/text_box_test.cpp)
 target_link_libraries(nopeui_controls_text_box_test PRIVATE nopeui_controls)
