@@ -64,3 +64,11 @@ add_test(NAME nopeui_markup.fuzz_test COMMAND nopeui_markup_fuzz_test)
 add_executable(nopeui_controls_text_box_test controls/text_box_test.cpp)
 target_link_libraries(nopeui_controls_text_box_test PRIVATE nopeui_controls)
 add_test(NAME nopeui_controls.text_box_test COMMAND nopeui_controls_text_box_test)
+
+add_executable(nopeui_controls_controls_test controls/controls_test.cpp)
+target_link_libraries(nopeui_controls_controls_test PRIVATE nopeui_controls nopeui_graphics)
+add_test(NAME nopeui_controls.controls_test COMMAND nopeui_controls_controls_test)
+
+add_executable(nopeui_graphics_graphics_test graphics/graphics_test.cpp)
+target_link_libraries(nopeui_graphics_graphics_test PRIVATE nopeui_graphics)
+add_test(NAME nopeui_graphics.graphics_test COMMAND nopeui_graphics_graphics_test)
