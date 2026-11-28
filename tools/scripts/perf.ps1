@@ -129,19 +129,19 @@ if (-not [string]::IsNullOrWhiteSpace($Out)) {
         $cpu = "unknown"
     }
 
-    $renderLabel = if ($Software) { "软件" } else { "硬件" }
+    $renderLabel = if ($Software) { "software" } else { "hardware" }
     $lines = @(
-        "# 性能基线",
+        "# Performance Baseline",
         "",
-        "- 日期：$(Get-Date -Format 'yyyy-MM-dd')",
-        "- 机器：$osName / $cpu / $totalRam GB",
-        "- 预设：$Preset，渲染：$renderLabel，异步提交：开",
-        "- 启动：$Runs 次，900×640 表单页，min $([math]::Round($min, 1)) ms / median $([math]::Round($median, 1)) ms / max $([math]::Round($max, 1)) ms",
-        "- 主题切换：$Switches 次，浅色与深色互切",
+        "- Date: $(Get-Date -Format 'yyyy-MM-dd')",
+        "- Machine: $osName / $cpu / $totalRam GB",
+        "- Preset: $Preset, render: $renderLabel, async submit: on",
+        "- Startup: $Runs runs, 900x640 form page, min $([math]::Round($min, 1)) ms / median $([math]::Round($median, 1)) ms / max $([math]::Round($max, 1)) ms",
+        "- Theme switching: $Switches cycles, alternating light and dark",
         "",
-        "启动 total 含进程创建与加载器；主题切换在关闭提交节流后测量，不含 vblank 等待。",
+        "Startup total includes process creation and loader time; theme switching was measured with commit throttling off and excludes vblank waits.",
         "",
-        "## 原始输出",
+        "## Raw Output",
         "",
         '```'
     )

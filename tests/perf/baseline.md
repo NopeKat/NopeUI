@@ -1,14 +1,14 @@
-# 性能基线
+# Performance Baseline
 
-- 日期：2026-11-27
-- 机器：Microsoft Windows 11 专业版 / Intel(R) Core(TM) i7-7700K CPU @ 4.20GHz / 31.9 GB
-- 预设：x64-release，渲染：硬件，异步提交：开
-- 启动：5 次，900×640 表单页，min 266.7 ms / median 288.3 ms / max 291.8 ms
-- 主题切换：200 次，浅色与深色互切
+- Date: 2026-11-27
+- Machine: Microsoft Windows 11 Pro / Intel(R) Core(TM) i7-7700K CPU @ 4.20GHz / 31.9 GB
+- Preset: x64-release, render: hardware, async submit: on
+- Startup: 5 runs, 900x640 form page, min 266.7 ms / median 288.3 ms / max 291.8 ms
+- Theme switching: 200 cycles, alternating light and dark
 
-启动 total 含进程创建与加载器；主题切换在关闭提交节流后测量，不含 vblank 等待。
+Startup total includes process creation and loader time; theme switching was measured with commit throttling off and excludes vblank waits.
 
-## 原始输出
+## Raw Output
 
 ```
 startup content=form theme=system render=hardware async=on size=900x640 dpi=192 total=288.8 ms submit=288.8 entry=38.2 create=141.2 content=6.1 show=103.3 settle=0.0 present_wait=0.0 draw=0.6 begin=0.0 end=0.0 commit=3.8 present=3.8 commits=3 frames=9 ws=39.6 MB ws_peak=48.0 MB private_peak=13.3 MB ws_peak_first=48.0 MB

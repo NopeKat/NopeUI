@@ -1,30 +1,30 @@
-# 从干净机器复现构建
+# Reproducing the Build on a Clean Machine
 
-这份文档描述如何在一台干净的 Windows 机器上，从源码构建、验证并运行 NopeUI。所有步骤都是本地手动执行的命令，项目没有任何 CI。
+This document describes how to build, verify, and run NopeUI from source on a clean Windows machine. Every step is a manual command run locally; the project has no CI.
 
-## 1. 环境要求
+## 1. Prerequisites
 
-- Windows 10 或 Windows 11，x64。当前只有 x64 目标。
-- PowerShell 7（`pwsh`），Windows 自带的 5.1 不保证可用。
-- Visual Studio 18 2026，安装工作负载「使用 C++ 的桌面开发」。
-- Windows SDK 10.0.26100.0（在 VS 安装器里勾选「Windows 11 SDK (10.0.26100.0)」）。
-- CMake 4.4.4。生成器固定为 `Visual Studio 18 2026`，不使用 Ninja。
+- Windows 10 or Windows 11, x64. Only the x64 target exists right now.
+- PowerShell 7 (`pwsh`); the 5.1 that ships with Windows is not guaranteed to work.
+- Visual Studio 18 2026 with the "Desktop development with C++" workload installed.
+- Windows SDK 10.0.26100.0 (check "Windows 11 SDK (10.0.26100.0)" in the VS installer).
+- CMake 4.4.4. The generator is fixed to `Visual Studio 18 2026`; Ninja is not used.
 
-工具链版本是硬约束：`tools/scripts/toolchain.ps1` 会检查 `cmake --version` 是否为 4.4.4，不符直接报错，不会自动降级或下载。
+The toolchain version is a hard requirement: `tools/scripts/toolchain.ps1` checks whether `cmake --version` reports 4.4.4 and fails immediately otherwise. It never downgrades or downloads anything on its own.
 
-安装 CMake 可以走 winget：
+CMake can be installed through winget:
 
 ```powershell
 winget install --id Kitware.CMake --version 4.4.4
 ```
 
-如果 PATH 里的 `cmake.exe` 版本不对，用环境变量指定：
+If the `cmake.exe` on PATH is the wrong version, point at the right one with an environment variable:
 
 ```powershell
 $env:NOPEUI_CMAKE = 'C:\Program Files\CMake\bin\cmake.exe'
 ```
 
-## 2. 取源码
+## 2. Getting the Source
 
 ```powershell
 git clone git@github.com:NopeKat/NopeUI.git
@@ -32,93 +32,93 @@ cd NopeUI
 git checkout main
 ```
 
-仓库里只有内层源码；工作区仓库（设计文档、路线图）不参与构建，拿不到也不影响。
+The repository contains only the inner source tree. The workspace repository (design docs, roadmap) is not part of the build, and not having it changes nothing.
 
-## 3. 构建
+## 3. Building
 
 ```powershell
 .\tools\scripts\build.ps1 -Preset x64-release
 ```
 
-脚本会用 `CMakePresets.json` 里的 `x64-release` 预设配置到 `.build/x64-release`，再编译 Release 配置。编译选项是 `/W4 /WX /permissive- /utf-8`，任何警告都会中断构建，这是刻意设计。
+The script configures the `x64-release` preset from `CMakePresets.json` into `.build/x64-release` and then compiles the Release configuration. The compiler flags are `/W4 /WX /permissive- /utf-8`, so any warning breaks the build. That is intentional.
 
-产物位置：
+Where the outputs land:
 
-- 样例：`.build\x64-release\samples\Release\nopeui_window_smoke.exe`、`nopeui_xaml_smoke.exe`
-- 工具：`.build\x64-release\tools\Release\nopeui_golden.exe`、`nopeui_image_diff.exe`、`nopeui_xaml_fuzz.exe`
-- 基准：`.build\x64-release\samples\Release\nopeui_startup_benchmark.exe`、`nopeui_theme_benchmark.exe`
-- 单元测试：`.build\x64-release\tests\Release\`
+- Samples: `.build\x64-release\samples\Release\nopeui_window_smoke.exe`, `nopeui_xaml_smoke.exe`
+- Tools: `.build\x64-release\tools\Release\nopeui_golden.exe`, `nopeui_image_diff.exe`, `nopeui_xaml_fuzz.exe`
+- Benchmarks: `.build\x64-release\samples\Release\nopeui_startup_benchmark.exe`, `nopeui_theme_benchmark.exe`
+- Unit tests: `.build\x64-release\tests\Release\`
 
-Debug 配置把 `-Preset` 换成 `x64-debug` 即可，两条预设的目录互不干扰。
+For a Debug build, switch `-Preset` to `x64-debug`; the two presets use separate directories and do not interfere with each other.
 
-## 4. 冒烟运行
+## 4. Smoke Run
 
 ```powershell
 .\.build\x64-release\samples\Release\nopeui_window_smoke.exe
 .\.build\x64-release\samples\Release\nopeui_xaml_smoke.exe
 ```
 
-第一条应该弹出一个 900×640 的表单窗口，标题带最近一帧耗时；第二条加载 `page.xaml`，窗口标题是 `NopeUI XAML Smoke`。两个窗口都能正常拖动、缩放、切主题。
+The first should open a 900x640 form window whose title shows the most recent frame time. The second loads `page.xaml` and titles the window `NopeUI XAML Smoke`. Both windows should drag, resize, and switch themes normally.
 
-目标机器需要 VC++ 运行库（VS 安装时自带；干净的预览机要单独装 x64 版运行库）。
+The target machine needs the VC++ runtime (installed together with VS; a clean preview machine needs the x64 runtime installed separately).
 
-## 5. 验证
+## 5. Verification
 
-按顺序跑，全部要在报告里留下输出。
-
-```powershell
-.\tools\scripts\test.ps1 -Preset x64-release        # 18 个单元测试
-.\tools\scripts\golden.ps1 -Preset x64-release      # 28 张黄金图与基线比对
-.\tools\scripts\uia.ps1 -Preset x64-release         # UIA 全量走查，44 项检查
-.\tools\scripts\perf.ps1 -SkipBuild -Compare        # 启动与主题切换对照基线
-.\tools\scripts\analyze.ps1                          # MSVC /analyze，默认只报告
-```
-
-几点说明：
-
-- 黄金图基线在 `tests/golden/baseline`，当前图与差异图写到 `.build/golden`。换了显卡或缩放比例出现差异时先看差异图，别直接 `-Update`。
-- 二十八张基线全在工作区 `assets/golden`，仓库里一张都没有；单独克隆内层仓库时必须用 `NOPEUI_GOLDEN_ASSETS` 指向一份基线目录，否则全部用例都会报缺基线。
-- `tools/scripts/uia.ps1` 会自己起 `nopeui_window_smoke` 并要求一个可交互的桌面会话；远程或纯虚拟显示器上把 `-TimeoutSeconds` 调大。
-- `tools/scripts/perf.ps1 -Compare` 只有在 `tests/perf/baseline.json` 的预设与渲染路径都一致时才比数字；换机器要重新用 `-Out` 生成基线。
-- `tools/scripts/analyze.ps1` 默认失败也不返回非零，要当门禁用加 `-MaxWarnings 0`。
-- 模糊测试：`.\tools\scripts\fuzz.ps1 -SkipBuild -Hours 0.05` 先跑三分钟确认工具可用，正式回归用 `-Hours 24`，崩溃样本落在 `.build/fuzz/crash.xaml`。
-- 覆盖率需要外部安装 OpenCppCoverage，脚本不代为下载，缺工具时会说明安装方式。
-
-## 6. 常见问题
-
-- **CMake 版本不符**：报错信息里会列出找到的版本，按第 1 节装 4.4.4 或设 `NOPEUI_CMAKE`。
-- **LNK1104 打不开 exe**：上一个样例进程还在跑，先 `Stop-Process -Name nopeui_window_smoke` 再构建。
-- **黄金图逐像素失败但肉眼看不出**：多半是显示器缩放或驱动抗锯齿差异，用 `nopeui_image_diff` 看差异区域再决定是否重建基线。
-- **UIA 脚本报找不到窗口**：确认桌面会话可交互，且没有别的同名进程占着。
-
-## 7. 打包预览
+Run these in order and keep the output of each one in the report.
 
 ```powershell
-.\tools\scripts\package.ps1                     # 构建并打包
-.\tools\scripts\package.ps1 -SkipBuild -Smoke   # 复用现有构建，并启动样例做 3 秒冒烟
+.\tools\scripts\test.ps1 -Preset x64-release        # 18 unit tests
+.\tools\scripts\golden.ps1 -Preset x64-release      # 28 golden images compared against baselines
+.\tools\scripts\uia.ps1 -Preset x64-release         # full UIA walkthrough, 44 checks
+.\tools\scripts\perf.ps1 -SkipBuild -Compare        # startup and theme switching against the baseline
+.\tools\scripts\analyze.ps1                          # MSVC /analyze, report-only by default
 ```
 
-脚本要求工作区干净：包内的源码包取自 `HEAD`，源码必须和二进制对得上。本地试验可以加 `-AllowDirty`，它会明显提示源码包来自 HEAD。
+A few notes:
 
-产物在 `.build\package`：
+- Golden baselines live in `tests/golden/baseline`; current and diff images are written to `.build/golden`. When a different GPU or scale factor causes mismatches, look at the diff image first instead of running `-Update` right away.
+- All 28 baselines live in the workspace `assets/golden` and none are in the repository. When you clone the inner repository on its own you must point `NOPEUI_GOLDEN_ASSETS` at a baseline directory, otherwise every case reports a missing baseline.
+- `tools/scripts/uia.ps1` starts `nopeui_window_smoke` itself and requires an interactive desktop session; on a remote or purely virtual display, raise `-TimeoutSeconds`.
+- `tools/scripts/perf.ps1 -Compare` only compares numbers when `tests/perf/baseline.json` matches on both preset and render path. On a different machine, regenerate the baseline with `-Out` first.
+- `tools/scripts/analyze.ps1` does not return a non-zero exit code by default even when it fails; to use it as a gate, pass `-MaxWarnings 0`.
+- Fuzzing: `.\tools\scripts\fuzz.ps1 -SkipBuild -Hours 0.05` runs three minutes first to confirm the tool works, `-Hours 24` is for the real regression run, and crash samples land in `.build/fuzz/crash.xaml`.
+- Coverage needs OpenCppCoverage installed externally; the script does not download it and explains how to install it when the tool is missing.
 
-- `NopeUI-<版本>-win-x64.zip`：便携包，解压即用。
-- `NopeUI-<版本>-win-x64.sha256`：包与两个样例 exe 的校验和。
+## 6. Common Issues
 
-包内结构：
+- **CMake version mismatch**: the error lists the version it found. Install 4.4.4 as described in section 1, or set `NOPEUI_CMAKE`.
+- **LNK1104 cannot open the exe**: a sample process from an earlier run is still alive. Run `Stop-Process -Name nopeui_window_smoke` before rebuilding.
+- **Golden images fail the pixel comparison but look identical**: usually display scaling or driver antialiasing differences. Inspect the diff region with `nopeui_image_diff` before deciding whether to regenerate the baseline.
+- **The UIA script cannot find the window**: make sure the desktop session is interactive and no other process with the same name is holding it.
+
+## 7. Preview Packaging
+
+```powershell
+.\tools\scripts\package.ps1                     # build and package
+.\tools\scripts\package.ps1 -SkipBuild -Smoke   # reuse the existing build and run a 3-second smoke test
+```
+
+The script requires a clean working tree: the source archive inside the package comes from `HEAD`, so the source has to match the binaries. For local experiments you can pass `-AllowDirty`, which clearly warns that the source archive comes from `HEAD`.
+
+Artifacts land in `.build\package`:
+
+- `NopeUI-<version>-win-x64.zip`: portable package, unzip and run.
+- `NopeUI-<version>-win-x64.sha256`: checksums for the package and the two sample executables.
+
+Package layout:
 
 ```
 NopeUI-0.0.0.0-win-x64/
-├─ include/nopeui/          公共头文件
-├─ lib/x64/static/md/       七个静态库，动态 CRT 构建
-├─ bin/x64/                 两个样例 exe 与 page.xaml
+├─ include/nopeui/          public headers
+├─ lib/x64/static/md/       seven static libraries, dynamic CRT build
+├─ bin/x64/                 the two sample executables and page.xaml
 ├─ docs/REPRODUCE.md
-├─ source/nopeui-<版本>-source.zip   对应 HEAD 的源码包
-├─ package-info.txt         版本、构建日期、变体与工具链
+├─ source/nopeui-<version>-source.zip   source archive for HEAD
+├─ package-info.txt         version, build date, variant, and toolchain
 ├─ LICENSE
 └─ README.md
 ```
 
-版本号从 `src/base/version.cpp` 读，不单独传参。`bin\x64` 里的 `page.xaml` 必须和 exe 放在一起，`nopeui_xaml_smoke` 会在同目录找它。
+The version is read from `src/base/version.cpp` and is not passed as an argument. `page.xaml` in `bin\x64` must sit next to the executables, because `nopeui_xaml_smoke` looks for it in the same directory.
 
-这一版预览只发 x64 静态库 `/MD` 变体；动态库、静态 CRT 与 ARM64 属于季度全变体 SDK，还没做。
+This preview release ships only the x64 static-library `/MD` variant. Dynamic libraries, static CRT, and ARM64 belong to a quarterly all-variant SDK that is not built yet.
