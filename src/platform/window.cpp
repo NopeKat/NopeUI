@@ -39,7 +39,9 @@ constexpr UINT_PTR kCommitTimerId = 1;
 constexpr UINT_PTR kLiveResizeTimerId = 2;
 constexpr UINT_PTR kResizeSettleTimerId = 3;
 constexpr UINT_PTR kToolTipTimerId = 4;
+constexpr UINT_PTR kFrameRetryTimerId = 5;
 constexpr UINT kToolTipDelayMs = 600;
+constexpr UINT kFrameRetryIntervalMs = 4;
 constexpr UINT kClosePopupMessage = WM_APP + 7;
 constexpr UINT kRecreateGraphicsMessage = WM_APP + 8;
 constexpr UINT kLiveResizeIntervalMs = 8;
@@ -266,12 +268,14 @@ public:
                 state.target_bitmap.Reset();
             }
             target_bound_index_ = -1;
+            // The chain was created with the waitable-object flag, and
+            // ResizeBuffers rejects a flag set that does not match creation.
             HRESULT result = swap_chain_->ResizeBuffers(
                 0,
                 static_cast<UINT>(width),
                 static_cast<UINT>(height),
                 DXGI_FORMAT_UNKNOWN,
-                0);
+                DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT);
             if (FAILED(result)) {
                 return Result<void>::Fail(
                     Error{ErrorCode::PlatformFailure, PlatformError("ResizeBuffers", result)});
@@ -347,6 +351,12 @@ public:
         const bool lost = device_lost_;
         device_lost_ = false;
         return lost;
+    }
+
+    // True when the last Render() returned before drawing because the
+    // compositor still held its frames; the caller has to ask for a redraw.
+    bool TakeFrameDropped() noexcept {
+        return std::exchange(frame_dropped_, false);
     }
 
     void SetContent(Element* content) noexcept {
@@ -622,11 +632,16 @@ public:
             }
             // Present blocks the caller when the compositor still holds both
             // buffers. Waiting with a zero timeout turns that stall into a
-            // skipped frame, which keeps input handling responsive.
+            // skipped frame, which keeps input handling responsive. The skip
+            // has to be reported so the window can ask for the frame again:
+            // a caller that only renders once (a theme switch) would otherwise
+            // keep the old picture on screen.
             if (frame_latency_waitable_ != nullptr &&
                 WaitForSingleObjectEx(frame_latency_waitable_, 0, FALSE) != WAIT_OBJECT_0) {
                 std::lock_guard<std::mutex> lock(commit_mutex_);
                 ++queue_stats_.dropped;
+                full_redraw_required_ = true;
+                frame_dropped_ = true;
                 return;
             }
         } else if (async_commit_) {
@@ -1652,6 +1667,7 @@ private:
     bool async_commit_ = false;
     bool commit_running_ = true;
     bool full_redraw_required_ = false;
+    bool frame_dropped_ = false;
     bool surface_busy_[kMaxAsyncSurfaces] = {};
     int commit_in_flight_ = -1;
     std::deque<CommitJob> commit_queue_;
@@ -2020,7 +2036,7 @@ void Window::RenderFrame() noexcept {
         return;
     }
 
-    graphics_->Render();
+    RenderGraphics(nullptr, false);
 }
 
 void Window::SetDiagnosticLoad(
@@ -2082,7 +2098,20 @@ void Window::RenderFrame(const Rect& dirty_rect) noexcept {
     native_rect.top = static_cast<LONG>(dirty_rect.y);
     native_rect.right = static_cast<LONG>(dirty_rect.Right());
     native_rect.bottom = static_cast<LONG>(dirty_rect.Bottom());
-    graphics_->Render(&native_rect);
+    RenderGraphics(&native_rect, false);
+}
+
+// A frame can be skipped when the compositor still holds its buffers. Every
+// caller that draws has to be told, because a caller that only renders once
+// leaves the old picture on screen otherwise.
+void Window::RenderGraphics(const RECT* dirty_rect, bool force_commit) noexcept {
+    if (graphics_ == nullptr) {
+        return;
+    }
+    graphics_->Render(dirty_rect, force_commit);
+    if (graphics_->TakeFrameDropped() && hwnd_ != nullptr) {
+        SetTimer(hwnd_, kFrameRetryTimerId, kFrameRetryIntervalMs, nullptr);
+    }
 }
 
 void Window::Present() noexcept {
@@ -2825,7 +2854,7 @@ void Window::ApplyResize(int width, int height) noexcept {
 
     resize_deferred_ = false;
     LayoutContent(client_width_, client_height_);
-    graphics_->Render(nullptr, !graphics_->IsAsyncCommitEnabled());
+    RenderGraphics(nullptr, !graphics_->IsAsyncCommitEnabled());
     ScheduleResizeSettle();
 }
 
@@ -2856,7 +2885,7 @@ void Window::CompactResize() noexcept {
             LayoutContent(client_width_, client_height_);
             resize_deferred_ = false;
         }
-        graphics_->Render(nullptr, true);
+        RenderGraphics(nullptr, true);
     }
 }
 
@@ -2902,6 +2931,7 @@ void Window::ReleaseGraphics() noexcept {
         KillTimer(hwnd_, kLiveResizeTimerId);
         KillTimer(hwnd_, kResizeSettleTimerId);
         KillTimer(hwnd_, kToolTipTimerId);
+        KillTimer(hwnd_, kFrameRetryTimerId);
     }
     tooltip_timer_active_ = false;
     if (root_) {
@@ -3173,6 +3203,11 @@ LRESULT CALLBACK Window::WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM 
             }
             if (window != nullptr && wparam == kToolTipTimerId) {
                 window->OnToolTipTimer();
+                return 0;
+            }
+            if (window != nullptr && wparam == kFrameRetryTimerId) {
+                KillTimer(hwnd, kFrameRetryTimerId);
+                window->RenderFrame();
                 return 0;
             }
             break;

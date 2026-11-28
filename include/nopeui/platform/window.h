@@ -171,6 +171,7 @@ private:
     void RecreateGraphics() noexcept;
 
     void LayoutContent(int width, int height) noexcept;
+    void RenderGraphics(const RECT* dirty_rect, bool force_commit) noexcept;
     void UpdateClientMetrics(int pixel_width, int pixel_height) noexcept;
     Point ToClientDip(int pixel_x, int pixel_y) const noexcept;
     void OnMouseMove(Point point) noexcept;
