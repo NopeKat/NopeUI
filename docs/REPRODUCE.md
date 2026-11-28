@@ -70,7 +70,7 @@ Run these in order and keep the output of each one in the report.
 .\tools\scripts\test.ps1 -Preset x64-release        # 18 unit tests
 .\tools\scripts\golden.ps1 -Preset x64-release      # 28 golden images compared against baselines
 .\tools\scripts\uia.ps1 -Preset x64-release         # full UIA walkthrough, 44 checks
-.\tools\scripts\perf.ps1 -SkipBuild -Compare        # startup and theme switching against the baseline
+.\tools\scripts\perf.ps1 -SkipBuild -Compare        # startup, scroll, theme, and frame budget against the baseline
 .\tools\scripts\analyze.ps1                          # MSVC /analyze, report-only by default
 ```
 

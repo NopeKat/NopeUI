@@ -1,20 +1,33 @@
 {
-  "date": "2026-11-27",
+  "date": "2026-11-28",
   "preset": "x64-release",
   "render": "hardware",
   "startup": {
     "runs": 5,
-    "min": 266.7,
-    "median": 288.3,
-    "max": 291.8,
-    "average": 281.58,
+    "min": 244.2,
+    "median": 272.9,
+    "max": 282.6,
+    "average": 269.62,
     "ws_peak": 48.0
   },
   "theme": {
     "switches": 200,
-    "average": 9.647,
-    "p99": 26.288,
-    "max": 28.031,
-    "ws_peak": 47.9
+    "average": 9.043,
+    "p99": 23.688,
+    "max": 26.571,
+    "ws_peak": 47.6
+  },
+  "text_list": {
+    "rows": 100000,
+    "average": 1.597,
+    "p99": 2.836,
+    "fps": 626.2
+  },
+  "frame": {
+    "hz": 120,
+    "average": 5.217,
+    "p99": 11.832,
+    "max": 12.656,
+    "dropped": 0
   }
 }
