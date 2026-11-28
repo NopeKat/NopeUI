@@ -10,6 +10,7 @@
 #include <Windows.h>
 
 #include "form_page.h"
+#include "nopeui/base/diagnostic.h"
 #include "nopeui/platform/window.h"
 #include "nopeui/theme/theme.h"
 
@@ -46,8 +47,13 @@ std::wstring FindTracePath(std::wstring_view command_line) {
 }  // namespace
 
 int WINAPI wWinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ PWSTR command_line_ptr, _In_ int) {
+    nopeui::StartDiagnostics();
+    nopeui::LogMessage(nopeui::LogLevel::Info, "window smoke starting");
+
     auto result = nopeui::Window::Create(900, 640, u"NopeUI Window Smoke");
     if (!result.ok()) {
+        nopeui::LogMessage(nopeui::LogLevel::Error, result.error().message);
+        nopeui::StopDiagnostics();
         return 1;
     }
 
@@ -86,6 +92,8 @@ int WINAPI wWinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ PWSTR command_line_
         trace = opened;
         if (trace == nullptr) {
             std::fwprintf(stderr, L"trace open failed: %s\n", trace_path.c_str());
+            nopeui::LogMessage(nopeui::LogLevel::Error, "trace file cannot be opened");
+            nopeui::StopDiagnostics();
             return 1;
         }
         std::setvbuf(trace, nullptr, _IONBF, 0);
@@ -155,6 +163,8 @@ int WINAPI wWinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ PWSTR command_line_
     if (trace != nullptr) {
         std::fclose(trace);
     }
+    nopeui::LogMessage(nopeui::LogLevel::Info, "window smoke stopping");
+    nopeui::StopDiagnostics();
     if (!loop.ok()) {
         return 1;
     }

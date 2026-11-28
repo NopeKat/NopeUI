@@ -4,6 +4,7 @@
 #include <string>
 #include <string_view>
 
+#include "nopeui/base/diagnostic.h"
 #include "nopeui/base/strings.h"
 #include "nopeui/controls/button.h"
 #include "nopeui/controls/flyout.h"
@@ -26,8 +27,13 @@ std::wstring ErrorText(const nopeui::Error& error) {
 }  // namespace
 
 int WINAPI wWinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ PWSTR, _In_ int) {
+    nopeui::StartDiagnostics();
+    nopeui::LogMessage(nopeui::LogLevel::Info, "xaml smoke starting");
+
     auto created = nopeui::Window::Create(720, 480, u"NopeUI XAML Smoke");
     if (!created.ok()) {
+        nopeui::LogMessage(nopeui::LogLevel::Error, created.error().message);
+        nopeui::StopDiagnostics();
         return 1;
     }
     auto window = std::move(created).value();
@@ -64,11 +70,13 @@ int WINAPI wWinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ PWSTR, _In_ int) {
             std::string(utf8.begin(), utf8.end()), context);
     }();
     if (!loaded.ok()) {
+        nopeui::LogMessage(nopeui::LogLevel::Error, loaded.error().message);
         MessageBoxW(
             nullptr,
             ErrorText(loaded.error()).c_str(),
             L"NopeUI XAML Smoke",
             MB_OK | MB_ICONERROR);
+        nopeui::StopDiagnostics();
         return 1;
     }
 
@@ -76,5 +84,7 @@ int WINAPI wWinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ PWSTR, _In_ int) {
     window->SetContent(page.root);
     window->Show();
     auto loop = nopeui::RunMessageLoop();
+    nopeui::LogMessage(nopeui::LogLevel::Info, "xaml smoke stopping");
+    nopeui::StopDiagnostics();
     return loop.ok() ? loop.value() : 1;
 }

@@ -28,6 +28,10 @@ Popups are hosted by the window's built-in overlay root rather than pushed into 
 
 `Image` reuses the WIC decode path in `graphics::LoadPng` and offers four stretches: `None`, `Fill`, `Uniform`, and `UniformToFill`. At paint time it caches an `ID2D1Bitmap` per render target, converting straight alpha to premultiplied while caching, and the software and hardware paths share the same source rectangle math.
 
+## Diagnostics
+
+`StartDiagnostics` opens `diagnostics.log` under `%LOCALAPPDATA%\NopeUI\diagnostics` unless `DiagnosticOptions::directory` says otherwise, writes one line per `LogMessage`, and rotates the file by size. It also installs a first-chance vector handler and the top-level unhandled exception filter: an access violation or another fatal exception writes a minidump into the same directory and appends a fatal line to the log. Everything stays local - no telemetry, no upload. `WriteDump` writes a minidump on demand for a report, and `StopDiagnostics` closes the log and removes both handlers. Both samples call it at startup, so a failed run leaves the log behind; the log is opened with sharing on and can be copied while the app runs.
+
 ## Building
 
 Toolchain versions are pinned to CMake 4.4.4, Visual Studio 18 2026, MSVC 14.52.37025, and Windows SDK 10.0.26100.0; the generator is `Visual Studio 18 2026`, and Ninja is not used.

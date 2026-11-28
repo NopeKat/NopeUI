@@ -21,9 +21,12 @@ if(NOPEUI_ANALYZE AND MSVC)
 endif()
 
 add_library(nopeui_base STATIC
+    src/base/diagnostic.cpp
     src/base/strings.cpp
     src/base/version.cpp
 )
+
+target_link_libraries(nopeui_base PRIVATE dbghelp)
 
 target_include_directories(nopeui_base PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
