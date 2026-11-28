@@ -5,6 +5,12 @@ add_executable(nopeui_window_smoke WIN32
 target_include_directories(nopeui_window_smoke PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/common)
 target_link_libraries(nopeui_window_smoke PRIVATE nopeui_platform nopeui_controls)
 
+add_executable(nopeui_gallery WIN32
+    gallery/main.cpp
+)
+
+target_link_libraries(nopeui_gallery PRIVATE nopeui_platform nopeui_controls nopeui_theme)
+
 add_executable(nopeui_xaml_smoke WIN32
     xaml_smoke/main.cpp
 )
